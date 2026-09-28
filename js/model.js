@@ -378,6 +378,183 @@
     occupied.push(result);
     return result;
   }
+  function routeSegments(points) {
+    return points
+      .slice(1)
+      .map((b, n) => ({ a: points[n], b }))
+      .filter((s) => Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) > 0.01);
+  }
+  function parallelOverlap(s, t, clearance = 6) {
+    const dx = s.b.x - s.a.x,
+      dy = s.b.y - s.a.y,
+      length = Math.hypot(dx, dy);
+    const tx = t.b.x - t.a.x,
+      ty = t.b.y - t.a.y,
+      otherLength = Math.hypot(tx, ty);
+    if (
+      !length ||
+      !otherLength ||
+      Math.abs(dx * ty - dy * tx) > 0.001 * length * otherLength
+    )
+      return 0;
+    const distance =
+      Math.abs(dx * (t.a.y - s.a.y) - dy * (t.a.x - s.a.x)) / length;
+    if (distance >= clearance) return 0;
+    const start = ((t.a.x - s.a.x) * dx + (t.a.y - s.a.y) * dy) / length;
+    const end = ((t.b.x - s.a.x) * dx + (t.b.y - s.a.y) * dy) / length;
+    return (
+      Math.max(
+        0,
+        Math.min(length, Math.max(start, end)) -
+          Math.max(0, Math.min(start, end)),
+      ) *
+      (1 - distance / clearance)
+    );
+  }
+  function segmentInsideBox(s, box) {
+    const dx = s.b.x - s.a.x,
+      dy = s.b.y - s.a.y;
+    let lo = 0,
+      hi = 1;
+    for (const [p, q] of [
+      [-dx, s.a.x - box.x],
+      [dx, box.x + box.width - s.a.x],
+      [-dy, s.a.y - box.y],
+      [dy, box.y + box.height - s.a.y],
+    ]) {
+      if (p === 0) {
+        if (q <= 0) return 0;
+      } else if (p < 0) lo = Math.max(lo, q / p);
+      else hi = Math.min(hi, q / p);
+      if (lo >= hi) return 0;
+    }
+    return (hi - lo) * Math.hypot(dx, dy);
+  }
+  function createEdgeRouter(obstacles = [], bounds = {}) {
+    const used = [];
+    const compact = (points) =>
+      points
+        .filter(
+          (p, n) => !n || p.x !== points[n - 1].x || p.y !== points[n - 1].y,
+        )
+        .map((p) => ({ ...p }));
+    return (input, { axis = "vertical", timeAxis = false } = {}) => {
+      const original = compact(input),
+        start = original[0],
+        end = original.at(-1);
+      const segments = routeSegments(original);
+      const overlap = (parts) =>
+        parts.reduce(
+          (sum, s) => sum + used.reduce((n, t) => n + parallelOverlap(s, t), 0),
+          0,
+        );
+      let result = original;
+      if (
+        segments.length &&
+        overlap(segments) > 0.5 &&
+        (!timeAxis || end.x > start.x)
+      ) {
+        const length = (parts) =>
+          parts.reduce(
+            (sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y),
+            0,
+          );
+        const score = (points) => {
+          const parts = routeSegments(points);
+          const penetration = parts.reduce(
+            (sum, s) =>
+              sum + obstacles.reduce((n, b) => n + segmentInsideBox(s, b), 0),
+            0,
+          );
+          return overlap(parts) * 50 + penetration * 8 + length(parts) * 0.08;
+        };
+        let best = score(original);
+        const offsets = [0, 8, -8, 16, -16, 24, -24, 32, -32, 48, -48, 64, -64];
+        const lowX = Math.min(bounds.left ?? -Infinity, start.x, end.x),
+          highX = Math.max(bounds.right ?? Infinity, start.x, end.x);
+        const lowY = Math.min(bounds.top ?? -Infinity, start.y, end.y),
+          highY = Math.max(bounds.bottom ?? Infinity, start.y, end.y);
+        for (const side of offsets)
+          for (const bend of [0, 8, -8, 16, -16, 24, -24, 32, -32]) {
+            let candidate;
+            if (axis === "horizontal") {
+              const direction = Math.sign(end.x - start.x) || 1;
+              const stub = Math.min(8, Math.abs(end.x - start.x) / 4);
+              const mid =
+                (start.x + end.x) / 2 + Math.max(-stub, Math.min(stub, bend));
+              candidate = [
+                start,
+                { x: start.x + direction * stub, y: start.y + side },
+                { x: mid, y: start.y + side },
+                { x: mid, y: end.y + side },
+                { x: end.x - direction * stub, y: end.y + side },
+                end,
+              ];
+            } else {
+              const direction = Math.sign(end.y - start.y) || 1;
+              const stub = Math.min(8, Math.abs(end.y - start.y) / 4);
+              const mid =
+                (start.y + end.y) / 2 +
+                Math.max(
+                  -Math.abs(end.y - start.y) / 4,
+                  Math.min(Math.abs(end.y - start.y) / 4, bend),
+                );
+              const limit = (end.x - start.x) / 3;
+              const sx = timeAxis ? Math.max(0, Math.min(limit, side)) : side;
+              const ex = timeAxis ? Math.min(0, Math.max(-limit, -side)) : side;
+              candidate = [
+                start,
+                { x: start.x + sx, y: start.y + direction * stub },
+                { x: start.x + sx, y: mid },
+                { x: end.x + ex, y: mid },
+                { x: end.x + ex, y: end.y - direction * stub },
+                end,
+              ];
+            }
+            candidate = compact(candidate);
+            if (
+              candidate.some(
+                (p) => p.x < lowX || p.x > highX || p.y < lowY || p.y > highY,
+              )
+            )
+              continue;
+            const value =
+              score(candidate) + (Math.abs(side) + Math.abs(bend)) * 0.05;
+            if (value < best - 0.01) {
+              best = value;
+              result = candidate;
+            }
+          }
+      }
+      used.push(...routeSegments(result));
+      return result;
+    };
+  }
+  function pointOnRoute(points, x, preferredY) {
+    const candidates = [];
+    for (const { a, b } of routeSegments(points)) {
+      if (x < Math.min(a.x, b.x) - 1e-7 || x > Math.max(a.x, b.x) + 1e-7)
+        continue;
+      if (Math.abs(a.x - b.x) < 1e-7)
+        candidates.push({
+          x,
+          y: Math.max(
+            Math.min(a.y, b.y),
+            Math.min(Math.max(a.y, b.y), preferredY),
+          ),
+        });
+      else
+        candidates.push({
+          x,
+          y: a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x),
+        });
+    }
+    return (
+      candidates.sort(
+        (a, b) => Math.abs(a.y - preferredY) - Math.abs(b.y - preferredY),
+      )[0] || { x, y: preferredY }
+    );
+  }
   function layout(doc, scale = 16, options = {}) {
     const rows = [],
       positions = new Map();
@@ -1126,6 +1303,10 @@
     fitStateText,
     boxesOverlap,
     placeLabel,
+    createEdgeRouter,
+    parallelOverlap,
+    routeSegments,
+    pointOnRoute,
     remove,
     related,
     History,

@@ -200,6 +200,10 @@
         ? { stroke: "#8595a3", fill: "#edf0f4", ink: "#526978" }
         : { stroke: "#5b9d97", fill: "#e1efeb", ink: "#226c65" };
   }
+  let edgeRouter,
+    transitionRoutes = new Map();
+  const routePath = (points) =>
+    points.map((p, n) => `${n ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
   function transitionPoint(t, at) {
     const a = state(t.from),
       b = state(t.to),
@@ -212,7 +216,15 @@
     const y2 = branch ? q.y + (down ? 0 : q.height) : q.y + q.height / 2;
     return {
       x: timeX(at),
-      y: branch ? (y1 + y2) / 2 : y2,
+      y: transitionRoutes.has(t.id)
+        ? M.pointOnRoute(
+            transitionRoutes.get(t.id),
+            timeX(at),
+            branch ? (y1 + y2) / 2 : y2,
+          ).y
+        : branch
+          ? (y1 + y2) / 2
+          : y2,
       x1: p.x + p.width,
       y1,
       x2: q.x,
@@ -255,7 +267,7 @@
     chartTextCache.set(key, width);
     return width;
   }
-  // All chart edges are orthogonal SVG M/L/H/V paths. Include outcome connectors.
+  // Chart paths use M/L/H/V, including short diagonal fan-outs at shared endpoints.
   function pathSegments(path) {
     const tokens =
       (path || "").match(/[MLHVmlhv]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || [];
@@ -495,6 +507,7 @@
   }
   function renderSVG(full = false) {
     technologyBoxes = [];
+    transitionRoutes = new Map();
     const d = doc();
     frame = M.viewport(
       d.time.duration,
@@ -532,6 +545,12 @@
       width: frame.width,
       includeHidden: full,
       measureText: measureChartText,
+    });
+    edgeRouter = M.createEdgeRouter([...layout.positions.values()], {
+      left: plotLeft - 8,
+      right: frame.width - 16,
+      top: 50,
+      bottom: layout.height - 4,
     });
     renderedRelated =
       (focusChain || isEnemyTransition(selection)) && selection
@@ -582,15 +601,31 @@
         (i) => i.effect === "block" && !i.proposed && i.targetId === t.id,
       );
       const point = transitionPoint(t, state(t.from).end);
-      const path = point.branch
-        ? `M ${point.x1} ${point.y1} V ${point.y} H ${point.x2} V ${point.y2}`
-        : `M ${point.x1} ${point.y1} V ${point.y2} H ${point.x2}`;
+      const initial = point.branch
+        ? [
+            { x: point.x1, y: point.y1 },
+            { x: point.x1, y: point.y },
+            { x: point.x2, y: point.y },
+            { x: point.x2, y: point.y2 },
+          ]
+        : [
+            { x: point.x1, y: point.y1 },
+            { x: point.x1, y: point.y2 },
+            { x: point.x2, y: point.y2 },
+          ];
+      const routed = edgeRouter(initial, {
+        axis: point.branch ? "vertical" : "horizontal",
+        timeAxis: true,
+      });
+      transitionRoutes.set(t.id, routed);
+      const path = routePath(routed);
+
       parts.push(
         `<g data-type="transition" data-id="${esc(t.id)}" class="edge${blockers.length ? " block" : ""}${edgeClass(t.id)}"><title>${esc(state(t.from).name)} → ${esc(state(t.to).name)}${blockers.length ? "（阻止）" : t.status === "planned" ? "（予定）" : ""}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${blockers.length ? "#c14d51" : "#8b9c9f"}" ${t.status === "planned" ? 'stroke-dasharray="5 4"' : ""} marker-end="url(#arrow-${blockers.length ? "red" : "gray"})"/>`,
       );
       if (t.label || b.x - a.x - a.width >= 90)
         parts.push(
-          `<text class="edge-label" x="${(a.x + a.width + b.x) / 2}" y="${b.y + (b.x > a.x + a.width ? 10 : 42)}" text-anchor="middle">${esc(t.label || "遷移")}${state(t.to).start > state(t.from).end ? ` · ${fmt(state(t.to).start - state(t.from).end)} ${units[d.time.unit]}` : ""}</text>`,
+          `<text class="edge-label" x="${(a.x + a.width + b.x) / 2}" y="${transitionPoint(t, (state(t.from).end + state(t.to).start) / 2).y - 8}" text-anchor="middle">${esc(t.label || "遷移")}${state(t.to).start > state(t.from).end ? ` · ${fmt(state(t.to).start - state(t.from).end)} ${units[d.time.unit]}` : ""}</text>`,
         );
       for (const block of blockers) {
         const p = transitionPoint(t, block.time);
@@ -658,7 +693,14 @@
             ? target.y + (down ? -target.height / 2 : target.height / 2)
             : target.y;
       const middleY = (y1 + y2) / 2,
-        path = `M ${x1} ${y1} V ${middleY} H ${x2} V ${y2}`;
+        path = routePath(
+          edgeRouter([
+            { x: x1, y: y1 },
+            { x: x1, y: middleY },
+            { x: x2, y: middleY },
+            { x: x2, y: y2 },
+          ]),
+        );
       const blocked = i.effect === "block",
         style = interactionStyle(i.kind),
         color = style.color;
@@ -674,7 +716,17 @@
       if (i.outcomeStateId && layout.positions.has(i.outcomeStateId)) {
         const o = layout.positions.get(i.outcomeStateId);
         parts.push(
-          `<path class="line" d="M ${x2} ${y2} H ${o.x - 9} V ${o.y + o.height / 2} H ${o.x}" stroke="${color}" stroke-dasharray="2 3"/>`,
+          `<path class="line" d="${routePath(
+            edgeRouter(
+              [
+                { x: x2, y: y2 },
+                { x: o.x - 9, y: y2 },
+                { x: o.x - 9, y: o.y + o.height / 2 },
+                { x: o.x, y: o.y + o.height / 2 },
+              ],
+              { axis: "horizontal" },
+            ),
+          )}" stroke="${color}" stroke-dasharray="2 3"/>`,
         );
       }
       parts.push("</g>");
@@ -1494,7 +1546,13 @@
         x2 = timeX(Math.max(...proxy.interactions.map((i) => i.time)));
       const y1 = from.top + from.height - 18,
         y2 = to.top + to.height - 18,
-        path = `M ${x1} ${y1} H ${x2} V ${y2}`;
+        path = routePath(
+          edgeRouter([
+            { x: x1, y: y1 },
+            { x: x2, y: y1 },
+            { x: x2, y: y2 },
+          ]),
+        );
       const labelX = Math.max(
           plotLeft,
           Math.min(frame.width - 145, (x1 + x2) / 2),
