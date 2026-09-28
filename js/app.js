@@ -39,16 +39,19 @@
   }
   const history = new M.History(initial);
   let selection = null,
-    mode = "select",
     linkSource = null,
     scale = 16,
+    viewStart = 0,
+    viewSpan = initial.time.duration,
+    plotLeft = 208,
+    frame,
     layout,
     preview = null,
     drag = null,
     ignoreClick = false,
     spaceHeld = false,
     focusChain = false,
-    inspectorHidden = innerWidth < 760,
+    inspectorHidden = true,
     searchQuery = "";
   let dialogApply = null,
     toastTimer,
@@ -110,10 +113,20 @@
       toast(e.message);
     }
   }
-  function setMode(value) {
-    mode = value;
-    linkSource = null;
+  const timeX = (value) => plotLeft + (value - frame.start) * scale;
+  const xTime = (x) => frame.start + (x - plotLeft) / scale;
+  function beginConnection(id) {
+    linkSource = id;
+    selection = { type: "state", id };
     render();
+  }
+  function toggleActor(id) {
+    selection = { type: "actor", id };
+    linkSource = null;
+    safeChange((d) => {
+      const a = item("actor", id, d);
+      a.collapsed = !a.collapsed;
+    }, "グループの表示を変更しました");
   }
   function updateSelection() {
     const chain = focusChain && selection ? M.related(doc(), selection) : null;
@@ -128,6 +141,7 @@
     if (selection?.type === "state") {
       const s = state(selection.id),
         p = layout.positions.get(s.id);
+      if (!p) return;
       const text = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "text",
@@ -160,8 +174,9 @@
       b = state(t.to),
       p = layout.positions.get(a.id),
       q = layout.positions.get(b.id);
+    if (!p || !q) return null;
     return {
-      x: 208 + at * scale,
+      x: timeX(at),
       y: q.y + 16,
       x1: p.x + p.width,
       y1: p.y + 16,
@@ -174,20 +189,34 @@
     return `${selection?.id === id ? " selected" : ""}${related && !related.has(id) ? " dimmed" : ""}`;
   }
   const svgStyle = `
-    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:transparent}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.port{fill:white;stroke:#087f80;stroke-width:1.5;opacity:0;cursor:crosshair}.state:hover .port,.state.selected .port,.link-mode .port{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}
+    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.port{fill:white;stroke:#087f80;stroke-width:1.5;opacity:.6;cursor:crosshair}.state:hover .port,.state.selected .port,.link-mode .port{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}
   `;
-  function renderSVG() {
+  function renderSVG(full = false) {
     const d = doc();
-    layout = M.layout(d, scale);
+    frame = M.viewport(
+      d.time.duration,
+      Math.max(280, scroll.clientWidth || 1000),
+      full ? 0 : viewStart,
+      full ? d.time.duration : viewSpan,
+    );
+    if (!full) {
+      viewStart = frame.start;
+      viewSpan = frame.span;
+    }
+    scale = frame.scale;
+    plotLeft = frame.plotLeft;
+    layout = M.layout(d, scale, {
+      start: frame.start,
+      plotLeft,
+      width: frame.width,
+      includeHidden: full,
+    });
     renderedRelated = focusChain && selection ? M.related(d, selection) : null;
     svg.setAttribute("width", layout.width);
     svg.setAttribute("height", layout.height);
-    svg.classList.toggle(
-      "link-mode",
-      ["transition", "interaction", "block"].includes(mode),
-    );
+    svg.classList.toggle("link-mode", !!linkSource);
     const parts = [
-      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/>`,
+      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="64" width="${layout.width - plotLeft - 12}" height="${layout.height - 64}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
     ];
     const tickStep =
       [
@@ -196,10 +225,14 @@
       ].find((n) => n * scale >= 65) || 1000000;
     for (const row of layout.rows)
       parts.push(
-        `<rect data-row="${esc(row.actor.id)}" x="196" y="${row.top}" width="${layout.width - 196}" height="${row.height}" fill="${row.actor.side === "hostile" ? "#fffcfb" : "#fff"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${layout.width}" y2="${row.top + row.height}"/>`,
+        `<rect data-row="${esc(row.actor.id)}" x="${plotLeft - 12}" y="${row.top}" width="${layout.width - plotLeft + 12}" height="${row.height}" fill="${row.actor.side === "hostile" ? "#fffcfb" : "#fff"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${layout.width}" y2="${row.top + row.height}"/>`,
       );
-    for (let t = 0; t <= d.time.duration + 1e-7; t += tickStep) {
-      const x = 208 + t * scale;
+    for (
+      let t = Math.ceil(frame.start / tickStep) * tickStep;
+      t <= frame.end + 1e-7;
+      t += tickStep
+    ) {
+      const x = timeX(t);
       parts.push(
         `<line class="grid" x1="${x}" y1="64" x2="${x}" y2="${layout.height - 28}"/>`,
       );
@@ -234,9 +267,10 @@
         c = colors(actor.side),
         quiet = s.activity === "quiet",
         planned = s.status === "planned";
+      if (!p) continue;
       const clipId = `clip-${d.states.indexOf(s)}`;
       parts.push(
-        `<g class="state${edgeClass(s.id)}" data-type="state" data-id="${esc(s.id)}"><title>${esc(s.name)} · ${time(s.start)}–${time(s.end)} ${units[d.time.unit]} · ${planned ? "予定" : "実際"}${quiet ? " · 平常" : ""}</title><defs><clipPath id="${clipId}"><rect x="${p.x + 5}" y="${p.y}" width="${Math.max(0, p.width - 10)}" height="32"/></clipPath></defs><rect class="body" x="${p.x}" y="${p.y}" width="${p.width}" height="32" rx="5" fill="${quiet ? "#f6f8f8" : planned ? "#fff" : c.fill}" stroke="${quiet ? "#ced9dc" : planned ? "#b3bec1" : c.stroke}" ${planned ? 'stroke-dasharray="5 3"' : quiet ? 'stroke-dasharray="3 3"' : ""}/><text x="${p.x + p.width / 2}" y="${p.y + 20}" text-anchor="middle" fill="${quiet ? "#95a5aa" : planned ? "#87999e" : c.ink}" font-size="11" font-weight="${quiet ? "400" : "550"}" clip-path="url(#${clipId})">${esc(s.name)}${planned ? " · 予定" : ""}</text>`,
+        `<g class="state${edgeClass(s.id)}" data-type="state" data-id="${esc(s.id)}"><title>${esc(s.name)} · ${time(s.start)}–${time(s.end)} ${units[d.time.unit]} · ${planned ? "予定" : "実際"}${quiet ? " · 平常" : ""}</title><defs><clipPath id="${clipId}"><rect x="${p.x + 5}" y="${p.y}" width="${Math.max(0, p.width - 10)}" height="32"/></clipPath></defs><rect class="body" x="${p.x}" y="${p.y}" width="${p.width}" height="32" rx="5" fill="${quiet ? "#f6f8f8" : planned ? "#fff" : c.fill}" stroke="${quiet ? "#ced9dc" : planned ? "#b3bec1" : c.stroke}" ${planned ? 'stroke-dasharray="5 3"' : quiet ? 'stroke-dasharray="3 3"' : ""}/><text x="${(Math.max(p.x, plotLeft) + Math.min(p.x + p.width, frame.width - 24)) / 2}" y="${p.y + 20}" text-anchor="middle" fill="${quiet ? "#95a5aa" : planned ? "#87999e" : c.ink}" font-size="11" font-weight="${quiet ? "400" : "550"}" clip-path="url(#${clipId})">${esc(s.name)}${planned ? " · 予定" : ""}</text>`,
       );
       const h = Math.min(8, p.width / 3);
       parts.push(
@@ -251,7 +285,7 @@
           `<rect class="pending-ring" x="${p.x - 3}" y="${p.y - 3}" width="${p.width + 6}" height="38" rx="7"/>`,
         );
       parts.push(
-        `<circle class="port" data-port="out" cx="${p.x + p.width + 7}" cy="${p.y + 16}" r="4.5"/></g>`,
+        `<circle class="port" data-port="out" cx="${Math.max(plotLeft + 5, Math.min(frame.width - 30, p.x + p.width - 8))}" cy="${p.y + 39}" r="4.5" ${p.x + p.width < plotLeft || p.x > frame.width - 24 ? 'visibility="hidden"' : ""}/></g>`,
       );
     }
     // An instantaneous transition has no horizontal length; a point marker makes it selectable.
@@ -260,6 +294,7 @@
         b = state(t.to);
       if (a.end !== b.start) continue;
       const p = transitionPoint(t, b.start);
+      if (!p) continue;
       parts.push(
         `<g data-type="transition" data-id="${esc(t.id)}" class="edge${edgeClass(t.id)}"><title>${esc(a.name)} → ${esc(b.name)} · 即時遷移</title><path d="M ${p.x} ${p.y - 5} l 5 5 -5 5 -5 -5 Z" fill="white" stroke="#8b9c9f" stroke-width="1.5"/></g>`,
       );
@@ -271,12 +306,14 @@
       let target;
       if (i.targetType === "state") {
         const q = layout.positions.get(i.targetId);
+        if (!q) continue;
         target = { x: q.x, y: q.y + 16 };
       } else target = transitionPoint(item("transition", i.targetId), i.time);
+      if (!target) continue;
       const down = target.y > s.y + 16,
-        x1 = 208 + i.sourceTime * scale,
+        x1 = timeX(i.sourceTime),
         y1 = down ? s.y + 32 : s.y,
-        x2 = 208 + i.time * scale,
+        x2 = timeX(i.time),
         y2 = i.targetType === "state" ? target.y + (down ? -16 : 16) : target.y;
       const middleY = down ? y1 + 15 : y1 - 15,
         path = `M ${x1} ${y1} V ${middleY} H ${x2} V ${y2}`;
@@ -285,7 +322,7 @@
       parts.push(
         `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${blocked ? 'stroke-dasharray="5 3"' : ""} marker-end="url(#arrow-${blocked ? "red" : "teal"})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label" x="${Math.max(x1, x2) + 7}" y="${middleY - 4}">${esc(i.label)}</text>`,
       );
-      if (i.outcomeStateId) {
+      if (i.outcomeStateId && layout.positions.has(i.outcomeStateId)) {
         const o = layout.positions.get(i.outcomeStateId);
         parts.push(
           `<path class="line" d="M ${x2} ${y2} H ${o.x - 9} V ${o.y + 16} H ${o.x}" stroke="${color}" stroke-dasharray="2 3"/>`,
@@ -297,50 +334,80 @@
       parts.push(
         '<text x="230" y="112" font-size="14" fill="#73858b">「＋ Actor」からミッションの登場主体を追加してください。</text>',
       );
+    for (const row of layout.rows) {
+      if (full || !row.actor.collapsed || !row.hasChildren) continue;
+      const ids = M.descendants(d, row.actor.id);
+      ids.delete(row.actor.id);
+      const hiddenStates = new Set(
+        d.states.filter((s) => ids.has(s.actorId)).map((s) => s.id),
+      );
+      const hiddenEdges = d.interactions.filter(
+        (i) =>
+          hiddenStates.has(i.fromStateId) ||
+          (i.targetType === "state"
+            ? hiddenStates.has(i.targetId)
+            : hiddenStates.has(item("transition", i.targetId).from)),
+      ).length;
+      parts.push(
+        `<g data-toggle="${esc(row.actor.id)}" style="cursor:pointer"><text x="${plotLeft + 5}" y="${row.top + row.height - 10}" font-size="10" fill="#7c9095">▸ ${ids.size} Actors / ${hiddenStates.size} States · 関連する作用 ${hiddenEdges}件を非表示</text></g>`,
+      );
+    }
+    parts.push("</g>");
     // Keep actor names and the time ruler visible while the canvas scrolls.
     parts.push('<g id="actor-labels">');
     for (const row of layout.rows) {
       const a = row.actor,
-        c = colors(a.side);
+        c = colors(a.side),
+        indent = Math.min(60, row.depth * 14),
+        nameX = 43 + indent;
+      const maxChars = Math.max(3, Math.floor((plotLeft - 24 - nameX) / 11));
+      const toggle = row.hasChildren
+        ? `<g data-toggle="${esc(a.id)}" role="button" tabindex="0" aria-label="${esc(a.name)}を${a.collapsed ? "展開" : "折りたたむ"}" aria-expanded="${!a.collapsed}"><rect x="${14 + indent}" y="${row.top + 25}" width="24" height="28" fill="white" fill-opacity="0"/><text x="${20 + indent}" y="${row.top + 44}" fill="#477e7b" font-size="12">${a.collapsed && !full ? "▸" : "▾"}</text></g>`
+        : `<text x="${20 + indent}" y="${row.top + 44}" font-size="12" fill="#a3b9bb">${row.depth ? "└" : "⠿"}</text>`;
       parts.push(
-        `<g class="actor-label${selection?.id === a.id ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="196" height="${row.height}" fill="#fafcfc"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="196" y2="${row.top + row.height}"/><text x="15" y="${row.top + 48}" font-size="14" fill="#b8c7ca">⠿</text><rect x="35" y="${row.top + 33}" width="3" height="23" rx="1.5" fill="${c.stroke}"/><text class="actor-name" x="49" y="${row.top + 43}">${esc(a.name.length > 11 ? a.name.slice(0, 10) + "…" : a.name)}</text><text x="49" y="${row.top + 61}" font-size="9" fill="#90a0a5">${sides[a.side]} / ${String(d.actors.indexOf(a) + 1).padStart(2, "0")}</text><title>${esc(a.name)} · ドラッグで並べ替え</title></g>`,
+        `<g class="actor-label${selection?.id === a.id ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="${plotLeft - 12}" height="${row.height}" fill="${a.isGroup || row.hasChildren ? "#f0f6f4" : "#fafcfc"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${plotLeft - 12}" y2="${row.top + row.height}"/>${toggle}<text class="actor-name" x="${nameX}" y="${row.top + 43}">${esc(a.name.length > maxChars ? a.name.slice(0, maxChars) + "…" : a.name)}</text><text x="${nameX}" y="${row.top + 61}" font-size="9" fill="${c.stroke}">${sides[a.side]}${row.hasChildren || a.isGroup ? " / グループ" : ""}</text><title>${esc(a.name)} · 中央へドロップで子に、上下端へドロップで並べ替え</title></g>`,
       );
     }
     parts.push(
-      `<line x1="196" y1="64" x2="196" y2="${layout.height}" stroke="#dde7e9"/></g><g id="time-ruler"><rect x="196" y="0" width="${layout.width - 196}" height="64" fill="#fafcfc"/><line class="rowline" x1="196" y1="64" x2="${layout.width}" y2="64"/><text x="208" y="21" font-size="9" letter-spacing="1.2" fill="#81969b">ELAPSED TIME / ${units[d.time.unit]}</text>`,
+      `<line x1="${plotLeft - 12}" y1="64" x2="${plotLeft - 12}" y2="${layout.height}" stroke="#dde7e9"/></g><g id="time-ruler"><rect x="${plotLeft - 12}" y="0" width="${layout.width - plotLeft + 12}" height="64" fill="#fafcfc"/><line class="rowline" x1="${plotLeft - 12}" y1="64" x2="${layout.width}" y2="64"/><text x="${plotLeft}" y="21" font-size="9" letter-spacing="1.2" fill="#81969b">ELAPSED TIME / ${units[d.time.unit]}</text>`,
     );
-    for (let t = 0; t <= d.time.duration + 1e-7; t += tickStep) {
-      const x = 208 + t * scale;
+    for (
+      let t = Math.ceil(frame.start / tickStep) * tickStep;
+      t <= frame.end + 1e-7;
+      t += tickStep
+    ) {
+      const x = timeX(t);
       parts.push(
         `<text class="tick" x="${x}" y="44" text-anchor="middle">${time(t)}</text><line x1="${x}" y1="53" x2="${x}" y2="64" stroke="#dbe5e7"/>`,
       );
     }
     parts.push(
-      '</g><g id="corner"><rect width="196" height="64" fill="#fafcfc"/><text x="28" y="39" font-size="9" letter-spacing="1.4" fill="#7d9299">ACTORS</text><line class="rowline" x1="0" y1="64" x2="196" y2="64"/></g>',
+      `</g><g id="corner"><rect width="${plotLeft - 12}" height="64" fill="#fafcfc"/><text x="28" y="39" font-size="9" letter-spacing="1.4" fill="#7d9299">ACTORS</text><line class="rowline" x1="0" y1="64" x2="${plotLeft - 12}" y2="64"/></g>`,
     );
     if (drag?.type === "actor" && drag.targetId) {
       const row = layout.rows.find((r) => r.actor.id === drag.targetId);
       if (row)
         parts.push(
-          `<line class="drop-indicator" x1="0" y1="${row.top}" x2="${layout.width}" y2="${row.top}"/>`,
+          `<line class="drop-indicator" x1="0" y1="${drag.position === "after" ? row.top + row.height : row.top}" x2="${layout.width}" y2="${drag.position === "after" ? row.top + row.height : row.top}"/>`,
+        );
+    }
+    if (drag?.type === "actor" && drag.position === "inside") {
+      const row = layout.rows.find((r) => r.actor.id === drag.targetId);
+      if (row)
+        parts.push(
+          `<rect x="2" y="${row.top + 2}" width="${plotLeft - 16}" height="${row.height - 4}" rx="5" fill="#087f8012" stroke="#087f80" pointer-events="none"/>`,
         );
     }
     svg.innerHTML = parts.join("");
     sticky();
   }
   function sticky() {
-    $("#actor-labels")?.setAttribute(
-      "transform",
-      `translate(${scroll.scrollLeft} 0)`,
-    );
+    $("#actor-labels")?.setAttribute("transform", `translate(0 0)`);
     $("#time-ruler")?.setAttribute(
       "transform",
       `translate(0 ${scroll.scrollTop})`,
     );
-    $("#corner")?.setAttribute(
-      "transform",
-      `translate(${scroll.scrollLeft} ${scroll.scrollTop})`,
-    );
+    $("#corner")?.setAttribute("transform", `translate(0 ${scroll.scrollTop})`);
   }
   function render() {
     if (selection && !item(selection.type, selection.id)) selection = null;
@@ -352,12 +419,12 @@
       `${doc().actors.length} Actors · ${doc().states.length} States`;
     $("#undo").disabled = !history.past.length;
     $("#redo").disabled = !history.future.length;
-    $$("[data-mode]").forEach((b) => {
-      const active = b.dataset.mode === mode;
-      b.classList.toggle("active", active);
-      b.setAttribute("aria-pressed", active);
-    });
-    $("#zoom-label").textContent = `${Math.round((scale / 16) * 100)}%`;
+    $("#zoom-label").textContent = `${fmt(doc().time.duration / viewSpan)}×`;
+    $("#time-window").textContent =
+      `${time(viewStart)} — ${time(viewStart + viewSpan)}`;
+    $("#time-pan").max = Math.max(0, doc().time.duration - viewSpan);
+    $("#time-pan").value = viewStart;
+    $("#time-pan").disabled = viewSpan >= doc().time.duration;
     $$(".time-unit").forEach((el) => (el.textContent = units[doc().time.unit]));
     const snaps = [
       ...new Set([0.1, 0.5, 1, 2, 5, 10, 15, 30, 60, doc().time.snap]),
@@ -371,15 +438,8 @@
       )
       .join("");
     $("#mode-hint").textContent = linkSource
-      ? "接続先を選択してください · Escでキャンセル"
-      : {
-          select:
-            "空白をダブルクリックでState追加 · ドラッグで移動 · 両端で伸縮",
-          state: "Actorの行をクリックしてStateを追加",
-          transition: "同じActorの接続元State → 接続先Stateの順に選択",
-          interaction: "作用元State → 別Actorの作用先Stateの順に選択",
-          block: "作用元State → 阻止したい予定Transitionの順に選択",
-        }[mode];
+      ? "接続先のState・予定遷移を選択 · Escで取消"
+      : "丸からドラッグで接続 · ダブルクリックで編集 · 右クリックで操作";
     $("#inspector").classList.toggle("hidden", inspectorHidden);
     $("#inspector-toggle").setAttribute("aria-expanded", !inspectorHidden);
     $("#inspector-toggle").textContent = inspectorHidden
@@ -391,7 +451,8 @@
   function renderInspector() {
     const pane = $("#inspector"),
       d = doc();
-    let html = '<div class="panel-eyebrow">INSPECTOR</div>';
+    let html =
+      '<div class="inspector-heading"><span class="panel-eyebrow">INSPECTOR</span><button data-action="close" aria-label="詳細パネルを閉じる">×</button></div>';
     if (!selection) {
       const blocks = d.interactions.filter((i) => i.effect === "block");
       html +=
@@ -423,7 +484,8 @@
         html += facts([
           ["所属", sides[x.side]],
           ["States", d.states.filter((s) => s.actorId === x.id).length],
-          ["順序", d.actors.indexOf(x) + 1],
+          ["親", x.parentId ? item("actor", x.parentId).name : "最上位"],
+          ["配下Actor", M.descendants(d, x.id).size - 1],
         ]);
       if (type === "transition") {
         const a = state(x.from),
@@ -471,7 +533,7 @@
         '<button data-action="delete" class="danger">削除</button></div>';
       if (type === "actor")
         html +=
-          '<div class="panel-actions"><button data-action="up">↑ 上へ</button><button data-action="down">↓ 下へ</button></div>';
+          '<div class="panel-actions"><button data-action="up">↑ 上へ</button><button data-action="down">↓ 下へ</button><button data-action="parent">階層を変更</button><button data-action="child">子Actor追加</button></div>';
       html += `<label class="focus-toggle"><input id="focus-chain" type="checkbox" ${focusChain ? "checked" : ""}>接続された因果関係を強調</label>`;
       if (x.notes)
         html += `<div class="panel-section"><h3>備考</h3><p class="notes">${esc(x.notes)}</p></div>`;
@@ -519,9 +581,7 @@
       : "";
   }
   function jump(type, id) {
-    selection = { type, id };
-    render();
-    let s =
+    const sId =
       type === "state"
         ? id
         : type === "interaction"
@@ -529,10 +589,28 @@
           : type === "transition"
             ? item(type, id).from
             : null;
-    const p = s && layout.positions.get(s);
+    if (sId) {
+      const s = state(sId);
+      const next = M.clone(doc());
+      let actor = item("actor", s.actorId, next),
+        changed = false;
+      while (actor?.parentId) {
+        actor = item("actor", actor.parentId, next);
+        if (actor.collapsed) {
+          actor.collapsed = false;
+          changed = true;
+        }
+      }
+      if (changed) commit(next, "検索対象のグループを展開しました");
+      if (s.start < viewStart || s.end > viewStart + viewSpan)
+        viewStart = (s.start + s.end - viewSpan) / 2;
+    }
+    selection = { type, id };
+    render();
+    const p = sId && layout.positions.get(sId);
     if (p)
       scroll.scrollTo({
-        left: Math.max(0, p.x - 250),
+        left: 0,
         top: Math.max(0, p.y - 120),
         behavior: "smooth",
       });
@@ -551,27 +629,90 @@
     $("#editor-dialog").showModal();
     $("#dialog-fields input")?.focus();
   }
-  function editActor(existing = null) {
+  function parentOptions(excluded = null) {
+    const banned = excluded ? M.descendants(doc(), excluded) : new Set();
+    return [
+      ["", "最上位"],
+      ...M.hierarchy(doc(), true)
+        .filter((n) => !banned.has(n.actor.id))
+        .map((n) => [n.actor.id, "　".repeat(n.depth) + n.actor.name]),
+    ];
+  }
+  function editActor(existing = null, parentId = null, isGroup = false) {
     const a = existing || {
       id: M.id("actor"),
-      name: "新しいActor",
-      side: "friendly",
+      name: isGroup ? "新しいグループ" : "新しいActor",
+      side: parentId ? item("actor", parentId).side : "friendly",
       notes: "",
+      parentId,
+      isGroup,
     };
     dialog(
-      existing ? "Actorを編集" : "Actorを追加",
-      field("Actor名", "name", a.name, "text", 'required maxlength="300"') +
-        selectField("所属", "side", a.side, Object.entries(sides)) +
+      existing
+        ? "Actor / グループを編集"
+        : isGroup
+          ? "グループを追加"
+          : "Actorを追加",
+      field("名前", "name", a.name, "text", 'required maxlength="300"') +
+        `<div class="field-row">${selectField("所属", "side", a.side, Object.entries(sides))}${selectField(
+          "表示種別",
+          "isGroup",
+          a.isGroup ? "true" : "false",
+          [
+            ["false", "Actor"],
+            ["true", "グループ"],
+          ],
+        )}</div>` +
+        selectField(
+          "親Actor / グループ",
+          "parentId",
+          a.parentId || "",
+          parentOptions(existing?.id),
+        ) +
         notesField(a.notes),
       (data) => {
         change((d) => {
-          const value = { ...a, ...data };
+          const value = {
+            ...a,
+            ...data,
+            parentId: data.parentId || null,
+            isGroup: data.isGroup === "true",
+          };
           if (existing) Object.assign(item("actor", a.id, d), value);
           else d.actors.push(value);
+          if (value.parentId)
+            item("actor", value.parentId, d).collapsed = false;
         }, "Actorを保存しました");
         selection = { type: "actor", id: a.id };
       },
     );
+  }
+  function editParent(id) {
+    const a = item("actor", id);
+    dialog(
+      "階層を変更",
+      selectField(
+        "親Actor / グループ",
+        "parentId",
+        a.parentId || "",
+        parentOptions(id),
+      ),
+      (data) => {
+        change((d) => {
+          item("actor", id, d).parentId = data.parentId || null;
+          if (data.parentId) item("actor", data.parentId, d).collapsed = false;
+        }, "階層を変更しました");
+      },
+    );
+  }
+  function ungroup(id) {
+    safeChange((d) => {
+      const a = item("actor", id, d);
+      for (const child of d.actors)
+        if (child.parentId === id) child.parentId = a.parentId || null;
+      a.isGroup = false;
+      a.collapsed = false;
+    }, "子Actorを1階層外へ移動しました");
   }
   function editState(existing = null, actorId = null, at = 0) {
     if (!doc().actors.length) {
@@ -795,11 +936,12 @@
     };
     if (
       selected.type === "actor" &&
-      doc().states.some((s) => s.actorId === x.id)
+      (M.descendants(doc(), x.id).size > 1 ||
+        doc().states.some((s) => s.actorId === x.id))
     )
       dialog(
         "Actorを削除",
-        `<p class="dialog-summary">「${esc(x.name)}」と、そのState・接続を削除します。Undoで元に戻せます。</p>`,
+        `<p class="dialog-summary">「${esc(x.name)}」と、配下の全Actor・State・接続を削除します。Undoで元に戻せます。</p>`,
         execute,
       );
     else execute();
@@ -820,9 +962,14 @@
   function moveActor(delta) {
     if (selection?.type !== "actor") return;
     safeChange((d) => {
-      const i = d.actors.findIndex((a) => a.id === selection.id),
-        j = Math.max(0, Math.min(d.actors.length - 1, i + delta));
-      d.actors.splice(j, 0, d.actors.splice(i, 1)[0]);
+      const a = item("actor", selection.id, d),
+        siblings = d.actors.filter(
+          (x) => (x.parentId || null) === (a.parentId || null),
+        ),
+        i = siblings.indexOf(a),
+        target = siblings[i + delta];
+      if (target)
+        M.placeActor(d, a.id, target.id, delta < 0 ? "before" : "after");
     }, "Actorを並べ替えました");
   }
   function documentSettings() {
@@ -859,41 +1006,23 @@
     );
   }
   function connect(type, id) {
-    if (!linkSource) {
-      if (type !== "state") {
-        toast("まず作用・遷移の接続元Stateを選択してください。");
-        return;
-      }
-      linkSource = id;
-      selection = { type, id };
-      render();
-      return;
-    }
-    if (id === linkSource) {
+    const source = linkSource;
+    if (!source || source === id) {
       linkSource = null;
       render();
       return;
     }
-    const source = linkSource;
-    if (mode === "block" && type !== "transition") {
-      toast("阻止する予定Transitionの矢印を選択してください。");
-      return;
-    }
-    if (mode !== "block" && type !== "state") {
-      toast("接続先のStateを選択してください。");
+    if (!["state", "transition"].includes(type)) {
+      toast("接続先のStateまたは予定Transitionを選択してください。");
       return;
     }
     linkSource = null;
     render();
-    if (mode === "transition") editTransition(null, source, id);
-    else
-      editInteraction(
-        null,
-        source,
-        mode === "block" ? "transition" : "state",
-        id,
-        mode === "block" ? "block" : "cause",
-      );
+    if (type === "transition")
+      editInteraction(null, source, "transition", id, "block");
+    else if (state(source).actorId === state(id).actorId)
+      editTransition(null, source, id);
+    else editInteraction(null, source, "state", id, "cause");
   }
   function point(event) {
     const b = svg.getBoundingClientRect();
@@ -903,7 +1032,7 @@
     return layout.rows.find((r) => y >= r.top && y < r.top + r.height);
   }
   function targetInfo(event) {
-    const g = event.target.closest("[data-type]");
+    const g = event.target.closest?.("[data-type]");
     return g ? { type: g.dataset.type, id: g.dataset.id } : null;
   }
   svg.addEventListener("pointerdown", (e) => {
@@ -913,7 +1042,7 @@
         type: "pan",
         x: e.clientX,
         y: e.clientY,
-        left: scroll.scrollLeft,
+        start: viewStart,
         top: scroll.scrollTop,
       };
       return;
@@ -921,7 +1050,7 @@
     if (e.button !== 0) return;
     scroll.focus({ preventScroll: true });
     const info = targetInfo(e);
-    if (!info) return;
+    if (!info || e.target.closest("[data-toggle]")) return;
     if (e.target.matches("[data-port]")) {
       e.preventDefault();
       linkSource = info.id;
@@ -931,7 +1060,7 @@
       renderInspector();
       return;
     }
-    if (mode !== "select") return;
+    if (linkSource) return;
     if (info.type === "state") {
       const s = state(info.id);
       drag = {
@@ -963,7 +1092,9 @@
     if (drag.type === "pan") {
       drag.moved =
         Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3;
-      scroll.scrollLeft = drag.left - (e.clientX - drag.x);
+      viewStart = drag.start - (e.clientX - drag.x) / scale;
+      renderSVG();
+      updateViewportControls();
       scroll.scrollTop = drag.top - (e.clientY - drag.y);
       return;
     }
@@ -971,9 +1102,40 @@
       dy = e.clientY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) < 4 && !drag.moved) return;
     drag.moved = true;
-    if (drag.type === "link") return;
+    if (drag.type === "link") {
+      const from = layout.positions.get(linkSource),
+        p = point(e);
+      if (!from) return;
+      let line = svg.querySelector("#link-preview");
+      if (!line) {
+        line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        line.id = "link-preview";
+        line.setAttribute("fill", "none");
+        line.setAttribute("stroke", "#087f80");
+        line.setAttribute("stroke-dasharray", "4 3");
+        line.setAttribute("pointer-events", "none");
+        svg.querySelector("#plot").append(line);
+      }
+      line.setAttribute(
+        "d",
+        `M ${Math.max(plotLeft + 5, Math.min(frame.width - 30, from.x + from.width - 8))} ${from.y + 39} L ${p.x} ${p.y}`,
+      );
+      return;
+    }
     if (drag.type === "actor") {
-      drag.targetId = rowAt(point(e).y)?.actor.id;
+      const p = point(e),
+        row = rowAt(p.y);
+      drag.targetId = row?.actor.id;
+      drag.position = row
+        ? p.y - row.top < row.height * 0.25
+          ? "before"
+          : p.y - row.top > row.height * 0.75
+            ? "after"
+            : "inside"
+        : "before";
+      $("#status").textContent = row
+        ? `${row.actor.name} ${drag.position === "inside" ? "の子に移動" : drag.position === "before" ? "の前へ移動" : "の後へ移動"}`
+        : "";
       renderSVG();
       return;
     }
@@ -1019,23 +1181,21 @@
     const finished = drag;
     drag = null;
     if (finished.type === "link") {
+      svg.querySelector("#link-preview")?.remove();
       if (finished.moved) {
         ignoreClick = true;
         setTimeout(() => (ignoreClick = false), 0);
         const info = targetInfo(e);
-        if (info?.type === "state" && info.id !== linkSource) {
-          const src = linkSource;
-          linkSource = null;
-          mode =
-            state(src).actorId === state(info.id).actorId
-              ? "transition"
-              : "interaction";
-          render();
-          if (mode === "transition") editTransition(null, src, info.id);
-          else editInteraction(null, src, "state", info.id);
-        } else if (info?.type === "transition" && mode === "block") {
+        if (info && ["state", "transition"].includes(info.type))
           connect(info.type, info.id);
+        else {
+          linkSource = null;
+          render();
+          toast("接続先のStateまたは予定Transitionにドロップしてください。");
         }
+      } else {
+        $("#mode-hint").textContent =
+          "接続先のState・予定遷移を選択 · Escで取消";
       }
       return;
     }
@@ -1048,9 +1208,7 @@
     if (finished.type === "actor") {
       if (finished.targetId)
         safeChange((d) => {
-          const from = d.actors.findIndex((a) => a.id === finished.id),
-            to = d.actors.findIndex((a) => a.id === finished.targetId);
-          d.actors.splice(to, 0, d.actors.splice(from, 1)[0]);
+          M.placeActor(d, finished.id, finished.targetId, finished.position);
         }, "Actorを並べ替えました");
       else render();
     }
@@ -1072,34 +1230,27 @@
   });
   svg.addEventListener("click", (e) => {
     if (ignoreClick) return;
+    const toggle = e.target.closest("[data-toggle]");
+    if (toggle) {
+      toggleActor(toggle.dataset.toggle);
+      return;
+    }
     const info = targetInfo(e),
       p = point(e);
     if (e.target.matches("[data-port]")) return;
     if (info) {
-      if (["transition", "interaction", "block"].includes(mode) || linkSource) {
-        if (mode === "select" && linkSource)
-          mode =
-            info.type === "state" &&
-            state(linkSource).actorId === state(info.id)?.actorId
-              ? "transition"
-              : "interaction";
-        connect(info.type, info.id);
-      } else select(info.type, info.id);
+      if (linkSource) connect(info.type, info.id);
+      else select(info.type, info.id);
       return;
     }
-    if (p.x < scroll.scrollLeft + 196 || p.y < scroll.scrollTop + 64) return;
-    const row = rowAt(p.y);
-    if (mode === "state" && row)
-      editState(null, row.actor.id, (p.x - 208) / scale);
-    else {
-      selection = null;
-      linkSource = null;
-      updateSelection();
-      renderInspector();
-    }
+    if (p.x < plotLeft - 12 || p.y < scroll.scrollTop + 64) return;
+    selection = null;
+    linkSource = null;
+    updateSelection();
+    renderInspector();
   });
   svg.addEventListener("dblclick", (e) => {
-    if (mode !== "select") return;
+    if (e.target.closest("[data-toggle]")) return;
     const info = targetInfo(e);
     if (info) {
       selection = info;
@@ -1107,8 +1258,8 @@
     } else {
       const p = point(e),
         row = rowAt(p.y);
-      if (row && p.x > scroll.scrollLeft + 196 && p.y > scroll.scrollTop + 64)
-        editState(null, row.actor.id, (p.x - 208) / scale);
+      if (row && p.x > plotLeft - 12 && p.y > scroll.scrollTop + 64)
+        editState(null, row.actor.id, xTime(p.x));
     }
   });
   function menu(x, y, entries) {
@@ -1133,60 +1284,73 @@
   }
   svg.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    const info = targetInfo(e);
+    const info = targetInfo(e),
+      p = point(e);
     if (info) {
       selection = info;
-      render();
-      const entries = [{ label: "編集", action: editSelected }];
+      updateSelection();
+      renderInspector();
+      const entries = [
+        { label: "編集", action: editSelected },
+        {
+          label: "詳細を表示",
+          action: () => {
+            inspectorHidden = false;
+            render();
+          },
+        },
+      ];
       if (info.type === "state")
         entries.push(
+          { label: "ここから接続", action: () => beginConnection(info.id) },
           { label: "複製", action: duplicateSelected },
-          {
-            label: "ここから遷移を作成",
-            action: () => {
-              mode = "transition";
-              linkSource = info.id;
-              render();
-            },
-          },
-          {
-            label: "ここから作用を作成",
-            action: () => {
-              mode = "interaction";
-              linkSource = info.id;
-              render();
-            },
-          },
-          {
-            label: "ここから予定遷移を妨害",
-            action: () => {
-              mode = "block";
-              linkSource = info.id;
-              render();
-            },
-          },
         );
-      if (info.type === "actor")
+      if (info.type === "actor") {
+        const a = item("actor", info.id),
+          hasChildren = doc().actors.some((x) => x.parentId === a.id);
+        entries.push(
+          {
+            label: "Stateを追加",
+            action: () => editState(null, a.id, viewStart),
+          },
+          { label: "子Actorを追加", action: () => editActor(null, a.id) },
+          {
+            label: "子グループを追加",
+            action: () => editActor(null, a.id, true),
+          },
+          { label: "階層を変更", action: () => editParent(a.id) },
+        );
+        if (hasChildren)
+          entries.push(
+            {
+              label: a.collapsed ? "展開" : "折りたたむ",
+              action: () => toggleActor(a.id),
+            },
+            { label: "子Actorを1階層外へ出す", action: () => ungroup(a.id) },
+          );
         entries.push(
           { label: "上へ移動", action: () => moveActor(-1) },
           { label: "下へ移動", action: () => moveActor(1) },
         );
+      }
       entries.push({ label: "削除", action: deleteSelected, danger: true });
       menu(e.clientX, e.clientY, entries);
     } else {
-      const p = point(e),
-        row = rowAt(p.y);
+      const row = rowAt(p.y);
       menu(e.clientX, e.clientY, [
         ...(row
           ? [
               {
                 label: "Stateを追加",
-                action: () =>
-                  editState(null, row.actor.id, (p.x - 208) / scale),
+                action: () => editState(null, row.actor.id, xTime(p.x)),
               },
             ]
           : []),
         { label: "Actorを追加", action: () => editActor() },
+        { label: "グループを追加", action: () => editActor(null, null, true) },
+        { label: "全期間を表示", action: fit },
+        { label: "表示時間を指定", action: editTimeWindow },
+        { label: "SVGを書き出す", action: exportSVG },
       ]);
     }
   });
@@ -1215,6 +1379,12 @@
       return;
     }
     ({
+      close: () => {
+        inspectorHidden = true;
+        render();
+      },
+      parent: () => editParent(selection.id),
+      child: () => editActor(null, selection.id),
       edit: editSelected,
       delete: deleteSelected,
       duplicate: duplicateSelected,
@@ -1248,7 +1418,12 @@
     $("#editor-dialog").close();
   $("#help-btn").onclick = () => $("#help-dialog").showModal();
   $("#help-close").onclick = () => $("#help-dialog").close();
-  $$("[data-mode]").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+  $("#add-group").onclick = () => editActor(null, null, true);
+  $("#search-btn").onclick = () => {
+    inspectorHidden = false;
+    render();
+    $("#search").focus();
+  };
   $("#add-actor").onclick = () => editActor();
   $("#document-title").onclick = documentSettings;
   function undo() {
@@ -1275,46 +1450,106 @@
     safeChange((d) => {
       d.time.snap = Number(e.target.value);
     }, "スナップ間隔を変更しました");
+  function updateViewportControls() {
+    $("#zoom-label").textContent = `${fmt(doc().time.duration / viewSpan)}×`;
+    $("#time-window").textContent =
+      `${time(viewStart)} — ${time(viewStart + viewSpan)}`;
+    $("#time-pan").max = Math.max(0, doc().time.duration - viewSpan);
+    $("#time-pan").value = viewStart;
+    $("#time-pan").disabled = viewSpan >= doc().time.duration;
+  }
   function zoom(factor) {
-    const centerTime =
-      (scroll.scrollLeft + scroll.clientWidth / 2 - 208) / scale;
-    scale = Math.max(
-      0.0001,
-      Math.min(200, 24000 / doc().time.duration, scale * factor),
+    const middle = viewStart + viewSpan / 2;
+    viewSpan = Math.min(
+      doc().time.duration,
+      Math.max(
+        Math.min(doc().time.snap, doc().time.duration),
+        viewSpan / factor,
+      ),
     );
-    renderSVG();
-    scroll.scrollLeft = Math.max(
-      0,
-      208 + centerTime * scale - scroll.clientWidth / 2,
-    );
-    $("#zoom-label").textContent = `${Math.round((scale / 16) * 100)}%`;
+    viewStart = middle - viewSpan / 2;
+    render();
   }
   function fit() {
-    scale = Math.max(
-      0.0001,
-      Math.min(200, (scroll.clientWidth - 250) / doc().time.duration),
-    );
+    viewStart = 0;
+    viewSpan = doc().time.duration;
     scroll.scrollLeft = 0;
     render();
   }
-  $("#zoom-in").onclick = () => zoom(1.25);
-  $("#zoom-out").onclick = () => zoom(0.8);
+  function editTimeWindow() {
+    dialog(
+      "表示時間を指定",
+      `<div class="field-row">${field("開始", "start", viewStart, "number", 'required min="0" step="any"')}${field("終了", "end", viewStart + viewSpan, "number", 'required min="0" step="any"')}</div><p class="muted">図の幅を保ったまま、この時間範囲を表示します。</p>`,
+      (data) => {
+        const start = Number(data.start),
+          end = Number(data.end);
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end <= start ||
+          end > doc().time.duration
+        )
+          throw Error("0 ≤ 開始 < 終了 ≤ ミッション期間で指定してください。");
+        viewStart = start;
+        viewSpan = end - start;
+        render();
+      },
+    );
+  }
+  $("#zoom-in").onclick = () => zoom(1.5);
+  $("#zoom-out").onclick = () => zoom(1 / 1.5);
   $("#fit").onclick = fit;
+  $("#time-window").onclick = editTimeWindow;
+  $("#time-pan").oninput = (e) => {
+    viewStart = Number(e.target.value);
+    renderSVG();
+    updateViewportControls();
+  };
+  $("#time-prev").onclick = () => {
+    viewStart -= viewSpan * 0.5;
+    render();
+  };
+  $("#time-next").onclick = () => {
+    viewStart += viewSpan * 0.5;
+    render();
+  };
   $("#inspector-toggle").onclick = () => {
     inspectorHidden = !inspectorHidden;
     render();
   };
-  scroll.addEventListener("scroll", sticky, { passive: true });
+  scroll.addEventListener(
+    "scroll",
+    () => {
+      scroll.scrollLeft = 0;
+      sticky();
+    },
+    { passive: true },
+  );
   scroll.addEventListener(
     "wheel",
     (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        viewStart += (e.deltaX || e.deltaY) / scale;
+        render();
       }
     },
     { passive: false },
   );
+  if (window.ResizeObserver) {
+    let width = 0;
+    new ResizeObserver(() => {
+      const next = scroll.clientWidth;
+      if (next !== width && !drag) {
+        width = next;
+        render();
+      }
+    }).observe(scroll);
+  } else window.addEventListener("resize", () => render());
   function download(content, type, name) {
     const blob = new Blob([content], { type }),
       url = URL.createObjectURL(blob),
@@ -1333,6 +1568,7 @@
     $("#status").textContent = "JSONファイルを書き出しました";
   }
   function exportSVG() {
+    renderSVG(true);
     const copy = svg.cloneNode(true);
     copy
       .querySelectorAll("#actor-labels,#time-ruler,#corner")
@@ -1347,6 +1583,7 @@
       .forEach((e) => e.classList.remove("selected", "dimmed"));
     copy.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
     copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    renderSVG();
     download(
       '<?xml version="1.0" encoding="UTF-8"?>\n' +
         new XMLSerializer().serializeToString(copy),
@@ -1381,6 +1618,19 @@
     menu(e.clientX, e.clientY, [
       { label: "SVGを書き出す", action: exportSVG },
       { label: "ミッション設定", action: documentSettings },
+      {
+        label: "潜水艦グループのサンプル",
+        action: () =>
+          dialog(
+            "グループのサンプルを読み込む",
+            '<p class="dialog-summary">現在の内容を潜水艦・ソナー・魚雷のサンプルに置き換えます。Undoで戻せます。</p>',
+            () => {
+              commit(createGroupedSample());
+              selection = null;
+              fit();
+            },
+          ),
+      },
       {
         label: "新規ミッション",
         action: () =>
@@ -1444,10 +1694,14 @@
       drag = null;
       preview = null;
       linkSource = null;
-      mode = "select";
       selection = null;
       $("#context-menu").hidden = true;
       render();
+      return;
+    }
+    if (e.target.closest("[data-toggle]") && (key === "enter" || key === " ")) {
+      e.preventDefault();
+      toggleActor(e.target.closest("[data-toggle]").dataset.toggle);
       return;
     }
     if (e.code === "Space") {
@@ -1489,17 +1743,15 @@
       }, "Stateの時間を変更しました");
       return;
     }
-    if (!ctrl && { v: 1, s: 1, t: 1, i: 1, b: 1 }[key]) {
+    if (!ctrl && key === "c" && selection?.type === "state") {
       e.preventDefault();
-      setMode(
-        {
-          v: "select",
-          s: "state",
-          t: "transition",
-          i: "interaction",
-          b: "block",
-        }[key],
-      );
+      beginConnection(selection.id);
+    }
+    if (!ctrl && key === "f") {
+      e.preventDefault();
+      inspectorHidden = false;
+      render();
+      $("#search").focus();
     }
     if (key === "?") $("#help-dialog").showModal();
   });

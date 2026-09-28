@@ -142,8 +142,7 @@ test("creates a transition via two endpoint clicks", async (t) => {
     end: 30,
   });
   const a = await app(t, d);
-  a.click('[data-mode="transition"]');
-  a.click('[data-id="free"] .body');
+  a.click('[data-id="free"] .port');
   a.click('[data-id="free2"] .body');
   a.fill("label", "経過");
   a.submit();
@@ -153,8 +152,7 @@ test("creates a transition via two endpoint clicks", async (t) => {
 });
 test("creates an Interaction with independent source and target times", async (t) => {
   const a = await app(t, extra());
-  a.click('[data-mode="interaction"]');
-  a.click('[data-id="free"] .body');
+  a.click('[data-id="free"] .port');
   a.click('[data-id="s2"] .body');
   a.fill("label", "報告");
   a.fill("sourceTime", 8);
@@ -166,8 +164,7 @@ test("creates an Interaction with independent source and target times", async (t
 });
 test("creates an explicit block on a planned transition with actual outcome", async (t) => {
   const a = await app(t, sample());
-  a.click('[data-mode="block"]');
-  a.click('[data-id="t2"] .body');
+  a.click('[data-id="t2"] .port');
   a.click('[data-id="escape"] .hit');
   a.fill("label", "追加の阻止");
   a.fill("outcomeStateId", "e5");
@@ -180,8 +177,7 @@ test("creates an explicit block on a planned transition with actual outcome", as
 });
 test("rejects blocking an actual transition without opening an invalid form", async (t) => {
   const a = await app(t);
-  a.click('[data-mode="block"]');
-  a.click('[data-id="t2"] .body');
+  a.click('[data-id="t2"] .port');
   a.click('[data-id="et2"] .hit');
   assert.equal(a.$("#editor-dialog").open, false);
   assert.match(a.$("#toast").textContent, /予定/);
@@ -263,7 +259,10 @@ test("autosaved edits reload through the same document model", async (t) => {
 test("Actor drag changes ordering without altering state times", async (t) => {
   const a = await app(t, sample());
   const el = a.$('[data-id="enemy"].actor-label'),
-    target = Number(a.$('[data-row="control"]').getAttribute("y")) + 30;
+    target =
+      Number(a.$('[data-row="control"]').getAttribute("y")) +
+      Number(a.$('[data-row="control"]').getAttribute("height")) -
+      5;
   a.event(el, "pointerdown", { clientX: 50, clientY: 100 });
   a.event(a.w, "pointermove", { clientX: 50, clientY: target });
   a.event(a.w, "pointerup", { clientX: 50, clientY: target });
@@ -325,4 +324,166 @@ test("instantaneous transitions have a visible point marker at the exact event t
   assert.equal(markers.length, 2);
   assert.match(markers[1].textContent, /即時遷移/);
   assert.ok(markers[1].querySelector('path[fill="white"]'));
+});
+function nested() {
+  const d = sample();
+  d.actors.find((a) => a.id === "sensor").parentId = "uuv";
+  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
+  d.actors.find((a) => a.id === "uuv").isGroup = true;
+  return d;
+}
+test("toolbar has no connection modes and the inspector is an initially closed overlay", async (t) => {
+  const a = await app(t);
+  assert.equal(a.d.querySelectorAll("[data-mode]").length, 0);
+  assert.equal(a.$("#inspector").classList.contains("hidden"), true);
+  a.click("#inspector-toggle");
+  assert.equal(a.$("#inspector").classList.contains("hidden"), false);
+  a.click('[data-action="close"]');
+  assert.equal(a.$("#inspector").classList.contains("hidden"), true);
+});
+test("zoom, pan, resizing, and inspector toggling never enlarge the SVG beyond the viewport", async (t) => {
+  const a = await app(t);
+  a.click("#zoom-in");
+  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
+  assert.notEqual(a.$("#time-window").textContent, "T+0 — T+60");
+  a.$("#time-pan").value = 20;
+  a.$("#time-pan").dispatchEvent(new a.w.Event("input", { bubbles: true }));
+  assert.match(a.$("#time-window").textContent, /T\+20/);
+  a.click("#inspector-toggle");
+  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
+  Object.defineProperty(a.$("#canvas-scroll"), "clientWidth", {
+    value: 360,
+    configurable: true,
+  });
+  a.w.dispatchEvent(new a.w.Event("resize"));
+  assert.equal(a.$("#timeline").getAttribute("width"), "360");
+  a.click("#fit");
+  assert.equal(a.$("#time-window").textContent, "T+0 — T+60");
+  assert.equal(a.$("#timeline").getAttribute("width"), "360");
+  assert.equal(a.$("#canvas-scroll").scrollLeft, 0);
+});
+test("zoomed empty-space creation converts x back to the visible time range", async (t) => {
+  const a = await app(t);
+  a.click("#time-window");
+  a.fill("start", 20);
+  a.fill("end", 40);
+  a.submit();
+  const row = a.$('[data-row="sensor"]'),
+    left = 208,
+    scale = (1050 - left - 24) / 20;
+  a.event(row, "dblclick", {
+    clientX: left + 5 * scale,
+    clientY: Number(row.getAttribute("y")) + 70,
+  });
+  assert.equal(a.$('[name="start"]').value, "25");
+});
+test("Actor groups can be nested in the editor and cyclic parent choices are excluded", async (t) => {
+  const a = await app(t);
+  a.click("#add-group");
+  a.fill("name", "潜水艦グループ");
+  a.submit();
+  const group = a.savedDoc().actors.at(-1);
+  a.click("#add-actor");
+  a.fill("name", "ソナー");
+  a.fill("parentId", group.id);
+  a.submit();
+  const child = a.savedDoc().actors.at(-1);
+  assert.equal(child.parentId, group.id);
+  a.event(a.$(`[data-id="${group.id}"].actor-label`), "dblclick");
+  assert.equal(a.$(`[name="parentId"] option[value="${child.id}"]`), null);
+  assert.equal(a.$(`[name="parentId"] option[value="${group.id}"]`), null);
+});
+test("collapse hides descendant states and links with an explicit summary, and expansion restores them", async (t) => {
+  const a = await app(t, nested());
+  a.click('[data-id="uuv"] [data-toggle]');
+  assert.equal(a.$('[data-id="t2"]'), null);
+  assert.equal(a.$('[data-id="hit"]'), null);
+  assert.match(a.$("#plot").textContent, /2 Actors \/ 4 States/);
+  assert.match(a.$("#plot").textContent, /非表示/);
+  assert.equal(a.savedDoc().states.length, 15);
+  a.click('[data-id="uuv"] [data-toggle]');
+  assert.ok(a.$('[data-id="t2"]'));
+  assert.ok(a.$('[data-id="hit"]'));
+  assert.deepEqual(a.errors, []);
+});
+test("search reveals a State inside collapsed ancestors and brings its time into view", async (t) => {
+  const d = nested();
+  d.actors.find((a) => a.id === "uuv").collapsed = true;
+  const a = await app(t, d);
+  a.click("#search-btn");
+  a.$("#search").value = "誘導";
+  a.$("#search").dispatchEvent(new a.w.Event("input", { bubbles: true }));
+  a.click("#search-results button");
+  assert.ok(a.$('[data-id="t2"]'));
+  assert.equal(
+    a.savedDoc().actors.find((x) => x.id === "uuv").collapsed,
+    false,
+  );
+});
+test("Actor context menus support child creation, reparenting, collapse, ungroup and reorder", async (t) => {
+  const a = await app(t, nested());
+  a.event(a.$('[data-id="uuv"].actor-label'), "contextmenu", {
+    clientX: 60,
+    clientY: 100,
+  });
+  const text = a.$("#context-menu").textContent;
+  for (const label of [
+    "子Actorを追加",
+    "子グループを追加",
+    "階層を変更",
+    "折りたたむ",
+    "子Actorを1階層外へ出す",
+    "上へ移動",
+  ])
+    assert.ok(text.includes(label));
+});
+test("dropping an Actor in the center reparents it; Undo restores the whole group", async (t) => {
+  const a = await app(t, nested());
+  const target = a.$('[data-row="control"]'),
+    y = Number(target.getAttribute("y")) + 45;
+  a.event(a.$('[data-id="uuv"].actor-label'), "pointerdown", {
+    clientX: 60,
+    clientY: 100,
+  });
+  a.event(a.w, "pointermove", { clientX: 60, clientY: y });
+  a.event(a.w, "pointerup", { clientX: 60, clientY: y });
+  assert.equal(
+    a.savedDoc().actors.find((x) => x.id === "uuv").parentId,
+    "control",
+  );
+  assert.equal(
+    a.savedDoc().actors.find((x) => x.id === "torpedo").parentId,
+    "uuv",
+  );
+  a.click("#undo");
+  assert.deepEqual(a.savedDoc(), nested());
+});
+test("SVG export includes all time and hidden descendants while keeping the editor view intact", async (t) => {
+  const a = await app(t, nested());
+  a.click('[data-id="uuv"] [data-toggle]');
+  a.click("#zoom-in");
+  const before = a.$("#time-window").textContent;
+  a.click("#more-btn");
+  a.click('[data-menu="0"]');
+  const content = await a.readBlob(a.downloads[0].blob);
+  assert.match(content, /data-id="t2"/);
+  assert.match(content, /T\+60/);
+  assert.equal(a.$('[data-id="t2"]'), null);
+  assert.equal(a.$("#time-window").textContent, before);
+  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
+});
+test("dragging a port onto a planned transition automatically opens interdiction without a mode", async (t) => {
+  const a = await app(t);
+  a.event(a.$('[data-id="t2"] .port'), "pointerdown", {
+    clientX: 100,
+    clientY: 100,
+  });
+  a.event(a.w, "pointermove", { clientX: 200, clientY: 200 });
+  a.event(a.$('[data-id="escape"] .hit'), "pointerup", {
+    clientX: 200,
+    clientY: 200,
+  });
+  assert.match(a.$("#dialog-title").textContent, /予定遷移を阻止/);
+  a.submit();
+  assert.equal(a.savedDoc().interactions.at(-1).effect, "block");
 });

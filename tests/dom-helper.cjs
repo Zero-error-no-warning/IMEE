@@ -32,7 +32,10 @@ async function openApp(saved) {
   };
   Object.defineProperty(w, "innerWidth", { value: 1440 });
   const scroll = d.querySelector("#canvas-scroll");
-  Object.defineProperty(scroll, "clientWidth", { value: 1050 });
+  Object.defineProperty(scroll, "clientWidth", {
+    value: 1050,
+    configurable: true,
+  });
   Object.defineProperty(scroll, "clientHeight", { value: 700 });
   d.querySelector("#timeline").getBoundingClientRect = () => ({
     left: -scroll.scrollLeft,
