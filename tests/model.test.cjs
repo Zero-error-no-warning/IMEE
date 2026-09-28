@@ -164,7 +164,7 @@ test("new edits clear redo and the history is bounded", () => {
 test("JSON round trip preserves block references and time precision", () => {
   const d = sample();
   d.time.snap = 0.1;
-  assert.deepEqual(M.parse(JSON.stringify(d)), d);
+  assert.deepEqual(M.parse(JSON.stringify(d)), M.migrate(M.clone(d)));
   assert.throws(() => M.parse("{broken"));
 });
 test("decimal snapping avoids accumulated floating point drift", () => {

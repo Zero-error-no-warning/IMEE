@@ -116,11 +116,84 @@
     d.actors.find((a) => a.id === "torpedo").parentId = submarine.id;
     return d;
   }
+  function research() {
+    const d = grouped();
+    d.title = "Technology / Gap — 介入経路の検討";
+    d.states.find((s) => s.id === "c3").phase = "decision";
+    d.technologies = [
+      {
+        id: "tech-existing",
+        name: "既存システム基盤",
+        status: "existing",
+        trl: 9,
+        notes: "操作説明用の架空の技術評価",
+      },
+      {
+        id: "tech-sonar",
+        name: "協調音響識別",
+        status: "research",
+        trl: 4,
+        notes: "研究中の識別能力",
+      },
+      {
+        id: "tech-link",
+        name: "水中指令通信",
+        status: "gap",
+        trl: null,
+        notes: "必要な通信能力が未確保",
+      },
+    ];
+    d.bindings = [];
+    for (const [type, key] of Object.entries({
+      actor: "actors",
+      state: "states",
+      transition: "transitions",
+      interaction: "interactions",
+    }))
+      for (const x of d[key])
+        d.bindings.push({
+          id: `binding-${x.id}`,
+          technologyId: "tech-existing",
+          targetType: type,
+          targetId: x.id,
+        });
+    d.bindings.push(
+      {
+        id: "binding-research",
+        technologyId: "tech-sonar",
+        targetType: "state",
+        targetId: "s2",
+      },
+      {
+        id: "binding-gap",
+        technologyId: "tech-link",
+        targetType: "interaction",
+        targetId: "order",
+      },
+    );
+    d.interactions.push({
+      ...d.interactions.find((i) => i.id === "hit"),
+      id: "late-hit",
+      label: "遅延する介入案",
+      time: 54,
+      proposed: true,
+      outcomeStateId: null,
+    });
+    d.bindings.push({
+      id: "binding-late",
+      technologyId: "tech-existing",
+      targetType: "interaction",
+      targetId: "late-hit",
+    });
+    return d;
+  }
   if (typeof module !== "undefined" && module.exports) {
     module.exports = sample;
     module.exports.grouped = grouped;
+    module.exports.research = research;
   } else {
     root.createSample = sample;
     root.createGroupedSample = grouped;
+    root.createResearchSample = research;
   }
 })(globalThis);
