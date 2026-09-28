@@ -50,7 +50,7 @@ State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
 - `phase`: `other / decision`。判断段階は利用者が明示指定します。状態名から推測しません。
 - 同じActorの重複Stateは自動的に別レーンへ配置します。
 
-`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。図形を文字幅のために伸ばしません。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG・PNG出力は全期間・全階層・全要素です。PNGは同じ自己完結SVGをブラウザで画像化し、白背景で保存します。通常は2倍解像度、16,384px／辺・3,200万画素を超えない倍率へ必要に応じて下げます。
+`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。横幅を文字幅のために伸ばしません。文字は11〜9pxで折り返し、高さとレーン間隔を自動調整します。極端に狭い幅や8行を超える場合は省略し、titleとInspectorに全文を保持します。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG・PNG出力は全期間・全階層・全要素です。PNGは同じ自己完結SVGをブラウザで画像化し、白背景で保存します。通常は2倍解像度、16,384px／辺・3,200万画素を超えない倍率へ必要に応じて下げます。
 
 ## Transition
 
@@ -97,7 +97,7 @@ State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
 - information: 濃灰破線。
 - command: 青緑実線。support: 青緑点線。
 - attack / interference: 赤太線。検討案は破線。
-- ラベルの配置候補が重なれば省略記号にし、選択時に全文を表示。titleとInspectorには全文を保持します。線交差の最適化はしません。
+- ラベルはState・接続線・技術吹き出し・他のラベルを避けて自動配置し、長い場合は改行します。遠い配置には矢印なしの細い破線の補助線を付けます。図内に空きがなければ下部へ配置して高さを拡張します。titleとInspectorにも全文を保持します。ミッションの接続線同士の交差最適化はしません。
 
 折りたたまれた子Actorの接続は、可視祖先を代理端点にします。同じ可視Actorペア・kind・effect・label・proposedの作用だけを束ね、`指令 ×3` のように表示します。異なる時刻を含む束の端点は最早発生〜最遅到達の包絡です。個別時刻はTooltip・Inspectorに列挙します。同じ折りたたみ内部で完結する線は描きません。元のID・参照・時刻・件数は不変です。
 
