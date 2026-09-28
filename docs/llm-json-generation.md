@@ -105,7 +105,7 @@ node scripts/validate-mission.cjs - < mission.json
 
 異なる2つのStateが必要で、両方が**同一Actor**に属する。`fromState.end <= toState.start`。開始はfromState.end、終了はtoState.start、所要時間は差分。**Transition自身にstart / end / durationを保存しない。** 差分0は瞬間遷移。差分が正ならその期間に行う機動などをlabelで表現する。
 
-敵の達成予定はplannedのStateとTransitionとして残す。妨害後のactual Stateへは別のactual Transitionを登録する。Transition名で「阻止済み」と書くだけでは阻止の線や×は付かない。
+敵の達成予定はplannedのStateとTransitionとして残す。妨害後のactual Stateへは別のactual Transitionを登録する。Transition名で「阻止済み」と書くだけでは阻止の線や丸ノードは付かない。
 
 ## Interaction
 
@@ -134,7 +134,7 @@ node scripts/validate-mission.cjs - < mission.json
 
 生成時は到達時刻も `time.duration` 内に収める。遅延案が期間を超えるならdurationとViewの範囲を延ばす。これは描画を明確にするための生成規則で、実装バリデータはproposedのTransition宛到達にduration上限を課していない。
 
-`block && !proposed` の登録から阻止の×を描く。kindがattackというだけでは阻止にならない。仮想成立例以外では、時刻が間に合うだけでproposedをfalseにしない。
+`block && !proposed` の登録から妨害ノードを描く。成功側はoutcomeStateIdのStateへ、失敗側は元の予定Transitionの接続先へつなぐ。失敗側は比較用の予定分岐であり、両方の成立や確率を意味しない。丸ノードのための新しいJSON要素は作らない。kindがattackというだけでは阻止にならない。仮想成立例以外では、時刻が間に合うだけでproposedをfalseにしない。
 
 ## Technology / Binding
 
