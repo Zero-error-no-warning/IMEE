@@ -1043,13 +1043,40 @@ footer {
   stroke: #ee9b18;
   stroke-width: 4;
 }
-#timeline.connecting .connect-target .port {
-  opacity: 1;
-  r: 6;
-}
+
 #timeline[data-view="interaction"] .state:not(.selected) .body {
   fill-opacity: 0.25;
 }
 .technology-tag {
   cursor: pointer;
+}
+
+/* Compact workbench chrome; the time scale remains exact. */
+.app-header {
+  min-height: 52px;
+  padding: 6px 12px;
+  gap: 14px;
+}
+.toolbar {
+  min-height: 40px;
+  padding: 3px 12px;
+}
+main {
+  padding: 6px 8px 0;
+}
+.canvas-heading {
+  min-height: 32px;
+  padding: 5px 12px;
+}
+.time-navigation {
+  min-height: 30px;
+  padding: 1px 8px;
+}
+.canvas-bottom {
+  min-height: 28px;
+  padding: 1px 8px;
+}
+#inspector {
+  top: 6px;
+  right: 8px;
 }

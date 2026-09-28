@@ -46,7 +46,7 @@
     viewSpan =
       history.doc.views.main.visibleTimeRange.end -
       history.doc.views.main.visibleTimeRange.start,
-    plotLeft = 208,
+    plotLeft = 176,
     frame,
     layout,
     preview = null,
@@ -227,9 +227,11 @@
     return `${chosen(id) ? " selected" : ""}${related && !related.has(id) ? " dimmed" : ""}`;
   }
   const svgStyle = `
-    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.port{fill:white;stroke:#087f80;stroke-width:1.5;opacity:.6;cursor:crosshair}.state:hover .port,.state.selected .port,.link-mode .port{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}
+    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}svg[data-view="interaction"] .state:not(.selected) .body{fill-opacity:.25}
   `;
+  let technologyBoxes = [];
   function renderSVG(full = false) {
+    technologyBoxes = [];
     const d = doc();
     frame = M.viewport(
       d.time.duration,
@@ -276,7 +278,7 @@
     svg.setAttribute("height", layout.height);
     svg.classList.toggle("link-mode", !!linkSource);
     const parts = [
-      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="64" width="${layout.width - plotLeft - 12}" height="${layout.height - 64}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
+      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="48" width="${layout.width - plotLeft - 12}" height="${layout.height - 48}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
     ];
     parts.push(
       `<defs>${Object.keys(kinds)
@@ -302,7 +304,7 @@
     ) {
       const x = timeX(t);
       parts.push(
-        `<line class="grid" x1="${x}" y1="64" x2="${x}" y2="${layout.height - 28}"/>`,
+        `<line class="grid" x1="${x}" y1="48" x2="${x}" y2="${layout.height - 28}"/>`,
       );
     }
     // Transitions are drawn behind states. A vertical branch does not alter its time coordinate.
@@ -353,9 +355,7 @@
         parts.push(
           `<rect class="pending-ring" x="${p.x - 3}" y="${p.y - 3}" width="${p.width + 6}" height="38" rx="7"/>`,
         );
-      parts.push(
-        `<circle class="port" data-port="out" cx="${Math.max(plotLeft + 5, Math.min(frame.width - 30, p.x + p.width - 8))}" cy="${p.y + 39}" r="4.5" ${p.x + p.width < plotLeft || p.x > frame.width - 24 ? 'visibility="hidden"' : ""}/></g>`,
-      );
+      parts.push("</g>");
     }
     // An instantaneous transition has no horizontal length; a point marker makes it selectable.
     for (const t of d.transitions) {
@@ -384,10 +384,10 @@
       if (!target) continue;
       const down = target.y > s.y + 16,
         x1 = timeX(i.sourceTime),
-        y1 = down ? s.y + 32 : s.y,
+        y1 = s.y,
         x2 = timeX(i.time),
         y2 = i.targetType === "state" ? target.y + (down ? -16 : 16) : target.y;
-      const middleY = down ? y1 + 15 : y1 - 15,
+      const middleY = s.y - 2,
         path = `M ${x1} ${y1} V ${middleY} H ${x2} V ${y2}`;
       const blocked = i.effect === "block",
         style = interactionStyle(i.kind),
@@ -457,14 +457,14 @@
         nameX = 43 + indent;
       const maxChars = Math.max(3, Math.floor((plotLeft - 24 - nameX) / 11));
       const toggle = row.hasChildren
-        ? `<g data-toggle="${esc(a.id)}" role="button" tabindex="0" aria-label="${esc(a.name)}を${collapsed(a.id) ? "展開" : "折りたたむ"}" aria-expanded="${!collapsed(a.id)}"><rect x="${14 + indent}" y="${row.top + 25}" width="24" height="28" fill="white" fill-opacity="0"/><text x="${20 + indent}" y="${row.top + 44}" fill="#477e7b" font-size="12">${collapsed(a.id) && !full ? "▸" : "▾"}</text></g>`
-        : `<text x="${20 + indent}" y="${row.top + 44}" font-size="12" fill="#a3b9bb">${row.depth ? "└" : "⠿"}</text>`;
+        ? `<g data-toggle="${esc(a.id)}" role="button" tabindex="0" aria-label="${esc(a.name)}を${collapsed(a.id) ? "展開" : "折りたたむ"}" aria-expanded="${!collapsed(a.id)}"><rect x="${14 + indent}" y="${row.top + 10}" width="24" height="28" fill="white" fill-opacity="0"/><text x="${20 + indent}" y="${row.top + 25}" fill="#477e7b" font-size="12">${collapsed(a.id) && !full ? "▸" : "▾"}</text></g>`
+        : `<text x="${20 + indent}" y="${row.top + 25}" font-size="12" fill="#a3b9bb">${row.depth ? "└" : "⠿"}</text>`;
       parts.push(
-        `<g class="actor-label${chosen(a.id) ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="${plotLeft - 12}" height="${row.height}" fill="${a.isGroup || row.hasChildren ? "#f0f6f4" : "#fafcfc"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${plotLeft - 12}" y2="${row.top + row.height}"/>${toggle}<text class="actor-name" x="${nameX}" y="${row.top + 43}">${esc(a.name.length > maxChars ? a.name.slice(0, maxChars) + "…" : a.name)}</text><text x="${nameX}" y="${row.top + 61}" font-size="9" fill="${c.stroke}">${sides[a.side]}${row.hasChildren || a.isGroup ? " / グループ" : ""}</text><title>${esc(a.name)} · 中央へドロップで子に、上下端へドロップで並べ替え</title></g>`,
+        `<g class="actor-label${chosen(a.id) ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="${plotLeft - 12}" height="${row.height}" fill="${a.isGroup || row.hasChildren ? "#f0f6f4" : "#fafcfc"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${plotLeft - 12}" y2="${row.top + row.height}"/>${toggle}<text class="actor-name" x="${nameX}" y="${row.top + 24}">${esc(a.name.length > maxChars ? a.name.slice(0, maxChars) + "…" : a.name)}</text><text x="${nameX}" y="${row.top + 40}" font-size="9" fill="${c.stroke}">${sides[a.side]}${row.hasChildren || a.isGroup ? " / グループ" : ""}</text>${technologyBubble("actor", a.id, nameX, row.top + 45, plotLeft - 20 - nameX, full)}<title>${esc(a.name)} · 中央へドロップで子に、上下端へドロップで並べ替え</title></g>`,
       );
     }
     parts.push(
-      `<line x1="${plotLeft - 12}" y1="64" x2="${plotLeft - 12}" y2="${layout.height}" stroke="#dde7e9"/></g><g id="time-ruler"><rect x="${plotLeft - 12}" y="0" width="${layout.width - plotLeft + 12}" height="64" fill="#fafcfc"/><line class="rowline" x1="${plotLeft - 12}" y1="64" x2="${layout.width}" y2="64"/><text x="${plotLeft}" y="21" font-size="9" letter-spacing="1.2" fill="#81969b">ELAPSED TIME / ${units[d.time.unit]}</text>`,
+      `<line x1="${plotLeft - 12}" y1="48" x2="${plotLeft - 12}" y2="${layout.height}" stroke="#dde7e9"/></g><g id="time-ruler"><rect x="${plotLeft - 12}" y="0" width="${layout.width - plotLeft + 12}" height="48" fill="#fafcfc"/><line class="rowline" x1="${plotLeft - 12}" y1="48" x2="${layout.width}" y2="48"/><text x="${plotLeft}" y="14" font-size="8" letter-spacing="1.2" fill="#81969b">ELAPSED TIME / ${units[d.time.unit]}</text>`,
     );
     for (
       let t = Math.ceil(frame.start / tickStep) * tickStep;
@@ -473,11 +473,11 @@
     ) {
       const x = timeX(t);
       parts.push(
-        `<text class="tick" x="${x}" y="44" text-anchor="middle">${time(t)}</text><line x1="${x}" y1="53" x2="${x}" y2="64" stroke="#dbe5e7"/>`,
+        `<text class="tick" x="${x}" y="32" text-anchor="middle">${time(t)}</text><line x1="${x}" y1="53" x2="${x}" y2="48" stroke="#dbe5e7"/>`,
       );
     }
     parts.push(
-      `</g><g id="corner"><rect width="${plotLeft - 12}" height="64" fill="#fafcfc"/><text x="28" y="39" font-size="9" letter-spacing="1.4" fill="#7d9299">ACTORS</text><line class="rowline" x1="0" y1="64" x2="${plotLeft - 12}" y2="64"/></g>`,
+      `</g><g id="corner"><rect width="${plotLeft - 12}" height="48" fill="#fafcfc"/><text x="28" y="29" font-size="9" letter-spacing="1.4" fill="#7d9299">ACTORS</text><line class="rowline" x1="0" y1="48" x2="${plotLeft - 12}" y2="48"/></g>`,
     );
     if (drag?.type === "actor" && drag.targetId) {
       const row = layout.rows.find((r) => r.actor.id === drag.targetId);
@@ -537,7 +537,7 @@
       .join("");
     $("#mode-hint").textContent = linkSource
       ? "接続先のState・予定遷移を選択 · Escで取消"
-      : "丸からドラッグで接続 · ダブルクリックで編集 · 右クリックで操作";
+      : "Alt + ドラッグで接続 · ダブルクリックで編集 · 右クリックで操作";
     $("#inspector").classList.toggle("hidden", inspectorHidden);
     $("#inspector-toggle").setAttribute("aria-expanded", !inspectorHidden);
     $("#inspector-toggle").textContent = inspectorHidden
@@ -1290,30 +1290,87 @@
               }
             : null,
         })),
-      ...layout.rows.map((r) => ({
-        type: "actor",
-        id: r.actor.id,
-        p: { x: plotLeft, y: r.top + 8 },
-      })),
     ];
     for (const e of targets) {
-      if (!e.p) continue;
-      const tech = M.technologyFor(d, e.type, e.id);
-      if (!tech.length) continue;
-      const worst =
-        tech.find((t) => t.status === "gap") ||
-        tech.find((t) => t.status !== "existing") ||
-        tech[0];
-      const detail = view().mode === "technology" || view().mode === "gap";
-      const label = detail
-        ? `${worst.name.slice(0, 10)} · ${worst.status}${tech.length > 1 ? ` +${tech.length - 1}` : ""}`
-        : `T${tech.length}${worst.status === "gap" ? " × GAP" : ""}`;
-      const x = Math.min(frame.width - 130, Math.max(plotLeft, e.p.x)),
-        y = e.type === "state" ? e.p.y + 47 : e.p.y + 9;
+      if (!e.p || e.type === "actor") continue;
+      if (
+        e.p.x > frame.width - 24 ||
+        (e.type === "state" ? e.p.x + e.p.width < plotLeft : e.p.x < plotLeft)
+      )
+        continue;
+      const y =
+        e.type === "state"
+          ? e.p.y + 35
+          : e.type === "transition"
+            ? e.p.y + 19
+            : e.p.y + 47;
       parts.push(
-        `<g class="technology-tag" data-type="${e.type}" data-id="${esc(e.id)}"><title>${esc(tech.map((t) => `${t.name} / ${t.status} / TRL ${t.trl ?? "?"}`).join("\n"))}</title><text x="${x}" y="${y}" fill="${techColors[worst.status]}" font-size="9" font-weight="600">${esc(label)}</text></g>`,
+        technologyBubble(
+          e.type,
+          e.id,
+          e.p.x,
+          y,
+          Math.min(160, frame.width - plotLeft - 12),
+          full,
+        ),
       );
     }
+  }
+  function technologyBubble(type, id, left, top, maxWidth = 160, full = false) {
+    if ((!full && !view().filters.technology) || maxWidth < 22) return "";
+    const tech = M.technologyFor(doc(), type, id);
+    if (!tech.length) return "";
+    const worst =
+      tech.find((t) => t.status === "gap") ||
+      tech.find((t) => t.status !== "existing") ||
+      tech[0];
+    const detail = ["technology", "gap"].includes(view().mode);
+    const text = detail
+      ? `${worst.name} · ${worst.status}${tech.length > 1 ? ` +${tech.length - 1}` : ""}`
+      : `T${tech.length}${worst.status === "gap" ? " GAP" : ""}`;
+    const measure = (value) =>
+      [...value].reduce((n, c) => n + (c.charCodeAt(0) > 255 ? 9 : 5.3), 0);
+    let width = Math.min(maxWidth, Math.max(24, Math.ceil(measure(text) + 12)));
+    const minX = type === "actor" ? left : plotLeft,
+      maxX = type === "actor" ? left + maxWidth : frame.width - 16;
+    const preferred = Math.max(minX, Math.min(maxX - width, left));
+    const near = technologyBoxes.filter((b) => Math.abs(b.y - top) < 18);
+    const place = (w) =>
+      [preferred, ...near.flatMap((b) => [b.x - w - 3, b.x + b.width + 3])]
+        .filter(
+          (x) =>
+            x >= minX &&
+            x + w <= maxX &&
+            near.every((b) => x + w + 2 <= b.x || x >= b.x + b.width + 2),
+        )
+        .sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred))[0];
+    let x = place(width),
+      display = text;
+    if (x === undefined) {
+      display = `T${tech.length}`;
+      width = Math.min(
+        maxWidth,
+        Math.max(24, Math.ceil(measure(display) + 12)),
+      );
+      x = place(width) ?? preferred;
+    }
+    technologyBoxes.push({ x, y: top, width });
+    let label = display;
+    while (
+      label.length &&
+      measure(label) + (label === display ? 0 : 9) > width - 12 + 0.01
+    )
+      label = label.slice(0, -1);
+    if (label !== display) label += "…";
+    const color = techColors[worst.status],
+      fill = {
+        existing: "#f0f8f4",
+        research: "#fff8e9",
+        planned: "#f1f5fc",
+        gap: "#fff0f1",
+        unknown: "#f4f5f6",
+      }[worst.status];
+    return `<g class="technology-tag" data-type="${type}" data-id="${esc(id)}"><title>${esc(tech.map((t) => `${t.name} / ${t.status} / TRL ${t.trl ?? "?"}`).join("\n"))}</title>${Math.abs(x - preferred) > 2 ? `<path d="M ${preferred + 9} ${top - 5} L ${x + 9} ${top - 4}" fill="none" stroke="${color}" stroke-opacity=".5" stroke-width=".8" pointer-events="none"/>` : ""}<path class="technology-bubble" d="M ${x + 3} ${top} H ${x + 6} L ${x + 9} ${top - 4} L ${x + 12} ${top} H ${x + width - 3} Q ${x + width} ${top} ${x + width} ${top + 3} V ${top + 13} Q ${x + width} ${top + 16} ${x + width - 3} ${top + 16} H ${x + 3} Q ${x} ${top + 16} ${x} ${top + 13} V ${top + 3} Q ${x} ${top} ${x + 3} ${top} Z" fill="${fill}" stroke="${color}" stroke-opacity=".6" stroke-width=".8"/><text x="${x + 6}" y="${top + 11}" fill="${color}" font-size="9" font-weight="550" pointer-events="none">${esc(label)}</text></g>`;
   }
   function editTechnology(id = null) {
     const t = doc().technologies.find((t) => t.id === id) || {
@@ -1626,7 +1683,7 @@
     if (e.target.closest("[data-toggle]")) return;
     if (!info) {
       const p = point(e);
-      if (p.y >= 64)
+      if (p.y >= 48)
         drag = {
           type: "marquee",
           x: e.clientX,
@@ -1638,7 +1695,11 @@
         };
       return;
     }
-    if (e.target.matches("[data-port]")) {
+    if (
+      info.type === "state" &&
+      e.altKey &&
+      !e.target.closest(".technology-tag")
+    ) {
       e.preventDefault();
       linkSource = info.id;
       multi = [];
@@ -1648,7 +1709,7 @@
       renderInspector();
       return;
     }
-    if (linkSource) return;
+    if (linkSource || e.target.closest(".technology-tag")) return;
     if (info.type === "state") {
       const s = state(info.id);
       drag = {
@@ -1753,7 +1814,7 @@
       }
       line.setAttribute(
         "d",
-        `M ${Math.max(plotLeft + 5, Math.min(frame.width - 30, from.x + from.width - 8))} ${from.y + 39} L ${p.x} ${p.y}`,
+        `M ${Math.max(plotLeft, Math.min(frame.width - 24, from.x + from.width / 2))} ${from.y + 16} L ${p.x} ${p.y}`,
       );
       return;
     }
@@ -1940,14 +2001,14 @@
     }
     const info = targetInfo(e),
       p = point(e);
-    if (e.target.matches("[data-port]")) return;
+    if (e.altKey) return;
     if (info) {
       selectedPath = 0;
       if (linkSource) connect(info.type, info.id);
       else select(info.type, info.id, e.ctrlKey || e.metaKey);
       return;
     }
-    if (p.x < plotLeft - 12 || p.y < scroll.scrollTop + 64) return;
+    if (p.x < plotLeft - 12 || p.y < scroll.scrollTop + 48) return;
     selection = null;
     multi = [];
     linkSource = null;
@@ -1964,7 +2025,7 @@
     } else {
       const p = point(e),
         row = rowAt(p.y);
-      if (row && p.x > plotLeft - 12 && p.y > scroll.scrollTop + 64)
+      if (row && p.x > plotLeft - 12 && p.y > scroll.scrollTop + 48)
         editState(null, row.actor.id, xTime(p.x));
     }
   });
@@ -2069,6 +2130,7 @@
         { label: "全期間を表示", action: fit },
         { label: "表示時間を指定", action: editTimeWindow },
         { label: "SVGを書き出す", action: exportSVG },
+        { label: "PNGを書き出す", action: exportPNG },
       ]);
     }
   });
@@ -2312,7 +2374,7 @@
     );
     $("#status").textContent = "JSONファイルを書き出しました";
   }
-  function exportSVG() {
+  function exportImageSource() {
     renderSVG(true);
     const copy = svg.cloneNode(true);
     copy
@@ -2324,17 +2386,96 @@
       )
       .forEach((e) => e.remove());
     copy
-      .querySelectorAll(".selected,.dimmed")
-      .forEach((e) => e.classList.remove("selected", "dimmed"));
+      .querySelectorAll(".selected,.dimmed,.connect-target,.connect-hover")
+      .forEach((e) =>
+        e.classList.remove(
+          "selected",
+          "dimmed",
+          "connect-target",
+          "connect-hover",
+        ),
+      );
+    copy.classList.remove("connecting", "link-mode");
     copy.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
     copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    renderSVG();
-    download(
-      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    const result = {
+      width: layout.width,
+      height: layout.height,
+      source:
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
         new XMLSerializer().serializeToString(copy),
+    };
+    renderSVG();
+    return result;
+  }
+  function exportSVG() {
+    download(
+      exportImageSource().source,
       "image/svg+xml",
       "mission-timeline.svg",
     );
+  }
+  let pngExporting = false;
+  async function exportPNG() {
+    if (pngExporting) return;
+    pngExporting = true;
+    let imageURL;
+    try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      const { source, width, height } = exportImageSource();
+      // Bound memory and browser canvas dimensions; never truncate the chart.
+      const ratio = Math.min(
+        2,
+        16384 / width,
+        16384 / height,
+        Math.sqrt(32000000 / (width * height)),
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.floor(width * ratio));
+      canvas.height = Math.max(1, Math.floor(height * ratio));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("このブラウザではPNG出力を利用できません。");
+      // Keep the SVG decoder's intrinsic raster within the same memory limit.
+      const imageSVG = new DOMParser().parseFromString(
+        source,
+        "image/svg+xml",
+      ).documentElement;
+      imageSVG.setAttribute("width", canvas.width);
+      imageSVG.setAttribute("height", canvas.height);
+      imageURL = URL.createObjectURL(
+        new Blob([new XMLSerializer().serializeToString(imageSVG)], {
+          type: "image/svg+xml;charset=utf-8",
+        }),
+      );
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () =>
+          reject(
+            new Error("図の画像化に失敗しました。SVG出力も利用できます。"),
+          );
+        img.src = imageURL;
+      });
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob)
+        throw new Error(
+          "PNGを生成できませんでした。図を小さくして再度お試しください。",
+        );
+      download(blob, "image/png", "mission-timeline.png");
+      toast(
+        `PNGを書き出しました（${canvas.width} × ${canvas.height}px、全期間・全階層）`,
+      );
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      if (imageURL) URL.revokeObjectURL(imageURL);
+      pngExporting = false;
+    }
   }
   $("#save-btn").onclick = saveJSON;
   $("#open-btn").onclick = () => $("#file-input").click();
@@ -2365,6 +2506,7 @@
   $("#more-btn").onclick = (e) =>
     menu(e.clientX, e.clientY, [
       { label: "SVGを書き出す", action: exportSVG },
+      { label: "PNGを書き出す", action: exportPNG },
       { label: "ミッション設定", action: documentSettings },
       {
         label: "Technology / Gapのサンプル",

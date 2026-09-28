@@ -74,7 +74,7 @@ test("empty row double-click adds a State at its time coordinate", async (t) => 
   const a = await app(t);
   const scale = Number(a.$('[data-id="e1"] .body').getAttribute("width")) / 12;
   a.event(a.$('[data-row="sensor"]'), "dblclick", {
-    clientX: 208 + 50 * scale,
+    clientX: 176 + 50 * scale,
     clientY: 250,
   });
   assert.ok(a.$("#editor-dialog[open]"));
@@ -142,7 +142,8 @@ test("creates a transition via two endpoint clicks", async (t) => {
     end: 30,
   });
   const a = await app(t, d);
-  a.click('[data-id="free"] .port');
+  a.click('[data-id="free"] .body');
+  a.key("c");
   a.click('[data-id="free2"] .body');
   a.fill("label", "経過");
   a.submit();
@@ -152,7 +153,8 @@ test("creates a transition via two endpoint clicks", async (t) => {
 });
 test("creates an Interaction with independent source and target times", async (t) => {
   const a = await app(t, extra());
-  a.click('[data-id="free"] .port');
+  a.click('[data-id="free"] .body');
+  a.key("c");
   a.click('[data-id="s2"] .body');
   a.fill("label", "報告");
   a.fill("sourceTime", 8);
@@ -164,7 +166,8 @@ test("creates an Interaction with independent source and target times", async (t
 });
 test("creates an explicit block on a planned transition with actual outcome", async (t) => {
   const a = await app(t, sample());
-  a.click('[data-id="t2"] .port');
+  a.click('[data-id="t2"] .body');
+  a.key("c");
   a.click('[data-id="escape"] .hit');
   a.fill("label", "追加の阻止");
   a.fill("outcomeStateId", "e5");
@@ -177,7 +180,8 @@ test("creates an explicit block on a planned transition with actual outcome", as
 });
 test("rejects blocking an actual transition without opening an invalid form", async (t) => {
   const a = await app(t);
-  a.click('[data-id="t2"] .port');
+  a.click('[data-id="t2"] .body');
+  a.key("c");
   a.click('[data-id="et2"] .hit');
   assert.equal(a.$("#editor-dialog").open, false);
   assert.match(a.$("#toast").textContent, /予定/);
@@ -272,7 +276,7 @@ test("Actor drag changes ordering without altering state times", async (t) => {
   assert.equal(a.savedDoc().views.main.actorOrder[2], "enemy");
   assert.deepEqual(a.savedDoc().states, sample().states);
 });
-test("dragging from a State port opens a connection dialog for the dropped target", async (t) => {
+test("Alt-dragging a State opens a connection dialog for the dropped target", async (t) => {
   const d = extra();
   d.states.push({
     ...d.states.at(-1),
@@ -282,7 +286,8 @@ test("dragging from a State port opens a connection dialog for the dropped targe
     end: 30,
   });
   const a = await app(t, d);
-  a.event(a.$('[data-id="free"] .port'), "pointerdown", {
+  a.event(a.$('[data-id="free"] .body'), "pointerdown", {
+    altKey: true,
     clientX: 100,
     clientY: 100,
   });
@@ -372,7 +377,7 @@ test("zoomed empty-space creation converts x back to the visible time range", as
   a.fill("end", 40);
   a.submit();
   const row = a.$('[data-row="sensor"]'),
-    left = 208,
+    left = 176,
     scale = (1050 - left - 24) / 20;
   a.event(row, "dblclick", {
     clientX: left + 5 * scale,
@@ -472,9 +477,10 @@ test("SVG export includes all time and hidden descendants while keeping the edit
   assert.equal(a.$("#time-window").textContent, before);
   assert.equal(a.$("#timeline").getAttribute("width"), "1050");
 });
-test("dragging a port onto a planned transition automatically opens interdiction without a mode", async (t) => {
+test("Alt-dragging a State onto a planned transition automatically opens interdiction without a mode", async (t) => {
   const a = await app(t);
-  a.event(a.$('[data-id="t2"] .port'), "pointerdown", {
+  a.event(a.$('[data-id="t2"] .body'), "pointerdown", {
+    altKey: true,
     clientX: 100,
     clientY: 100,
   });

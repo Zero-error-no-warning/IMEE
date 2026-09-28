@@ -20,7 +20,7 @@ test("state width and horizontal position are strictly proportional to time at e
     const d = sample(),
       p = M.layout(d, scale).positions;
     for (const s of d.states) {
-      assert.equal(p.get(s.id).x, 208 + s.start * scale);
+      assert.equal(p.get(s.id).x, 176 + s.start * scale);
       assert.equal(p.get(s.id).width, (s.end - s.start) * scale);
     }
   }

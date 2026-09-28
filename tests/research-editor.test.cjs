@@ -186,7 +186,8 @@ test("interaction visual styles distinguish observation, information, command an
 });
 test("connection drag highlights compatible States and wide-hit planned Transitions", async (t) => {
   const a = await app(t);
-  a.event(a.$('[data-id="t2"] .port'), "pointerdown", {
+  a.event(a.$('[data-id="t2"] .body'), "pointerdown", {
+    altKey: true,
     clientX: 200,
     clientY: 400,
   });

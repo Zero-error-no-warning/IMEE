@@ -265,7 +265,7 @@
       Math.max(Math.min(0.01, duration), span),
     );
     const safeStart = Math.max(0, Math.min(duration - safeSpan, start));
-    const plotLeft = Math.min(208, Math.max(100, width * 0.3));
+    const plotLeft = Math.min(176, Math.max(100, width * 0.3));
     return {
       start: safeStart,
       span: safeSpan,
@@ -278,10 +278,17 @@
   function layout(doc, scale = 16, options = {}) {
     const rows = [],
       positions = new Map();
-    let top = 64;
-    const laneHeight = doc.views?.main?.laneHeight || 52;
-    const left = options.plotLeft ?? 208,
+    let top = 48;
+    const laneHeight = doc.views?.main?.laneHeight || 44;
+    const left = options.plotLeft ?? 176,
       start = options.start || 0;
+    const owner = new Map(doc.states.map((s) => [s.id, s.actorId]));
+    for (const t of doc.transitions) owner.set(t.id, owner.get(t.from));
+    for (const i of doc.interactions) owner.set(i.id, owner.get(i.fromStateId));
+    for (const a of doc.actors) owner.set(a.id, a.id);
+    const annotatedActors = new Set(
+      (doc.bindings || []).map((b) => owner.get(b.targetId)),
+    );
     for (const node of hierarchy(doc, options.includeHidden)) {
       const { actor } = node,
         ends = [];
@@ -293,29 +300,41 @@
             a.start - b.start ||
             a.id.localeCompare(b.id),
         );
+      const hasTechnology = annotatedActors.has(actor.id);
+      const rowLaneHeight = hasTechnology
+        ? Math.max(52, laneHeight)
+        : laneHeight;
       for (const s of states) {
         let lane = ends.findIndex((end) => end <= s.start);
         if (lane === -1) lane = ends.length;
         ends[lane] = s.end;
         positions.set(s.id, {
           x: left + (s.start - start) * scale,
-          y: top + 28 + lane * laneHeight,
+          y: top + 14 + lane * rowLaneHeight,
           width: (s.end - s.start) * scale,
           height: 32,
           lane,
         });
       }
-      const height = Math.max(
-        actor.isGroup && !states.length ? 68 : 100,
-        54 + ends.length * laneHeight,
-      );
+      const baseHeight = states.length
+        ? 68 + Math.max(0, ends.length - 1) * rowLaneHeight
+        : hasTechnology
+          ? 68
+          : 44;
+      const height =
+        baseHeight +
+        (node.hasChildren &&
+        isCollapsed(doc, actor.id) &&
+        !options.includeHidden
+          ? 16
+          : 0);
       rows.push({ ...node, top, height, lanes: ends.length });
       top += height;
     }
     return {
       rows,
       positions,
-      height: top + 28,
+      height: top + 12,
       width: options.width ?? left + 40 + doc.time.duration * scale,
     };
   }
@@ -425,7 +444,7 @@
         planned: true,
         quiet: true,
       },
-      laneHeight: 52,
+      laneHeight: 44,
       mode: "mission",
     };
     for (const a of doc.actors) {
