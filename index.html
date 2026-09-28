@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102f39" />
+    <title>IMEE | Mission State Timeline Editor</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="js/model.js"></script>
+    <script defer src="js/sample.js"></script>
+    <script defer src="js/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">M<span>↗</span></span>
+        <div><strong>IMEE</strong><small>MISSION ENGINEERING</small></div>
+      </div>
+      <div class="document-title">
+        <span class="eyebrow">MISSION STATE TIMELINE</span
+        ><button id="document-title" title="ミッション設定を編集"></button>
+      </div>
+      <div class="file-actions">
+        <span id="save-status" role="status">このブラウザに保存</span
+        ><button id="open-btn">読込</button
+        ><button id="save-btn" class="primary">
+          JSON保存 <span aria-hidden="true">↓</span></button
+        ><button id="more-btn" aria-label="ファイルメニュー">•••</button>
+      </div>
+    </header>
+    <nav class="toolbar" aria-label="編集ツール">
+      <div class="tool-group" aria-label="操作モード">
+        <button
+          data-mode="select"
+          class="active"
+          title="選択・移動 (V)"
+          aria-pressed="true"
+        >
+          <span aria-hidden="true">↖</span> 選択
+        </button>
+        <button data-mode="state" title="State追加 (S)" aria-pressed="false">
+          <span aria-hidden="true">▭</span> State
+        </button>
+        <button
+          data-mode="transition"
+          title="同一Actor内のStateを順にクリック (T)"
+          aria-pressed="false"
+        >
+          <span aria-hidden="true">→</span> 遷移
+        </button>
+        <button
+          data-mode="interaction"
+          title="作用元と作用先のStateを順にクリック (I)"
+          aria-pressed="false"
+        >
+          <span aria-hidden="true">↳</span> 作用
+        </button>
+        <button
+          data-mode="block"
+          title="作用元Stateと阻止する予定遷移をクリック (B)"
+          aria-pressed="false"
+        >
+          <span aria-hidden="true">⊣</span> 妨害
+        </button>
+      </div>
+      <div class="tool-group"><button id="add-actor">＋ Actor</button></div>
+      <div class="tool-group">
+        <button id="undo" aria-label="元に戻す" title="元に戻す (Ctrl+Z)">
+          ↶</button
+        ><button
+          id="redo"
+          aria-label="やり直す"
+          title="やり直す (Ctrl+Shift+Z)"
+        >
+          ↷
+        </button>
+      </div>
+      <div class="view-tools">
+        <label class="snap-label"
+          >スナップ
+          <select id="snap" aria-label="スナップ間隔">
+            <option>1</option></select
+          ><span class="time-unit">分</span></label
+        ><button id="zoom-out" aria-label="縮小">−</button
+        ><output id="zoom-label">100%</output
+        ><button id="zoom-in" aria-label="拡大">＋</button
+        ><button id="fit" title="全期間を表示">全体</button
+        ><button id="help-btn" aria-label="操作ガイド">?</button>
+      </div>
+    </nav>
+    <main>
+      <section class="canvas-section" aria-label="ミッションタイムライン">
+        <div class="canvas-heading">
+          <div>
+            <span class="section-number">01</span
+            ><strong>ミッションの状態と因果</strong><span id="counts"></span>
+          </div>
+          <div class="legend">
+            <span><i class="legend-state"></i>実際</span
+            ><span><i class="legend-plan"></i>予定</span
+            ><span><i class="legend-block"></i>阻止</span>
+          </div>
+        </div>
+        <div
+          id="canvas-scroll"
+          tabindex="0"
+          aria-label="タイムライン。Stateはドラッグで移動、両端で伸縮。空白のダブルクリックで追加。"
+        >
+          <svg
+            id="timeline"
+            xmlns="http://www.w3.org/2000/svg"
+            role="img"
+            aria-label="Mission State Timeline"
+          ></svg>
+        </div>
+        <div class="canvas-bottom">
+          <span id="mode-hint"
+            >空白をダブルクリックでState追加 · ドラッグで移動 · 両端で伸縮</span
+          ><button id="inspector-toggle" aria-expanded="true">
+            詳細パネル ⇥
+          </button>
+        </div>
+      </section>
+      <aside id="inspector" aria-label="選択項目の詳細"></aside>
+    </main>
+    <footer>
+      <span class="status-dot"></span
+      ><span id="status" role="status">準備完了</span
+      ><span class="footer-right"
+        >横軸：時間 <span class="time-unit">分</span>
+        <span class="separator">/</span> 縦軸：Actor</span
+      >
+    </footer>
+    <input type="file" id="file-input" accept=".json,application/json" hidden />
+    <dialog id="editor-dialog">
+      <form id="editor-form">
+        <div class="dialog-heading">
+          <h2 id="dialog-title"></h2>
+          <button type="button" id="dialog-close" aria-label="閉じる">×</button>
+        </div>
+        <div id="dialog-fields"></div>
+        <p id="dialog-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" id="dialog-cancel">キャンセル</button
+          ><button type="submit" class="primary">適用</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="help-dialog">
+      <div class="dialog-heading">
+        <h2>操作ガイド</h2>
+        <button id="help-close" aria-label="閉じる">×</button>
+      </div>
+      <p class="muted">時間が位置を決め、状態がミッションを語ります。</p>
+      <dl class="help-list">
+        <dt>Stateを追加</dt>
+        <dd>Actorの行の空白をダブルクリック。Sキーでも追加モードへ。</dd>
+        <dt>移動・複製・伸縮</dt>
+        <dd>
+          本体をドラッグ。Ctrl / ⌘ +
+          ドラッグで複製。両端のハンドルで期間を変更。
+        </dd>
+        <dt>遷移を結ぶ</dt>
+        <dd>Tキー → 同じActorのStateを2つ選択。間隔は遷移に要する時間です。</dd>
+        <dt>作用を結ぶ</dt>
+        <dd>Iキー → 別ActorのStateを2つ選択。発生・到達時刻を確認して適用。</dd>
+        <dt>予定遷移を阻止</dt>
+        <dd>
+          Bキー → 作用元State →
+          点線の予定Transition。阻止時刻と妨害後のStateを設定。
+        </dd>
+        <dt>Actorの並べ替え</dt>
+        <dd>左のActor名をドラッグ。または詳細パネルの上下ボタン。</dd>
+        <dt>編集・削除</dt>
+        <dd>ダブルクリック、右クリック、または詳細パネル。Deleteで削除。</dd>
+        <dt>キーボード</dt>
+        <dd>
+          V 選択 / Esc キャンセル / Ctrl+Z 元に戻す / Ctrl+Shift+Z
+          やり直す。選択したStateは ← → で移動、Shift+← →
+          で終端を伸縮。Enterで編集。
+        </dd>
+        <dt>保存</dt>
+        <dd>
+          このブラウザに自動保存。持ち出し・バックアップはJSON保存。メニューからSVG出力。
+        </dd>
+      </dl>
+      <p class="help-note">
+        重なるStateはActor内で自動的に段を分けます。実際と予定は手動指定です。妨害登録によって後続の予定全体を自動変更することはありません。
+      </p>
+    </dialog>
+    <div id="context-menu" role="menu" hidden></div>
+    <div id="toast" role="alert" hidden></div>
+  </body>
+</html>
