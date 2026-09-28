@@ -24,14 +24,14 @@
     "planned": true,
     "quiet": true
   },
-  "laneHeight": 52,
+  "laneHeight": 44,
   "mode": "mission"
 }
 ```
 
 `mode`: `mission / technology / gap / interaction`。表示プロファイルは現在 `main` を使用し、その中のmodeで切り替えます。独立したプロファイルごとの編集UIはありません。表示設定はJSON・自動保存に含まれます。ズーム操作はUndoの1操作を消費しません。折りたたみ・並べ替え・親変更はUndo可能です。文書編集の履歴にはViewのスナップショットも含みます。
 
-Actor配列の物理順を変えず、兄弟間の順序を `actorOrder` で決めます。親子関係は意味上の構造なので `actor.parentId` に残します。追加ActorはViewの順序にも追加します。`laneHeight` は40〜160、既定52。
+Actor配列の物理順を変えず、兄弟間の順序を `actorOrder` で決めます。親子関係は意味上の構造なので `actor.parentId` に残します。追加ActorはViewの順序にも追加します。`laneHeight` は40〜160、既定44。
 
 時刻は共通の相対時間です。`0 < duration <= 1,000,000`、`0.01 <= snap <= duration`。数値は有限値のみ。6コレクションの各上限は10,000件、ファイル読込は8MiB。上限は入力防御用で、大規模文書の描画性能を保証しません。
 
@@ -48,7 +48,7 @@ State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
 - `phase`: `other / decision`。判断段階は利用者が明示指定します。状態名から推測しません。
 - 同じActorの重複Stateは自動的に別レーンへ配置します。
 
-`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。図形を文字幅のために伸ばしません。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG出力は全期間・全階層・全要素です。
+`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。図形を文字幅のために伸ばしません。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG・PNG出力は全期間・全階層・全要素です。PNGは同じ自己完結SVGをブラウザで画像化し、白背景で保存します。通常は2倍解像度、16,384px／辺・3,200万画素を超えない倍率へ必要に応じて下げます。
 
 ## Transition
 
@@ -125,7 +125,7 @@ State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
 
 `trl`: 整数1〜9またはnull（未評価）。`status`: `existing / research / planned / gap / unknown`。TRLの値からstatusを自動変換しません。
 
-Binding対象は `actor / state / transition / interaction`。技術カタログの編集は、その技術の全Bindingに反映します。通常画面は色付き小タグ、Technology Viewでは名称・状態タグと詳細パネル、Gap Viewでは未成熟技術の依存先一覧を表示します。
+Binding対象は `actor / state / transition / interaction`。技術カタログの編集は、その技術の全Bindingに反映します。通常画面は背景・枠線付きの小さな吹き出し、Technology Viewでは名称・状態タグと詳細パネル、Gap Viewでは未成熟技術の依存先一覧を表示します。
 
 ## 選択・複製・削除
 
