@@ -275,6 +275,106 @@
       scale: Math.max(1, width - plotLeft - 24) / safeSpan,
     };
   }
+  // SVG measurements can be supplied by the browser; Node uses conservative glyph widths.
+  function textWidth(text, size) {
+    return [...text].reduce(
+      (n, c) =>
+        n +
+        (/\p{Mark}/u.test(c) ? 0 : /[^\x00-\xff]/.test(c) ? size : size * 0.62),
+      0,
+    );
+  }
+  function wrapText(text, width, size, measure = textWidth) {
+    const lines = [];
+    for (const paragraph of String(text).split("\n")) {
+      let line = "";
+      for (const c of paragraph) {
+        if (line && measure(line + c, size) > width) {
+          lines.push(line);
+          line = "";
+        }
+        line += c;
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+  function fitStateText(text, width, measure = textWidth) {
+    const available = Math.max(0, width - 8);
+    let size = 11,
+      lines = wrapText(text, available, size, measure);
+    // Prefer two normal-size lines, then modest shrinking before growing the lane.
+    for (const candidate of [10, 9]) {
+      if (lines.length <= 3) break;
+      size = candidate;
+      lines = wrapText(text, available, size, measure);
+    }
+    const lineHeight = size + 1;
+    const truncated =
+      lines.length > 8 || lines.some((line) => measure(line, size) > available);
+    lines = lines.slice(0, 8);
+    if (truncated) {
+      let last = lines.at(-1) || "";
+      while (last && measure(last + "…", size) > available)
+        last = [...last].slice(0, -1).join("");
+      lines[lines.length - 1] =
+        measure("…", size) <= available ? last + "…" : "";
+      lines = lines.map((line) =>
+        measure(line, size) <= available ? line : "",
+      );
+    }
+    return {
+      lines,
+      fontSize: size,
+      lineHeight,
+      height: Math.max(32, lines.length * lineHeight + 8),
+      truncated,
+    };
+  }
+  const boxesOverlap = (a, b, padding = 3) =>
+    a.x < b.x + b.width + padding &&
+    a.x + a.width + padding > b.x &&
+    a.y < b.y + b.height + padding &&
+    a.y + a.height + padding > b.y;
+  function placeLabel(box, occupied, bounds) {
+    const x = Math.max(bounds.left, Math.min(bounds.right - box.width, box.x));
+    const candidates = [];
+    for (const dy of [0, -18, 18, -36, 36, -54, 54, -90, 90])
+      for (const dx of [0, -24, 24, -60, 60, -120, 120])
+        candidates.push({
+          ...box,
+          x: Math.max(bounds.left, Math.min(bounds.right - box.width, x + dx)),
+          y: box.y + dy,
+        });
+    const free = (b) =>
+      b.y >= bounds.top &&
+      b.y + b.height <= bounds.bottom &&
+      occupied.every((o) => !boxesOverlap(b, o));
+    candidates.sort(
+      (a, b) =>
+        Math.hypot(a.x - x, a.y - box.y) - Math.hypot(b.x - x, b.y - box.y),
+    );
+    let result = candidates.find(free);
+    if (!result) {
+      outer: for (let y = bounds.top; y + box.height <= bounds.bottom; y += 14)
+        for (let xx = bounds.left; xx + box.width <= bounds.right; xx += 24) {
+          const candidate = { ...box, x: xx, y };
+          if (free(candidate)) {
+            result = candidate;
+            break outer;
+          }
+        }
+    }
+    // A dense chart gets a callout area below it rather than overlapping labels.
+    if (!result)
+      result = {
+        ...box,
+        x,
+        y: Math.max(bounds.bottom, ...occupied.map((b) => b.y + b.height)) + 8,
+      };
+    occupied.push(result);
+    return result;
+  }
   function layout(doc, scale = 16, options = {}) {
     const rows = [],
       positions = new Map();
@@ -304,20 +404,44 @@
       const rowLaneHeight = hasTechnology
         ? Math.max(52, laneHeight)
         : laneHeight;
+      const laneHeights = [];
       for (const s of states) {
         let lane = ends.findIndex((end) => end <= s.start);
         if (lane === -1) lane = ends.length;
         ends[lane] = s.end;
+        const text = fitStateText(
+          s.name + (s.status === "planned" ? " · 予定" : ""),
+          (s.end - s.start) * scale,
+          options.measureText,
+        );
+        laneHeights[lane] = Math.max(
+          laneHeights[lane] || rowLaneHeight,
+          text.height + (hasTechnology ? 20 : 12),
+        );
         positions.set(s.id, {
+          text,
           x: left + (s.start - start) * scale,
           y: top + 14 + lane * rowLaneHeight,
           width: (s.end - s.start) * scale,
-          height: 32,
+          height: text.height,
           lane,
         });
       }
+      const laneOffsets = laneHeights.map((_, n) =>
+        laneHeights.slice(0, n).reduce((a, b) => a + b, 0),
+      );
+      for (const state of states) {
+        const p = positions.get(state.id);
+        p.y = top + 14 + laneOffsets[p.lane];
+      }
       const baseHeight = states.length
-        ? 68 + Math.max(0, ends.length - 1) * rowLaneHeight
+        ? 36 +
+          laneOffsets.at(-1) +
+          Math.max(
+            ...states
+              .filter((s) => positions.get(s.id).lane === ends.length - 1)
+              .map((s) => positions.get(s.id).height),
+          )
         : hasTechnology
           ? 68
           : 44;
@@ -994,6 +1118,11 @@
     placeActor,
     viewport,
     layout,
+    textWidth,
+    wrapText,
+    fitStateText,
+    boxesOverlap,
+    placeLabel,
     remove,
     related,
     History,

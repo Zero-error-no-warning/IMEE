@@ -237,7 +237,7 @@ test("enemy Transition selection exposes separate directed paths and technology 
   a.click('[data-path="0"]');
   assert.ok(a.$('[data-id="escape"]').classList.contains("selected"));
 });
-test("overlapping labels elide until selection and retain full titles", async (t) => {
+test("overlapping labels wrap without losing text when selected", async (t) => {
   const d = sample();
   d.interactions.push({
     ...d.interactions[1],
@@ -246,7 +246,11 @@ test("overlapping labels elide until selection and retain full titles", async (t
   });
   const a = await app(t, d),
     group = a.$('[data-id="report2"]');
-  assert.match(group.querySelector(".interaction-label").textContent, /…/);
+  assert.equal(
+    group.querySelector(".interaction-label").textContent,
+    d.interactions.at(-1).label,
+  );
+  assert.ok(group.querySelectorAll(".interaction-label tspan").length > 1);
   a.click(group.querySelector(".hit"));
   assert.equal(
     a.$('[data-id="report2"] .interaction-label').textContent,
@@ -294,7 +298,7 @@ test("multiple State drag moves rows together and rejects an invalid external Tr
   assert.match(b.$("#toast").textContent, /時間/);
 });
 
-test("collapsed proxies omit colliding labels until selection and keep proposals dashed", async (t) => {
+test("collapsed proxies retain labels with automatic placement and keep proposals dashed", async (t) => {
   const a = await app(t);
   a.click('[data-id="uuv"] [data-toggle]');
   const late = a.$('[data-id="late-hit"].interaction-proxy');
@@ -302,7 +306,7 @@ test("collapsed proxies omit colliding labels until selection and keep proposals
     late.querySelector(".line").getAttribute("stroke-dasharray"),
     "3 6",
   );
-  assert.equal(late.querySelector(".interaction-label").textContent, "");
+  assert.match(late.querySelector(".interaction-label").textContent, /検討:/);
   a.click(late.querySelector(".hit"));
   assert.match(
     a.$('[data-id="late-hit"] .interaction-label').textContent,

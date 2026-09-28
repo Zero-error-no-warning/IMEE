@@ -157,14 +157,6 @@
         !!chain && el.dataset.type !== "actor" && !chain.has(el.dataset.id),
       );
     });
-    svg
-      .querySelectorAll(".interaction-label")
-      .forEach(
-        (el) =>
-          (el.textContent = chosen(el.closest("[data-id]").dataset.id)
-            ? el.dataset.fullLabel
-            : el.dataset.shortLabel),
-      );
     connectionFeedback();
     svg.querySelectorAll(".selection-time").forEach((el) => el.remove());
     if (selection?.type === "state") {
@@ -185,6 +177,7 @@
         .find((el) => el.dataset.id === s.id)
         ?.append(text);
     }
+    arrangeEdgeLabels();
   }
   function select(type, id, additive = false) {
     if (additive) {
@@ -213,13 +206,18 @@
       p = layout.positions.get(a.id),
       q = layout.positions.get(b.id);
     if (!p || !q) return null;
+    const branch = p.lane !== q.lane,
+      down = q.y > p.y;
+    const y1 = branch ? p.y + (down ? p.height : 0) : p.y + p.height / 2;
+    const y2 = branch ? q.y + (down ? 0 : q.height) : q.y + q.height / 2;
     return {
       x: timeX(at),
-      y: q.y + 16,
+      y: branch ? (y1 + y2) / 2 : y2,
       x1: p.x + p.width,
-      y1: p.y + 16,
+      y1,
       x2: q.x,
-      y2: q.y + 16,
+      y2,
+      branch,
     };
   }
   function edgeClass(id) {
@@ -230,6 +228,271 @@
     text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}svg[data-view="interaction"] .state:not(.selected) .body{fill-opacity:.25}
   `;
   let technologyBoxes = [];
+  const chartTextCache = new Map();
+  function measureChartText(value, size) {
+    const key = `${size}:${value}`;
+    if (chartTextCache.has(key)) return chartTextCache.get(key);
+    let width = M.textWidth(value, size);
+    const probe = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "text",
+    );
+    if (typeof probe.getComputedTextLength === "function") {
+      probe.setAttribute("font-size", size);
+      probe.setAttribute(
+        "font-family",
+        'Inter,"Segoe UI","Noto Sans JP",sans-serif',
+      );
+      probe.setAttribute("font-weight", "550");
+      probe.setAttribute("visibility", "hidden");
+      probe.textContent = value;
+      svg.append(probe);
+      const measured = probe.getComputedTextLength();
+      if (measured > 0) width = measured + 0.5;
+      probe.remove();
+    }
+    if (chartTextCache.size > 20000) chartTextCache.clear();
+    chartTextCache.set(key, width);
+    return width;
+  }
+  // All chart edges are orthogonal SVG M/L/H/V paths. Include outcome connectors.
+  function pathSegments(path) {
+    const tokens =
+      (path || "").match(/[MLHVmlhv]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || [];
+    const segments = [];
+    let x = 0,
+      y = 0,
+      command;
+    for (let n = 0; n < tokens.length; ) {
+      if (/^[a-z]$/i.test(tokens[n])) command = tokens[n++];
+      const old = { x, y },
+        relative = command === command?.toLowerCase();
+      const kind = command?.toUpperCase();
+      if (kind === "M" || kind === "L") {
+        x = Number(tokens[n++]) + (relative ? x : 0);
+        y = Number(tokens[n++]) + (relative ? y : 0);
+      } else if (kind === "H") x = Number(tokens[n++]) + (relative ? x : 0);
+      else if (kind === "V") y = Number(tokens[n++]) + (relative ? y : 0);
+      else break;
+      if (kind !== "M") segments.push({ x1: old.x, y1: old.y, x2: x, y2: y });
+    }
+    return segments;
+  }
+  const segmentBox = (s) => ({
+    x: Math.min(s.x1, s.x2) - 2,
+    y: Math.min(s.y1, s.y2) - 2,
+    width: Math.abs(s.x2 - s.x1) + 4,
+    height: Math.abs(s.y2 - s.y1) + 4,
+  });
+  function segmentHitsBox(a, b, box) {
+    // Liang–Barsky clipping, including diagonal callout guides.
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
+    let lo = 0,
+      hi = 1;
+    for (const [p, q] of [
+      [-dx, a.x - box.x],
+      [dx, box.x + box.width - a.x],
+      [-dy, a.y - box.y],
+      [dy, box.y + box.height - a.y],
+    ]) {
+      if (p === 0) {
+        if (q < 0) return false;
+      } else if (p < 0) lo = Math.max(lo, q / p);
+      else hi = Math.min(hi, q / p);
+      if (lo > hi) return false;
+    }
+    return true;
+  }
+  function arrangeEdgeLabels() {
+    const plot = svg.querySelector("#plot");
+    if (!plot || !layout) return;
+    plot.querySelectorAll(".label-leader").forEach((el) => el.remove());
+    const baseHeight = Number(svg.dataset.baseHeight);
+    const bounds = {
+      left: plotLeft + 2,
+      right: frame.width - 18,
+      top: 52,
+      bottom: baseHeight - 4,
+    };
+    const occupied = [...layout.positions.values()].map((p) => ({
+      x: p.x,
+      y: p.y,
+      width: p.width,
+      height: p.height,
+    }));
+    for (const p of plot.querySelectorAll(".edge .line,.blocked-cross"))
+      occupied.push(...pathSegments(p.getAttribute("d")).map(segmentBox));
+    for (const b of technologyBoxes)
+      occupied.push({ x: b.x, y: b.y - 4, width: b.width, height: 20 });
+    // Other chart annotations (selection times and collapsed-group summaries).
+    for (const text of plot.querySelectorAll("text:not(.edge-label)")) {
+      if (text.closest(".state") && !text.classList.contains("selection-time"))
+        continue;
+      if (text.closest(".technology-tag")) continue;
+      const size = Number(text.getAttribute("font-size")) || 10;
+      occupied.push({
+        x: Number(text.getAttribute("x")),
+        y: Number(text.getAttribute("y")) - size,
+        width: measureChartText(text.textContent, size),
+        height: size + 3,
+      });
+    }
+    let bottom = baseHeight;
+    const guides = [];
+    for (const text of plot.querySelectorAll(".edge-label")) {
+      if (!text.dataset.labelText) {
+        text.dataset.labelText = text.dataset.fullLabel || text.textContent;
+        text.dataset.preferredX = text.getAttribute("x");
+        text.dataset.preferredY = text.getAttribute("y");
+        text.dataset.originalAnchor =
+          text.getAttribute("text-anchor") || "start";
+      }
+      const value = text.dataset.labelText;
+      const lines = M.wrapText(
+        value,
+        Math.min(180, bounds.right - bounds.left - 8),
+        10,
+        measureChartText,
+      );
+      const width =
+        Math.max(...lines.map((line) => measureChartText(line, 10)), 1) + 8;
+      const height = lines.length * 13 + 4;
+      const ownPath = text.closest(".edge")?.querySelector(".line");
+      const segments = pathSegments(ownPath?.getAttribute("d"));
+      if (
+        segments.length &&
+        !segments.some(
+          (s) =>
+            segmentBox(s).x <= bounds.right &&
+            segmentBox(s).x + segmentBox(s).width >= bounds.left,
+        )
+      ) {
+        text.setAttribute("display", "none");
+        continue;
+      }
+      text.removeAttribute("display");
+      const px = Number(text.dataset.preferredX),
+        py = Number(text.dataset.preferredY);
+      let anchor = { x: px, y: py + 4 };
+      if (segments.length) {
+        anchor = segments
+          .map((s) => {
+            const dx = s.x2 - s.x1,
+              dy = s.y2 - s.y1;
+            const t = Math.max(
+              0,
+              Math.min(
+                1,
+                ((px - s.x1) * dx + (py - s.y1) * dy) /
+                  (dx * dx + dy * dy || 1),
+              ),
+            );
+            return { x: s.x1 + t * dx, y: s.y1 + t * dy };
+          })
+          .sort(
+            (a, b) =>
+              Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py),
+          )[0];
+      }
+      const box = M.placeLabel(
+        {
+          x: px - (text.dataset.originalAnchor === "middle" ? width / 2 : 4),
+          y: py - 11,
+          width,
+          height,
+        },
+        occupied,
+        bounds,
+      );
+      text.setAttribute("x", box.x + 4);
+      text.setAttribute("y", box.y + 12);
+      text.setAttribute("text-anchor", "start");
+      text.replaceChildren();
+      lines.forEach((line, n) => {
+        const span = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "tspan",
+        );
+        span.setAttribute("x", box.x + 4);
+        span.setAttribute("y", box.y + 12 + n * 13);
+        span.textContent = line;
+        text.append(span);
+      });
+      text.dataset.labelBox = JSON.stringify(box);
+      const end = {
+        x: Math.max(box.x, Math.min(box.x + box.width, anchor.x)),
+        y: Math.max(box.y, Math.min(box.y + box.height, anchor.y)),
+      };
+      if (Math.hypot(end.x - anchor.x, end.y - anchor.y) > 18) {
+        guides.push({ text, anchor, end, box });
+      }
+      bottom = Math.max(bottom, box.y + box.height + 12);
+    }
+    const labelObstacles = [
+      ...plot.querySelectorAll(".edge-label:not([display='none'])"),
+    ].map((el) => JSON.parse(el.dataset.labelBox));
+    for (const { text, anchor, end, box } of guides) {
+      const obstacles = labelObstacles.filter(
+        (b) => b.x !== box.x || b.y !== box.y,
+      );
+      const clear = (points) =>
+        points
+          .slice(1)
+          .every((p, n) =>
+            obstacles.every((b) => !segmentHitsBox(points[n], p, b)),
+          );
+      const candidates = [[anchor, end]];
+      const xs = [
+        anchor.x,
+        end.x,
+        bounds.left,
+        ...obstacles.flatMap((b) => [b.x - 4, b.x + b.width + 4]),
+      ];
+      const ys = [
+        anchor.y,
+        end.y,
+        bounds.top,
+        ...obstacles.flatMap((b) => [b.y - 4, b.y + b.height + 4]),
+      ];
+      for (const x of xs)
+        candidates.push([anchor, { x, y: anchor.y }, { x, y: end.y }, end]);
+      for (const y of ys)
+        candidates.push([anchor, { x: anchor.x, y }, { x: end.x, y }, end]);
+      const length = (points) =>
+        points
+          .slice(1)
+          .reduce(
+            (sum, p, n) =>
+              sum + Math.hypot(p.x - points[n].x, p.y - points[n].y),
+            0,
+          );
+      const points = candidates
+        .filter(clear)
+        .sort((a, b) => length(a) - length(b))[0] || [anchor, end];
+      const leader = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      leader.setAttribute("class", "label-leader");
+      leader.setAttribute(
+        "d",
+        points.map((p, n) => `${n ? "L" : "M"} ${p.x} ${p.y}`).join(" "),
+      );
+      leader.setAttribute("fill", "none");
+      leader.setAttribute("stroke", "#9aa9ae");
+      leader.setAttribute("stroke-width", "0.8");
+      leader.setAttribute("stroke-dasharray", "2 3");
+      leader.setAttribute("pointer-events", "none");
+      text.before(leader);
+    }
+    layout.height = bottom;
+    svg.setAttribute("height", bottom);
+    svg.querySelector("#plot-clip rect")?.setAttribute("height", bottom - 48);
+    [...svg.children]
+      .find((el) => el.tagName.toLowerCase() === "rect")
+      ?.setAttribute("height", bottom);
+  }
   function renderSVG(full = false) {
     technologyBoxes = [];
     const d = doc();
@@ -268,6 +531,7 @@
       plotLeft,
       width: frame.width,
       includeHidden: full,
+      measureText: measureChartText,
     });
     renderedRelated =
       (focusChain || isEnemyTransition(selection)) && selection
@@ -276,6 +540,7 @@
     svg.dataset.view = view().mode;
     svg.setAttribute("width", layout.width);
     svg.setAttribute("height", layout.height);
+    svg.dataset.baseHeight = layout.height;
     svg.classList.toggle("link-mode", !!linkSource);
     const parts = [
       `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="48" width="${layout.width - plotLeft - 12}" height="${layout.height - 48}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
@@ -316,7 +581,10 @@
       const blockers = d.interactions.filter(
         (i) => i.effect === "block" && !i.proposed && i.targetId === t.id,
       );
-      const path = `M ${a.x + a.width} ${a.y + 16} V ${b.y + 16} H ${b.x}`;
+      const point = transitionPoint(t, state(t.from).end);
+      const path = point.branch
+        ? `M ${point.x1} ${point.y1} V ${point.y} H ${point.x2} V ${point.y2}`
+        : `M ${point.x1} ${point.y1} V ${point.y2} H ${point.x2}`;
       parts.push(
         `<g data-type="transition" data-id="${esc(t.id)}" class="edge${blockers.length ? " block" : ""}${edgeClass(t.id)}"><title>${esc(state(t.from).name)} → ${esc(state(t.to).name)}${blockers.length ? "（阻止）" : t.status === "planned" ? "（予定）" : ""}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${blockers.length ? "#c14d51" : "#8b9c9f"}" ${t.status === "planned" ? 'stroke-dasharray="5 4"' : ""} marker-end="url(#arrow-${blockers.length ? "red" : "gray"})"/>`,
       );
@@ -341,11 +609,11 @@
       if (!p) continue;
       const clipId = `clip-${d.states.indexOf(s)}`;
       parts.push(
-        `<g class="state${edgeClass(s.id)}" data-type="state" data-id="${esc(s.id)}"><title>${esc(s.name)} · ${time(s.start)}–${time(s.end)} ${units[d.time.unit]} · ${planned ? "予定" : "実際"}${quiet ? " · 平常" : ""}</title><defs><clipPath id="${clipId}"><rect x="${p.x + 5}" y="${p.y}" width="${Math.max(0, p.width - 10)}" height="32"/></clipPath></defs><rect class="body" x="${p.x}" y="${p.y}" width="${p.width}" height="32" rx="5" fill="${quiet ? "#f6f8f8" : planned ? "#fff" : c.fill}" stroke="${quiet ? "#ced9dc" : planned ? "#b3bec1" : c.stroke}" ${planned ? 'stroke-dasharray="5 3"' : quiet ? 'stroke-dasharray="3 3"' : ""}/><text x="${(Math.max(p.x, plotLeft) + Math.min(p.x + p.width, frame.width - 24)) / 2}" y="${p.y + 20}" text-anchor="middle" fill="${quiet ? "#95a5aa" : planned ? "#87999e" : c.ink}" font-size="11" font-weight="${quiet ? "400" : "550"}" clip-path="url(#${clipId})">${esc(s.name)}${planned ? " · 予定" : ""}</text>`,
+        `<g class="state${edgeClass(s.id)}" data-type="state" data-id="${esc(s.id)}"><title>${esc(s.name)} · ${time(s.start)}–${time(s.end)} ${units[d.time.unit]} · ${planned ? "予定" : "実際"}${quiet ? " · 平常" : ""}</title><defs><clipPath id="${clipId}"><rect x="${p.x + 4}" y="${p.y}" width="${Math.max(0, p.width - 8)}" height="${p.height}"/></clipPath></defs><rect class="body" x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" rx="5" fill="${quiet ? "#f6f8f8" : planned ? "#fff" : c.fill}" stroke="${quiet ? "#ced9dc" : planned ? "#b3bec1" : c.stroke}" ${planned ? 'stroke-dasharray="5 3"' : quiet ? 'stroke-dasharray="3 3"' : ""}/><text x="${(Math.max(p.x, plotLeft) + Math.min(p.x + p.width, frame.width - 24)) / 2}" y="${p.y + 20}" text-anchor="middle" fill="${quiet ? "#95a5aa" : planned ? "#87999e" : c.ink}" font-size="${p.text.fontSize}" font-weight="${quiet ? "400" : "550"}" clip-path="url(#${clipId})" class="state-name">${p.text.lines.map((line, n) => `<tspan x="${(Math.max(p.x, plotLeft) + Math.min(p.x + p.width, frame.width - 24)) / 2}" y="${p.y + (p.height - p.text.lines.length * p.text.lineHeight) / 2 + p.text.fontSize + n * p.text.lineHeight}">${esc(line)}</tspan>`).join("")}</text>`,
       );
       const h = Math.min(8, p.width / 3);
       parts.push(
-        `<rect class="resize" data-handle="start" x="${p.x}" y="${p.y}" width="${h}" height="32"/><rect class="resize" data-handle="end" x="${p.x + p.width - h}" y="${p.y}" width="${h}" height="32"/><path class="handle-line" d="M ${p.x + 4} ${p.y + 11} v 10 M ${p.x + p.width - 4} ${p.y + 11} v 10"/>`,
+        `<rect class="resize" data-handle="start" x="${p.x}" y="${p.y}" width="${h}" height="${p.height}"/><rect class="resize" data-handle="end" x="${p.x + p.width - h}" y="${p.y}" width="${h}" height="${p.height}"/><path class="handle-line" d="M ${p.x + 4} ${p.y + 11} v 10 M ${p.x + p.width - 4} ${p.y + 11} v 10"/>`,
       );
       if (selection?.id === s.id || linkSource === s.id)
         parts.push(
@@ -353,7 +621,7 @@
         );
       if (linkSource === s.id)
         parts.push(
-          `<rect class="pending-ring" x="${p.x - 3}" y="${p.y - 3}" width="${p.width + 6}" height="38" rx="7"/>`,
+          `<rect class="pending-ring" x="${p.x - 3}" y="${p.y - 3}" width="${p.width + 6}" height="${p.height + 6}" rx="7"/>`,
         );
       parts.push("</g>");
     }
@@ -370,7 +638,6 @@
       );
     }
     // Interactions share the same time scale. Their attachment points denote event times.
-    const labelBoxes = [];
     for (const i of d.interactions) {
       if (!full && !view().filters.interaction) continue;
       const s = layout.positions.get(i.fromStateId);
@@ -379,15 +646,18 @@
       if (i.targetType === "state") {
         const q = layout.positions.get(i.targetId);
         if (!q) continue;
-        target = { x: q.x, y: q.y + 16 };
+        target = { x: q.x, y: q.y + q.height / 2, height: q.height };
       } else target = transitionPoint(item("transition", i.targetId), i.time);
       if (!target) continue;
-      const down = target.y > s.y + 16,
+      const down = target.y > s.y + s.height / 2,
         x1 = timeX(i.sourceTime),
-        y1 = s.y,
+        y1 = s.y + (down ? s.height : 0),
         x2 = timeX(i.time),
-        y2 = i.targetType === "state" ? target.y + (down ? -16 : 16) : target.y;
-      const middleY = s.y - 2,
+        y2 =
+          i.targetType === "state"
+            ? target.y + (down ? -target.height / 2 : target.height / 2)
+            : target.y;
+      const middleY = (y1 + y2) / 2,
         path = `M ${x1} ${y1} V ${middleY} H ${x2} V ${y2}`;
       const blocked = i.effect === "block",
         style = interactionStyle(i.kind),
@@ -397,28 +667,14 @@
           Math.max(plotLeft, Math.max(x1, x2) + 7),
         ),
         labelY = middleY - 4;
-      const labelWidth = Math.min(160, i.label.length * 10);
-      const overlap = labelBoxes.some(
-        (b) =>
-          Math.abs(b.y - labelY) < 15 &&
-          labelX < b.x + b.w &&
-          labelX + labelWidth > b.x,
-      );
-      labelBoxes.push({ x: labelX, y: labelY, w: labelWidth });
-      const label = chosen(i.id)
-        ? i.label
-        : overlap
-          ? "…"
-          : i.label.length > 16
-            ? i.label.slice(0, 15) + "…"
-            : i.label;
+      const label = i.label;
       parts.push(
-        `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${i.proposed ? "検討案 / " : ""}${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${i.proposed ? 'stroke-dasharray="3 6"' : style.dash ? `stroke-dasharray="${style.dash}"` : ""} style="stroke-width:${style.width}" marker-end="url(#arrow-${i.kind})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label interaction-label" data-full-label="${esc(i.label)}" data-short-label="${esc(label)}" x="${labelX}" y="${labelY}">${i.proposed ? "検討: " : ""}${esc(label)}</text>`,
+        `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${i.proposed ? "検討案 / " : ""}${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${i.proposed ? 'stroke-dasharray="3 6"' : style.dash ? `stroke-dasharray="${style.dash}"` : ""} style="stroke-width:${style.width}" marker-end="url(#arrow-${i.kind})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label interaction-label" data-full-label="${esc((i.proposed ? "検討: " : "") + i.label)}" data-short-label="${esc(label)}" x="${labelX}" y="${labelY}">${i.proposed ? "検討: " : ""}${esc(label)}</text>`,
       );
       if (i.outcomeStateId && layout.positions.has(i.outcomeStateId)) {
         const o = layout.positions.get(i.outcomeStateId);
         parts.push(
-          `<path class="line" d="M ${x2} ${y2} H ${o.x - 9} V ${o.y + 16} H ${o.x}" stroke="${color}" stroke-dasharray="2 3"/>`,
+          `<path class="line" d="M ${x2} ${y2} H ${o.x - 9} V ${o.y + o.height / 2} H ${o.x}" stroke="${color}" stroke-dasharray="2 3"/>`,
         );
       }
       parts.push("</g>");
@@ -494,6 +750,7 @@
         );
     }
     svg.innerHTML = parts.join("");
+    arrangeEdgeLabels();
     connectionFeedback();
     sticky();
   }
@@ -1227,7 +1484,6 @@
     }
   }
   function renderProxies(parts, d) {
-    const labels = [];
     const rows = new Map(layout.rows.map((r) => [r.actor.id, r]));
     for (const proxy of M.interactionProxies(d, new Set(rows.keys()))) {
       const from = rows.get(proxy.fromActorId),
@@ -1245,19 +1501,7 @@
         ),
         labelY = y1 - 5;
       const fullLabel = `${first.proposed ? "検討: " : ""}${proxy.label} ×${proxy.interactions.length}`;
-      const width = Math.min(180, fullLabel.length * 10),
-        collision = labels.some(
-          (b) =>
-            Math.abs(b.y - labelY) < 14 &&
-            labelX < b.x + b.w &&
-            labelX + width > b.x,
-        );
-      const shortLabel = collision
-        ? ""
-        : fullLabel.length > 18
-          ? fullLabel.slice(0, 17) + "…"
-          : fullLabel;
-      if (!collision) labels.push({ x: labelX, y: labelY, w: width });
+      const shortLabel = fullLabel;
       parts.push(
         `<g class="interaction-proxy edge" data-type="interaction" data-id="${esc(first.id)}"><title>${esc(proxy.interactions.map((i) => `${i.label}: ${time(i.sourceTime)} → ${time(i.time)}`).join("\n"))}\n折りたたみ表示。端点は最早発生〜最遅到達。元の接続は詳細または展開で確認。</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${style.color}" stroke-dasharray="${first.proposed ? "3 6" : style.dash}" style="stroke-width:${style.width}" marker-end="url(#arrow-${proxy.kind})"/><text class="edge-label interaction-label" data-full-label="${esc(fullLabel)}" data-short-label="${esc(shortLabel)}" x="${labelX}" y="${labelY}">${esc(chosen(first.id) ? fullLabel : shortLabel)}</text></g>`,
       );
@@ -1286,7 +1530,9 @@
           p: layout.positions.has(i.fromStateId)
             ? {
                 x: timeX(i.sourceTime),
-                y: layout.positions.get(i.fromStateId).y - 12,
+                y:
+                  layout.positions.get(i.fromStateId).y +
+                  layout.positions.get(i.fromStateId).height,
               }
             : null,
         })),
@@ -1300,10 +1546,10 @@
         continue;
       const y =
         e.type === "state"
-          ? e.p.y + 35
+          ? e.p.y + e.p.height + 3
           : e.type === "transition"
             ? e.p.y + 19
-            : e.p.y + 47;
+            : e.p.y + 3;
       parts.push(
         technologyBubble(
           e.type,
@@ -1779,7 +2025,7 @@
         if (
           r.x < q.x + q.width &&
           r.x + r.w > q.x &&
-          r.y < q.y + 32 &&
+          r.y < q.y + q.height &&
           r.y + r.h > q.y
         )
           hits.push({ type: "state", id });
@@ -2699,5 +2945,9 @@
   });
   render();
   requestAnimationFrame(render);
+  document.fonts?.ready.then(() => {
+    chartTextCache.clear();
+    render();
+  });
   if (storageWarning) toast(storageWarning);
 })();
