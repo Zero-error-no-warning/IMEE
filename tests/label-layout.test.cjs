@@ -190,3 +190,40 @@ test("SVG export preserves wrapped text and displaced labels without changing th
   assert.deepEqual(a.savedDoc(), before);
   checkLabels(a);
 });
+
+test("crowded labels choose the nearest opening instead of the chart origin", () => {
+  const occupied = [{ x: 450, y: 380, width: 350, height: 220 }];
+  const wanted = { x: 600, y: 500, width: 80, height: 20 };
+  const placed = M.placeLabel(wanted, occupied, {
+    left: 0,
+    right: 1000,
+    top: 0,
+    bottom: 800,
+  });
+  assert.equal(
+    placed.x,
+    wanted.x,
+    "preserve horizontal time position when there is a nearby vertical opening",
+  );
+  assert.ok(
+    placed.y >= 603 && placed.y <= 610,
+    "choose the opening immediately below the obstacle",
+  );
+  assert.ok(Math.hypot(placed.x - wanted.x, placed.y - wanted.y) < 120);
+});
+
+test("labels use narrow openings at obstacle boundaries before distant empty regions", () => {
+  const occupied = [
+    { x: 450, y: 380, width: 350, height: 220 },
+    { x: 450, y: 626, width: 350, height: 160 },
+  ];
+  const placed = M.placeLabel(
+    { x: 600, y: 500, width: 80, height: 20 },
+    occupied,
+    { left: 0, right: 1000, top: 0, bottom: 800 },
+  );
+  assert.equal(placed.x, 600);
+  assert.ok(placed.y >= 603 && placed.y <= 603);
+  for (const obstacle of occupied.slice(0, -1))
+    assert.ok(!M.boxesOverlap(placed, obstacle));
+});

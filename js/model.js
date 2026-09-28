@@ -338,32 +338,35 @@
     a.y + a.height + padding > b.y;
   function placeLabel(box, occupied, bounds) {
     const x = Math.max(bounds.left, Math.min(bounds.right - box.width, box.x));
-    const candidates = [];
-    for (const dy of [0, -18, 18, -36, 36, -54, 54, -90, 90])
-      for (const dx of [0, -24, 24, -60, 60, -120, 120])
-        candidates.push({
-          ...box,
-          x: Math.max(bounds.left, Math.min(bounds.right - box.width, x + dx)),
-          y: box.y + dy,
-        });
-    const free = (b) =>
-      b.y >= bounds.top &&
-      b.y + b.height <= bounds.bottom &&
-      occupied.every((o) => !boxesOverlap(b, o));
-    candidates.sort(
-      (a, b) =>
-        Math.hypot(a.x - x, a.y - box.y) - Math.hypot(b.x - x, b.y - box.y),
-    );
-    let result = candidates.find(free);
-    if (!result) {
-      outer: for (let y = bounds.top; y + box.height <= bounds.bottom; y += 14)
-        for (let xx = bounds.left; xx + box.width <= bounds.right; xx += 24) {
-          const candidate = { ...box, x: xx, y };
-          if (free(candidate)) {
-            result = candidate;
-            break outer;
-          }
+    // Candidate coordinates come from the preferred position and obstacle edges.
+    // Searching their combinations also finds gaps narrower than a fixed grid.
+    const xs = [x, bounds.left, bounds.right - box.width];
+    const ys = [box.y, bounds.top, bounds.bottom - box.height];
+    for (const obstacle of occupied) {
+      xs.push(obstacle.x - box.width - 3, obstacle.x + obstacle.width + 3);
+      ys.push(obstacle.y - box.height - 3, obstacle.y + obstacle.height + 3);
+    }
+    const ordered = (values, min, max, origin) =>
+      [...new Set(values.filter((value) => value >= min && value <= max))].sort(
+        (a, b) => Math.abs(a - origin) - Math.abs(b - origin),
+      );
+    const nearX = ordered(xs, bounds.left, bounds.right - box.width, x);
+    const nearY = ordered(ys, bounds.top, bounds.bottom - box.height, box.y);
+    let result,
+      bestDistance = Infinity;
+    for (const xx of nearX) {
+      const dxSquared = (xx - x) ** 2;
+      if (dxSquared >= bestDistance) break;
+      for (const y of nearY) {
+        const distance = dxSquared + (y - box.y) ** 2;
+        if (distance >= bestDistance) break;
+        const candidate = { ...box, x: xx, y };
+        if (occupied.every((obstacle) => !boxesOverlap(candidate, obstacle))) {
+          result = candidate;
+          bestDistance = distance;
+          break;
         }
+      }
     }
     // A dense chart gets a callout area below it rather than overlapping labels.
     if (!result)
