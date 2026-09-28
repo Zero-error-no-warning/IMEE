@@ -1,0 +1,16 @@
+{
+  "name": "imee",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static Mission State Timeline Editor",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "test:model": "node --test tests/model.test.cjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.1"
+  }
+}
