@@ -1,5 +1,7 @@
 # Document schema v1 — Technology / View extension
 
+LLMからJSONを直接生成する場合は、完成例を含む単体の [JSON生成仕様書](llm-json-generation.md) と [生成SKILL](../skills/imee-json-generator/SKILL.md) を利用してください。`node scripts/validate-mission.cjs mission.json` で実装と共通の検証を実行できます。
+
 `version: 1` を拡張しています。旧JSONの読込時は `technologies: []`、`bindings: []`、`views.main` を補います。旧 `actor.collapsed` は `views.main.collapsedActors` へ移し、Actorから削除します。旧Actor配列順は `actorOrder` の初期値にします。時刻・接続・IDは変更しません。
 
 ## MissionとView

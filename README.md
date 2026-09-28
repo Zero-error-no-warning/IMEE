@@ -130,6 +130,20 @@ Transitionの開始〜終了を介入可能時間窓とし、到達時刻との�
 
 `離脱 → 無力化` という実際のTransitionも別に登録しています。妨害後のStateの指定だけでは、StateやTransitionを自動生成しません。阻止の作用を削除すると予定遷移の阻止表示が消えますが、Stateや予定は保持します。
 
+## LLMでミッションJSONを生成する
+
+[LLM用JSON生成仕様書](docs/llm-json-generation.md) をLLMに添付し、シナリオと一緒に渡してください。フィールド・時間制約・技術評価・完成例を1ファイルにまとめています。
+
+> 添付仕様に従い、次のシナリオをIMEEのJSONにしてください。出力はJSONのみ。時刻の補完は仮定としてnotesに記載し、不明な技術成熟度はunknown / nullにしてください。シナリオ：……
+
+リポジトリを扱えるLLMには [JSON生成SKILL](skills/imee-json-generator/SKILL.md) を指定できます。生成したJSONは、追加パッケージなしで検証できます（Node.js 24以降）。
+
+```sh
+node scripts/validate-mission.cjs mission.json
+```
+
+検証後、アプリの「JSON読込」から開きます。[完成例](examples/llm-example.json) はグループ、予定遷移の阻止と結果分岐、4種類の技術Bindingを含みます。検証コマンドはエディタ本体と同じルールを使います。形式の検証と、シナリオの妥当性・技術条件の充足は別です。
+
 ## 保存形式と構成
 
 詳細は [データモデル](docs/data-model.md) を参照してください。
@@ -158,7 +172,7 @@ npm test
 
 モデルの検証だけなら追加パッケージ不要で `node --test tests/model.test.cjs tests/research-model.test.cjs` を実行できます。
 
-- 114件のモデル・DOM操作テストを実行します。
+- 125件のモデル・DOM操作・JSON生成支援テストを実行します。
 - モデル：時間比例、Actor階層の循環拒否、表示範囲、重複の自動段分け、参照整合性、時間順序、妨害と結果、削除の連鎖、Undo/Redo、JSON往復を検証。
 - DOM操作：ドラッグ、複製、伸縮、Actor並べ替え、接続作成、Altドラッグ接続、ダイアログ、検索、JSON読込・出力、SVG出力、自動保存の復元を検証。
 - SVG：実際の出力を画像に変換して図の配置を確認。

@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "title": "架空例：予定遷移への介入と未評価技術",
+  "time": {
+    "unit": "minutes",
+    "duration": 24,
+    "snap": 1
+  },
+  "actors": [
+    {
+      "id": "actor-red",
+      "name": "敵Actor",
+      "side": "hostile",
+      "notes": "仮想例。実在の能力や事象を示さない。"
+    },
+    {
+      "id": "actor-blue",
+      "name": "味方グループ",
+      "side": "friendly",
+      "isGroup": true
+    },
+    {
+      "id": "actor-sensor",
+      "name": "観測",
+      "side": "friendly",
+      "parentId": "actor-blue"
+    },
+    {
+      "id": "actor-control",
+      "name": "管制",
+      "side": "friendly",
+      "parentId": "actor-blue"
+    },
+    {
+      "id": "actor-effector",
+      "name": "介入",
+      "side": "friendly",
+      "parentId": "actor-blue"
+    }
+  ],
+  "states": [
+    {
+      "id": "state-red-move",
+      "actorId": "actor-red",
+      "name": "進行",
+      "start": 0,
+      "end": 10,
+      "status": "actual",
+      "activity": "active"
+    },
+    {
+      "id": "state-red-goal",
+      "actorId": "actor-red",
+      "name": "予定達成",
+      "start": 18,
+      "end": 24,
+      "status": "planned",
+      "activity": "active"
+    },
+    {
+      "id": "state-red-stop",
+      "actorId": "actor-red",
+      "name": "停止",
+      "start": 14,
+      "end": 24,
+      "status": "actual",
+      "activity": "active",
+      "notes": "仮定：介入により停止する成立シナリオ。"
+    },
+    {
+      "id": "state-observe",
+      "actorId": "actor-sensor",
+      "name": "観測中",
+      "start": 2,
+      "end": 6,
+      "status": "actual",
+      "activity": "active"
+    },
+    {
+      "id": "state-decide",
+      "actorId": "actor-control",
+      "name": "判断",
+      "start": 6,
+      "end": 10,
+      "status": "actual",
+      "activity": "active",
+      "phase": "decision"
+    },
+    {
+      "id": "state-act",
+      "actorId": "actor-effector",
+      "name": "介入実行",
+      "start": 10,
+      "end": 15,
+      "status": "actual",
+      "activity": "active"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "transition-goal",
+      "to": "state-red-goal",
+      "status": "planned",
+      "label": "達成に向けた移行",
+      "from": "state-red-move"
+    },
+    {
+      "id": "transition-stop",
+      "to": "state-red-stop",
+      "status": "actual",
+      "label": "停止へ移行",
+      "from": "state-red-move"
+    }
+  ],
+  "interactions": [
+    {
+      "id": "interaction-observe",
+      "fromStateId": "state-red-move",
+      "targetType": "state",
+      "targetId": "state-observe",
+      "label": "変化を観測",
+      "kind": "observation",
+      "effect": "cause",
+      "sourceTime": 2,
+      "time": 2,
+      "proposed": false
+    },
+    {
+      "id": "interaction-report",
+      "fromStateId": "state-observe",
+      "targetType": "state",
+      "targetId": "state-decide",
+      "label": "観測情報を共有",
+      "kind": "information",
+      "effect": "cause",
+      "sourceTime": 5,
+      "time": 6,
+      "proposed": false
+    },
+    {
+      "id": "interaction-command",
+      "fromStateId": "state-decide",
+      "targetType": "state",
+      "targetId": "state-act",
+      "label": "介入を指令",
+      "kind": "command",
+      "effect": "cause",
+      "sourceTime": 9,
+      "time": 10,
+      "proposed": false
+    },
+    {
+      "id": "interaction-block",
+      "fromStateId": "state-act",
+      "targetType": "transition",
+      "targetId": "transition-goal",
+      "label": "予定達成を阻止",
+      "kind": "interference",
+      "effect": "block",
+      "sourceTime": 12,
+      "time": 14,
+      "proposed": false,
+      "outcomeStateId": "state-red-stop",
+      "notes": "仮定：到達・阻止・結果はこの例の設定であり実証ではない。"
+    }
+  ],
+  "technologies": [
+    {
+      "id": "technology-observe",
+      "name": "観測技術",
+      "trl": null,
+      "status": "unknown"
+    },
+    {
+      "id": "technology-intervene",
+      "name": "介入技術",
+      "trl": null,
+      "status": "research",
+      "notes": "仮定：研究対象。TRLの根拠は未設定。"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "binding-sensor",
+      "technologyId": "technology-observe",
+      "targetType": "actor",
+      "targetId": "actor-sensor"
+    },
+    {
+      "id": "binding-observation",
+      "technologyId": "technology-observe",
+      "targetType": "state",
+      "targetId": "state-observe"
+    },
+    {
+      "id": "binding-action",
+      "technologyId": "technology-intervene",
+      "targetType": "interaction",
+      "targetId": "interaction-block"
+    },
+    {
+      "id": "binding-outcome",
+      "technologyId": "technology-intervene",
+      "targetType": "transition",
+      "targetId": "transition-stop"
+    }
+  ],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "actor-red",
+        "actor-blue",
+        "actor-sensor",
+        "actor-control",
+        "actor-effector"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 24
+      },
+      "filters": {
+        "technology": true,
+        "interaction": true,
+        "planned": true,
+        "quiet": true
+      },
+      "laneHeight": 44,
+      "mode": "mission"
+    }
+  }
+}
