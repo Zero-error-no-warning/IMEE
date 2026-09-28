@@ -175,3 +175,96 @@ test("causal highlighting includes planned target and actual outcome", () => {
   const ids = M.related(sample(), { type: "interaction", id: "hit" });
   for (const id of ["hit", "escape", "e4", "e5", "t2"]) assert.ok(ids.has(id));
 });
+
+test("Actor hierarchy supports arbitrary parent Actors and nested groups", () => {
+  const d = sample();
+  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
+  d.actors.find((a) => a.id === "sensor").parentId = "torpedo";
+  M.validate(d);
+  const nodes = M.hierarchy(d);
+  assert.equal(nodes.find((n) => n.actor.id === "sensor").depth, 2);
+  assert.equal(nodes.find((n) => n.actor.id === "uuv").hasChildren, true);
+});
+test("hierarchy rejects absent parents, self-parenting, cycles and invalid collapse flags", () => {
+  for (const mutate of [
+    (d) => (d.actors[0].parentId = "missing"),
+    (d) => (d.actors[0].parentId = d.actors[0].id),
+    (d) => {
+      d.actors[0].parentId = "sensor";
+      d.actors[1].parentId = "enemy";
+    },
+    (d) => (d.actors[0].collapsed = "yes"),
+  ]) {
+    const d = sample();
+    mutate(d);
+    assert.throws(() => M.validate(d));
+  }
+});
+test("collapsing a group hides descendants without changing their state times or references", () => {
+  const d = sample();
+  d.actors.find((a) => a.id === "sensor").parentId = "uuv";
+  d.actors.find((a) => a.id === "torpedo").parentId = "sensor";
+  d.actors.find((a) => a.id === "uuv").collapsed = true;
+  const saved = JSON.stringify(d.states);
+  const layout = M.layout(d);
+  assert.equal(layout.positions.has("t2"), false);
+  assert.equal(layout.positions.has("u2"), true);
+  assert.equal(
+    M.layout(d, 16, { includeHidden: true }).positions.has("t2"),
+    true,
+  );
+  assert.equal(JSON.stringify(d.states), saved);
+  M.validate(d);
+});
+test("moving a group reparents the root and carries every descendant", () => {
+  const d = sample();
+  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
+  M.placeActor(d, "uuv", "control", "inside");
+  M.validate(d);
+  assert.equal(d.actors.find((a) => a.id === "uuv").parentId, "control");
+  assert.equal(d.actors.find((a) => a.id === "torpedo").parentId, "uuv");
+  assert.deepEqual([...M.descendants(d, "control")].sort(), [
+    "control",
+    "torpedo",
+    "uuv",
+  ]);
+  assert.throws(() => M.placeActor(d, "control", "torpedo", "inside"));
+});
+test("deleting a group cascades the entire subtree and all dependent edges", () => {
+  const d = sample();
+  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
+  M.remove(d, "actor", "uuv");
+  M.validate(d);
+  assert.equal(
+    d.actors.some((a) => a.id === "torpedo"),
+    false,
+  );
+  assert.equal(
+    d.interactions.some((i) => i.id === "hit"),
+    false,
+  );
+  assert.equal(
+    d.transitions.some((t) => t.id === "escape"),
+    true,
+  );
+});
+test("view zoom changes the time span while preserving canvas width and linearity", () => {
+  for (const width of [320, 768, 1440]) {
+    const full = M.viewport(60, width),
+      zoom = M.viewport(60, width, 20, 10);
+    assert.equal(full.width, zoom.width);
+    assert.ok(Math.abs(zoom.scale / full.scale - 6) < 1e-12);
+    const l = M.layout(sample(), zoom.scale, {
+      start: zoom.start,
+      plotLeft: zoom.plotLeft,
+      width,
+    });
+    assert.equal(l.width, width);
+    assert.equal(
+      l.positions.get("e2").x,
+      zoom.plotLeft + (14 - 20) * zoom.scale,
+    );
+  }
+  assert.equal(M.viewport(60, 1000, -10, 10).start, 0);
+  assert.equal(M.viewport(60, 1000, 59, 10).start, 50);
+});
