@@ -222,7 +222,7 @@ test("Transition duration editor changes adjacent State boundaries and reports t
 });
 test("late proposed interventions show a timing warning without marking an additional block", async (t) => {
   const a = await app(t);
-  assert.equal(a.d.querySelectorAll(".blocked-cross").length, 1);
+  assert.equal(a.d.querySelectorAll(".intervention-node").length, 1);
   a.click('[data-id="late-hit"] .hit');
   assert.match(a.$("#inspector").textContent, /遅すぎる/);
   assert.match(a.$("#inspector").textContent, /検討案/);

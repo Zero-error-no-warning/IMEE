@@ -237,7 +237,7 @@
     return `${chosen(id) ? " selected" : ""}${related && !related.has(id) ? " dimmed" : ""}`;
   }
   const svgStyle = `
-    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}svg[data-view="interaction"] .state:not(.selected) .body{fill-opacity:.25}
+    text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.intervention-node{stroke:#c14d51;stroke-width:2;fill:white}.intervention-point.selected .intervention-node,.intervention-point:hover .intervention-node{stroke-width:3}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}svg[data-view="interaction"] .state:not(.selected) .body{fill-opacity:.25}
   `;
   let technologyBoxes = [];
   const chartTextCache = new Map();
@@ -333,8 +333,17 @@
       width: p.width,
       height: p.height,
     }));
-    for (const p of plot.querySelectorAll(".edge .line,.blocked-cross"))
+    for (const p of plot.querySelectorAll(".edge .line"))
       occupied.push(...pathSegments(p.getAttribute("d")).map(segmentBox));
+    for (const node of plot.querySelectorAll(".intervention-node")) {
+      const r = Number(node.getAttribute("r"));
+      occupied.push({
+        x: Number(node.getAttribute("cx")) - r,
+        y: Number(node.getAttribute("cy")) - r,
+        width: r * 2,
+        height: r * 2,
+      });
+    }
     for (const b of technologyBoxes)
       occupied.push({ x: b.x, y: b.y - 4, width: b.width, height: 20 });
     // Other chart annotations (selection times and collapsed-group summaries).
@@ -409,7 +418,13 @@
       }
       const box = M.placeLabel(
         {
-          x: px - (text.dataset.originalAnchor === "middle" ? width / 2 : 4),
+          x:
+            px -
+            (text.dataset.originalAnchor === "middle"
+              ? width / 2
+              : text.dataset.originalAnchor === "end"
+                ? width
+                : 4),
           y: py - 11,
           width,
           height,
@@ -562,7 +577,7 @@
     svg.dataset.baseHeight = layout.height;
     svg.classList.toggle("link-mode", !!linkSource);
     const parts = [
-      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="48" width="${layout.width - plotLeft - 12}" height="${layout.height - 48}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
+      `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、丸い妨害点から成功時の結果と失敗時の予定経路へ分岐。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="48" width="${layout.width - plotLeft - 12}" height="${layout.height - 48}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
     ];
     parts.push(
       `<defs>${Object.keys(kinds)
@@ -591,6 +606,7 @@
         `<line class="grid" x1="${x}" y1="48" x2="${x}" y2="${layout.height - 28}"/>`,
       );
     }
+    const interventionNodes = [];
     // Transitions are drawn behind states. A vertical branch does not alter its time coordinate.
     for (const t of d.transitions) {
       if (!full && !view().filters.planned && t.status === "planned") continue;
@@ -598,7 +614,11 @@
         b = layout.positions.get(t.to);
       if (!a || !b) continue;
       const blockers = d.interactions.filter(
-        (i) => i.effect === "block" && !i.proposed && i.targetId === t.id,
+        (i) =>
+          (full || view().filters.interaction) &&
+          i.effect === "block" &&
+          !i.proposed &&
+          i.targetId === t.id,
       );
       const point = transitionPoint(t, state(t.from).end);
       const initial = point.branch
@@ -621,7 +641,7 @@
       const path = routePath(routed);
 
       parts.push(
-        `<g data-type="transition" data-id="${esc(t.id)}" class="edge${blockers.length ? " block" : ""}${edgeClass(t.id)}"><title>${esc(state(t.from).name)} → ${esc(state(t.to).name)}${blockers.length ? "（阻止）" : t.status === "planned" ? "（予定）" : ""}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${blockers.length ? "#c14d51" : "#8b9c9f"}" ${t.status === "planned" ? 'stroke-dasharray="5 4"' : ""} marker-end="url(#arrow-${blockers.length ? "red" : "gray"})"/>`,
+        `<g data-type="transition" data-id="${esc(t.id)}" class="edge${blockers.length ? " block" : ""}${edgeClass(t.id)}"><title>${esc(state(t.from).name)} → ${esc(state(t.to).name)}${blockers.length ? "（阻止）" : t.status === "planned" ? "（予定）" : ""}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="#8b9c9f" ${t.status === "planned" ? 'stroke-dasharray="5 4"' : ""} marker-end="url(#arrow-gray)"/>`,
       );
       if (t.label || b.x - a.x - a.width >= 90)
         parts.push(
@@ -629,8 +649,18 @@
         );
       for (const block of blockers) {
         const p = transitionPoint(t, block.time);
+        const failure = transitionPoint(
+          t,
+          (block.time + state(t.to).start) / 2,
+        );
         parts.push(
-          `<path class="blocked-cross" d="M ${p.x - 5} ${p.y - 5} l 10 10 M ${p.x + 5} ${p.y - 5} l -10 10"/><text class="edge-label" x="${p.x}" y="${p.y + 15}" text-anchor="middle">阻止</text>`,
+          `<text class="edge-label branch-label failure-label" data-branch="failure" data-intervention="${esc(block.id)}" x="${failure.x}" y="${failure.y - 8}" text-anchor="middle" style="fill:#71828a">妨害失敗</text>`,
+        );
+        const outcome = block.outcomeStateId
+          ? state(block.outcomeStateId)
+          : null;
+        interventionNodes.push(
+          `<g class="edge intervention-point${edgeClass(block.id)}" data-type="interaction" data-id="${esc(block.id)}"><title>${esc(block.label)} · ${time(block.time)}\n妨害成功 → ${esc(outcome?.name || "結果State未設定")}\n妨害失敗 → ${esc(state(t.to).name)}（元の予定経路）</title><circle class="node-hit" cx="${p.x}" cy="${p.y}" r="11" fill="#fff" fill-opacity="0"/><circle class="intervention-node" data-transition-id="${esc(t.id)}" cx="${p.x}" cy="${p.y}" r="6"/>${!outcome || !layout.positions.has(outcome.id) ? `<text class="edge-label branch-label" data-branch="success" x="${p.x + 10}" y="${p.y + 20}">妨害成功（${outcome ? "結果非表示" : "結果未設定"}）</text>` : ""}</g>`,
         );
       }
       parts.push("</g>");
@@ -713,26 +743,24 @@
       parts.push(
         `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${i.proposed ? "検討案 / " : ""}${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${i.proposed ? 'stroke-dasharray="3 6"' : style.dash ? `stroke-dasharray="${style.dash}"` : ""} style="stroke-width:${style.width}" marker-end="url(#arrow-${i.kind})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label interaction-label" data-full-label="${esc((i.proposed ? "検討: " : "") + i.label)}" data-short-label="${esc(label)}" x="${labelX}" y="${labelY}">${i.proposed ? "検討: " : ""}${esc(label)}</text>`,
       );
-      if (i.outcomeStateId && layout.positions.has(i.outcomeStateId)) {
-        const o = layout.positions.get(i.outcomeStateId);
-        parts.push(
-          `<path class="line" d="${routePath(
-            edgeRouter(
-              [
-                { x: x2, y: y2 },
-                { x: o.x - 9, y: y2 },
-                { x: o.x - 9, y: o.y + o.height / 2 },
-                { x: o.x, y: o.y + o.height / 2 },
-              ],
-              { axis: "horizontal" },
-            ),
-          )}" stroke="${color}" stroke-dasharray="2 3"/>`,
-        );
-      }
+      renderOutcomeBranch(parts, i, x2, y2);
       parts.push("</g>");
+    }
+    if (full || view().filters.interaction) {
+      for (const i of d.interactions) {
+        if (
+          i.effect !== "block" ||
+          i.proposed ||
+          layout.positions.has(i.fromStateId)
+        )
+          continue;
+        const p = transitionPoint(item("transition", i.targetId), i.time);
+        if (p) renderOutcomeBranch(parts, i, p.x, p.y);
+      }
     }
     if (!full && view().filters.interaction) renderProxies(parts, filtered);
     renderTechnologyTags(parts, d, full);
+    parts.push(...interventionNodes);
     if (!d.actors.length)
       parts.push(
         '<text x="230" y="112" font-size="14" fill="#73858b">「＋ Actor」からミッションの登場主体を追加してください。</text>',
@@ -941,7 +969,7 @@
           ],
         ]);
         if (x.effect === "block" && !x.proposed)
-          html += `<div class="block-card"><strong>成立しなかった予定遷移</strong><p>${esc(target)}${x.outcomeStateId ? `<br>妨害後：${esc(state(x.outcomeStateId).name)}` : ""}</p></div>`;
+          html += `<div class="block-card"><strong>妨害点の分岐</strong><p>妨害成功 → ${esc(x.outcomeStateId ? state(x.outcomeStateId).name : "結果State未設定")}<br>妨害失敗 → ${esc(state(item("transition", x.targetId).to).name)}</p><p>失敗側は元の予定経路を示す比較用の分岐です。両方が成立したことや成功確率を表しません。</p></div>`;
       }
       html +=
         '<div class="panel-actions"><button data-action="edit">編集</button>' +
@@ -1535,6 +1563,25 @@
       );
     }
   }
+  function renderOutcomeBranch(parts, i, x2, y2) {
+    if (!i.outcomeStateId || !layout.positions.has(i.outcomeStateId)) return;
+    const color = interactionStyle(i.kind).color;
+    const o = layout.positions.get(i.outcomeStateId);
+    const outcomePath = routePath(
+      edgeRouter(
+        [
+          { x: x2, y: y2 },
+          { x: o.x - 9, y: y2 },
+          { x: o.x - 9, y: o.y + o.height / 2 },
+          { x: o.x, y: o.y + o.height / 2 },
+        ],
+        { axis: "horizontal" },
+      ),
+    );
+    parts.push(
+      `<g class="edge outcome-branch${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${i.proposed ? "検討案の結果" : "妨害成功"} → ${esc(state(i.outcomeStateId).name)}</title><path class="hit" d="${outcomePath}"/><path class="line success-branch" d="${outcomePath}" stroke="${color}" ${i.proposed ? 'stroke-dasharray="2 3"' : 'style="stroke-width:2"'} marker-end="url(#arrow-${i.kind})"/><text class="edge-label branch-label" data-branch="success" x="${(x2 + o.x) / 2 - 12}" y="${(y2 + o.y + o.height / 2) / 2}" text-anchor="end">${i.proposed ? "検討案の結果" : "妨害成功"}</text></g>`,
+    );
+  }
   function renderProxies(parts, d) {
     const rows = new Map(layout.rows.map((r) => [r.actor.id, r]));
     for (const proxy of M.interactionProxies(d, new Set(rows.keys()))) {
@@ -1544,8 +1591,12 @@
       const first = proxy.interactions[0],
         x1 = timeX(Math.min(...proxy.interactions.map((i) => i.sourceTime))),
         x2 = timeX(Math.max(...proxy.interactions.map((i) => i.time)));
+      const exactTarget =
+        proxy.interactions.length === 1 && first.targetType === "transition"
+          ? transitionPoint(item("transition", first.targetId), first.time)
+          : null;
       const y1 = from.top + from.height - 18,
-        y2 = to.top + to.height - 18,
+        y2 = exactTarget?.y ?? to.top + to.height - 18,
         path = routePath(
           edgeRouter([
             { x: x1, y: y1 },

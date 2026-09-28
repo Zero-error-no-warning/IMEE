@@ -176,7 +176,7 @@ test("creates an explicit block on a planned transition with actual outcome", as
   assert.equal(i.effect, "block");
   assert.equal(i.targetId, "escape");
   assert.equal(i.outcomeStateId, "e5");
-  assert.ok(a.d.querySelectorAll(".blocked-cross").length >= 2);
+  assert.ok(a.d.querySelectorAll(".intervention-node").length >= 2);
 });
 test("rejects blocking an actual transition without opening an invalid form", async (t) => {
   const a = await app(t);

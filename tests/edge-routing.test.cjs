@@ -179,7 +179,7 @@ test("shared-endpoint interactions render separate visible and hit paths without
   );
   assert.deepEqual(a.savedDoc(), before);
 });
-test("block arrows and crosses follow an offset Transition at the same arrival time", async (t) => {
+test("block arrows and decision nodes follow an offset Transition at the same arrival time", async (t) => {
   const d = M.migrate(sample());
   d.transitions.push({
     ...d.transitions.find((x) => x.id === "escape"),
@@ -198,13 +198,11 @@ test("block arrows and crosses follow an offset Transition at the same arrival t
   const arrow = points(a.$('[data-id="hit-copy"] .line')).at(-1);
   const onLine = M.pointOnRoute(two, arrow.x, arrow.y);
   assert.ok(Math.abs(onLine.y - arrow.y) < 1e-6);
-  const cross = a
-    .$('[data-id="escape-copy"] .blocked-cross')
-    .getAttribute("d")
-    .match(/-?\d*\.?\d+/g)
-    .map(Number);
-  assert.ok(Math.abs(cross[0] + 5 - arrow.x) < 1e-6);
-  assert.ok(Math.abs(cross[1] + 5 - arrow.y) < 1e-6);
+  const node = a.$(
+    '.intervention-point[data-id="hit-copy"] .intervention-node',
+  );
+  assert.ok(Math.abs(Number(node.getAttribute("cx")) - arrow.x) < 1e-6);
+  assert.ok(Math.abs(Number(node.getAttribute("cy")) - arrow.y) < 1e-6);
 });
 test("collapsed proxies with different meanings separate without changing the original interactions", async (t) => {
   const d = M.migrate(sample.research());
