@@ -1,87 +1,60 @@
-# Document schema v1
+# Document schema v1 — Technology / View extension
 
-時刻は共通の相対時間軸上の数値です。単位は `time.unit`、表示範囲は `[0, time.duration]`。座標は保存しません。JSONから描画時に計算します。
+`version: 1` を拡張しています。旧JSONの読込時は `technologies: []`、`bindings: []`、`views.main` を補います。旧 `actor.collapsed` は `views.main.collapsedActors` へ移し、Actorから削除します。旧Actor配列順は `actorOrder` の初期値にします。時刻・接続・IDは変更しません。
 
-## Document
+## MissionとView
 
-| フィールド   | 型            | 意味                       |
-| ------------ | ------------- | -------------------------- |
-| version      | `1`           | スキーマバージョン         |
-| title        | string        | ミッション名（1〜300文字） |
-| time         | object        | `{ unit, duration, snap }` |
-| actors       | Actor[]       | 同じ親を持つActorの配列順が兄弟間の順序         |
-| states       | State[]       | 状態                       |
-| transitions  | Transition[]  | 同一Actor内の遷移          |
-| interactions | Interaction[] | Actor間の作用・遷移阻止    |
-
-`unit`: `seconds | minutes | hours`。`0 < duration <= 1,000,000`、`0.01 <= snap <= duration`。すべての時刻は有限の数値。各コレクションは最大10,000件、UIからのファイル読込は8MiBまでです。この上限は読み込み防御用であり、大規模文書の描画性能を保証しません。
-
-すべての `id` は文書全体で一意な空でない文字列。IDは位置や名前に依存せず、参照はIDで保持します。`notes` は省略可能で、10,000文字以下です。
-
-## Actor
-
-```json
-{ "id": "enemy", "name": "敵UUV", "side": "hostile", "notes": "" }
-```
-
-`side`: `friendly | hostile | neutral`。
-
-Actorには次の任意フィールドを追加できます。既存v1文書はそのまま読み込めます。
-
-| フィールド | 型・既定値              | 意味                                                        |
-| ---------- | ----------------------- | ----------------------------------------------------------- |
-| parentId   | string / null、既定null | 親ActorのID。通常のActorも親にできます                      |
-| isGroup    | boolean、既定false      | グループとして表示。子Actorがある場合は自動的に展開UIを表示 |
-| collapsed  | boolean、既定false      | 子孫を画面から隠す。JSONと自動保存に含め、Undo可能          |
-
-親IDの不在・自己参照・循環を拒否します。`actors` の順序は兄弟間で保ち、描画は親→子の深さ優先。Stateを持つActorを親にしても、親のStateは通常どおり表示します。折りたたみ時は親の行を残し、子孫のState・関連リンクを隠して件数を表示します。参照と時刻は変えません。
-
-Actorを別Actor行の中央へドロップすると、そのActorを親にします。上下端へのドロップでは移動先と同じ親を持ち、その前後へ移動します。子孫の親参照は変更しないため、部分木が一緒に移動します。
-
-## State
+| フィールド                                   | 内容                                              |
+| -------------------------------------------- | ------------------------------------------------- |
+| version / title                              | `1`、ミッション名                                 |
+| time                                         | `{ unit: seconds/minutes/hours, duration, snap }` |
+| actors / states / transitions / interactions | ミッションの主体・状態・因果                      |
+| technologies / bindings                      | 技術カタログと依存関係                            |
+| views.main                                   | 表示専用情報。Missionとは別のオブジェクト         |
 
 ```json
 {
-  "id": "escape-state",
-  "actorId": "enemy",
-  "name": "離脱",
-  "start": 36,
-  "end": 44,
-  "status": "actual",
-  "activity": "active",
-  "notes": ""
+  "collapsedActors": ["submarine"],
+  "actorOrder": ["enemy", "control", "submarine", "sonar"],
+  "zoom": 1.5,
+  "visibleTimeRange": { "start": 10, "end": 50 },
+  "filters": {
+    "technology": true,
+    "interaction": true,
+    "planned": true,
+    "quiet": true
+  },
+  "laneHeight": 52,
+  "mode": "mission"
 }
 ```
 
-`0 <= start < end <= duration`。`status`: `actual | planned`。`activity`: `active | quiet`。実際か予定か、活動か平常かは独立した区分です。
+`mode`: `mission / technology / gap / interaction`。表示プロファイルは現在 `main` を使用し、その中のmodeで切り替えます。独立したプロファイルごとの編集UIはありません。表示設定はJSON・自動保存に含まれます。ズーム操作はUndoの1操作を消費しません。折りたたみ・並べ替え・親変更はUndo可能です。文書編集の履歴にはViewのスナップショットも含みます。
 
-State同士の重複を許容します。Actor内で実際のStateを優先し、開始時刻順に既存の段へ詰め、重なる場合は次の段を使います。予定と実際の分岐を同一Actorに表示できます。
+Actor配列の物理順を変えず、兄弟間の順序を `actorOrder` で決めます。親子関係は意味上の構造なので `actor.parentId` に残します。追加ActorはViewの順序にも追加します。`laneHeight` は40〜160、既定52。
 
-描画は `x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。文字を収めるために幅を引き伸ばさず、収まらないラベルはクリップします。全名称はツールチップ・詳細パネルに表示します。
+時刻は共通の相対時間です。`0 < duration <= 1,000,000`、`0.01 <= snap <= duration`。数値は有限値のみ。6コレクションの各上限は10,000件、ファイル読込は8MiB。上限は入力防御用で、大規模文書の描画性能を保証しません。
 
-### 横幅固定の表示範囲
+すべてのIDは文書全体で一意な文字列。名称は1〜300文字、備考は10,000文字以下。画面座標をMissionに保存しません。
 
-画面のSVG幅はキャンバスの可視幅と一致します。`scale = (可視幅 - Actor列 - 右余白) / viewSpan`。拡大は `viewSpan` を減らし、縮小は増やします。`0 <= viewStart <= duration - viewSpan` を維持します。
+## Actor / State
 
-描画領域にclipPathを設定して範囲外の図形をクリップします。座標自体は時間比例を保ち、図形の幅を丸めたり伸ばしたりしません。操作の座標から時刻へ戻す式は `time = viewStart + (x - plotLeft) / scale` です。ドラッグ移動量も現在のscaleで換算します。
+Actor: `{id, name, side, parentId?, isGroup?, notes?}`。`side` は `friendly / hostile / neutral`。通常のActorも親になれます。親の不在・自己参照・循環は拒否します。
 
-拡大率・表示開始時刻は一時的な表示状態で、ミッションJSONやUndo履歴には保存しません。ウィンドウサイズが変わっても表示時間範囲を維持して再計算します。SVG出力は全期間・全階層を描画し、出力後の画面は元の表示状態を保ちます。
+State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
+
+- `0 <= start < end <= duration`。
+- `status`: `actual / planned`、`activity`: `active / quiet`。
+- `phase`: `other / decision`。判断段階は利用者が明示指定します。状態名から推測しません。
+- 同じActorの重複Stateは自動的に別レーンへ配置します。
+
+`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。図形を文字幅のために伸ばしません。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG出力は全期間・全階層・全要素です。
 
 ## Transition
 
-```json
-{
-  "id": "escape",
-  "from": "escape-state",
-  "to": "escaped-state",
-  "status": "planned",
-  "label": "離脱成立"
-}
-```
+`{id, from, to, status, label?}`。同じActorの異なるStateを接続し、`from.end <= to.start` が必要です。
 
-接続元・接続先は同一Actorの異なるState。`from.end <= to.start` が必要です。遷移時間は `to.start - from.end` で導出し、別の時刻値を重複保存しません。0なら即時遷移です。分岐は1つのStateから複数のTransitionを作ります。
-
-阻止された状態をTransitionへ直接書き込まず、対応する阻止Interactionの存在から描画時に導出します。これにより作用の削除・Undoで不整合な阻止フラグが残りません。
+開始 = `from.end`、終了 = `to.start`、所要時間 = 差分。JSONに期間を重複保存しません。0なら即時遷移として菱形を表示。期間のある遷移は空き時間を占め、ラベル・所要時間を中央に表示します。編集フォームの時間変更は前後Stateの境界変更です。共有する他の接続が不正になれば編集全体を拒否します。
 
 ## Interaction
 
@@ -91,42 +64,100 @@ State同士の重複を許容します。Actor内で実際のStateを優先し�
   "fromStateId": "guidance",
   "targetType": "transition",
   "targetId": "escape",
-  "label": "命中・離脱阻止",
+  "label": "離脱阻止",
   "kind": "attack",
   "effect": "block",
   "sourceTime": 46,
   "time": 46,
-  "outcomeStateId": "disabled-state",
-  "notes": ""
+  "outcomeStateId": "disabled",
+  "proposed": false
 }
 ```
 
-| フィールド     | 制約                                        |
-| -------------- | ------------------------------------------- | ----------- | ----------- | ------- | ------ | ------------- |
-| fromStateId    | 作用元State                                 |
-| targetType     | `state                                      | transition` |
-| targetId       | 作用先StateまたはTransitionのID             |
-| kind           | `detection                                  | command     | information | support | attack | interference` |
-| effect         | `cause                                      | block`      |
-| sourceTime     | 作用元Stateの開始〜終了の範囲（両端を含む） |
-| time           | `sourceTime` 以降の到達時刻                 |
-| outcomeStateId | 省略可・null可。阻止後に実際に生じたState   |
+| フィールド            | 制約                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| fromStateId           | 作用元State                                                                         |
+| targetType / targetId | `state` または `transition` と、そのID                                              |
+| kind                  | `detection / observation / information / command / support / attack / interference` |
+| effect                | `cause / block`                                                                     |
+| sourceTime            | 作用元State内（両端含む）                                                           |
+| time                  | sourceTime以降の到達時刻                                                            |
+| proposed              | 省略時false。trueは検討案で、阻止成立表示から除外                                   |
+| outcomeStateId        | 任意。対象Actorのactual State、開始は到達以降                                       |
 
-作用元と作用先のActorは異なる必要があります。State宛の場合、`time == target.start`。Transition宛の場合、その遷移開始〜終了の範囲内に到達する必要があります。
+作用元と作用先のActorは異なります。State宛の到達はそのStateの開始に一致します。Transition宛の成立済み作用は `[from.end, to.start]` 内への到達が必要です。`proposed: true` なら時間窓外への到達を許し、早すぎる／遅すぎると評価できます。検討案でも時間逆行・不存在の参照は許可しません。
 
-`effect: block` は `targetType: transition` かつ `target.status: planned` の場合のみ有効です。`outcomeStateId` を指定できるのは阻止の場合のみで、対象Transitionと同じActor・`actual`・開始が阻止時刻以降という条件があります。
+`block` は予定Transitionのみを対象にできます。阻止の×は `block && !proposed` の登録から描画時に導出します。これは編集者の登録内容であり、成功を自動推論した結果ではありません。結果Stateへの点線だけでは実際のTransitionを生成しません。
 
-UIからはState宛の原因作用、Transition宛の阻止作用を作成できます。JSONではTransition宛の原因作用も扱えます。
+### 表示とProxy
 
-### 時刻追従
+- detection / observation: 紫破線。
+- information: 濃灰破線。
+- command: 青緑実線。support: 青緑点線。
+- attack / interference: 赤太線。検討案は破線。
+- ラベルの配置候補が重なれば省略記号にし、選択時に全文を表示。titleとInspectorには全文を保持します。線交差の最適化はしません。
 
-- State移動時：作用元の `sourceTime` を開始時刻の差分だけ移し、新しいState内にクランプ。State宛の `time` は開始時刻に追従。
-- State伸縮時：同じルールを適用。作用の発生がState外にならないようクランプ。
-- Transition上の阻止時刻は固定。関係するStateの変更で遷移範囲外になった場合、変更全体を拒否します。
-- 妨害後のStateへの点線は結果の関連付けです。実際のTransitionは別途登録します。
+折りたたまれた子Actorの接続は、可視祖先を代理端点にします。同じ可視Actorペア・kind・effect・label・proposedの作用だけを束ね、`指令 ×3` のように表示します。異なる時刻を含む束の端点は最早発生〜最遅到達の包絡です。個別時刻はTooltip・Inspectorに列挙します。同じ折りたたみ内部で完結する線は描きません。元のID・参照・時刻・件数は不変です。
 
-### 削除と履歴
+## Technology / Binding
 
-Actor削除はその子孫ActorとすべてのStateを、State削除はそのTransitionを連鎖削除します。失われたState・Transitionを参照するInteractionも削除します。妨害後のStateだけが消えた場合は `outcomeStateId` をnullにし、阻止関係を残します。
+```json
+{
+  "technologies": [
+    {
+      "id": "tech-link",
+      "name": "水中指令通信",
+      "trl": 4,
+      "status": "research",
+      "notes": "研究中"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "binding-order",
+      "technologyId": "tech-link",
+      "targetType": "interaction",
+      "targetId": "order"
+    }
+  ]
+}
+```
 
-編集はコピー上で実行し、文書全体の検証後にまとめて確定します。ドラッグ中はプレビューだけを変更し、完了時に1操作として履歴へ記録。不正な操作は文書と履歴の両方を保ったまま拒否します。
+`trl`: 整数1〜9またはnull（未評価）。`status`: `existing / research / planned / gap / unknown`。TRLの値からstatusを自動変換しません。
+
+Binding対象は `actor / state / transition / interaction`。技術カタログの編集は、その技術の全Bindingに反映します。通常画面は色付き小タグ、Technology Viewでは名称・状態タグと詳細パネル、Gap Viewでは未成熟技術の依存先一覧を表示します。
+
+## 選択・複製・削除
+
+Ctrl/⌘+Clickで選択を追加・解除。空白からの矩形選択はActor列とState領域の両方に対応します。
+
+Actor複製は部分木のActor・State・内部Transition・内部Interaction・対象Bindingをコピーします。選択した親と子が重複していても1回だけ複製します。外部ActorとのInteractionはコピーしません。対象外の結果Stateへの参照も除きます。
+
+複数Stateだけを選択した場合も、両端が含まれるTransition・Interactionをコピーします。コピーされた要素とBindingのIDはすべて新規発行し、内部参照を再マッピングします。Technologyカタログは共用で、Technology IDは保持します。
+
+Copy/Cut/Pasteはメモリ上の文書内fragmentです。OSクリップボードや他文書との交換は未実装。文書の置き換えでクリップボードを消します。Cut後の外部接続は削除され、Pasteで復活しません（Undoでは復旧可能）。
+
+Group化は選択Actorの最上位部分木を新Groupの子へ移します。Ungroupは直接の子を1階層外に移し、空Groupを削除します。StateやBindingを持つ親はデータを失わないよう通常Actorとして保持します。
+
+Actor削除は子孫とStateを連鎖削除し、失われる要素へのTransition・Interaction・Bindingも削除します。Technology本体は保持します。結果Stateのみが失われた場合はoutcome参照をnullにします。
+
+編集はコピー上で行い、検証後に原子的に確定。失敗時は全体を戻します。ドラッグ1回は履歴1件、履歴上限100件。単独Stateの移動・伸縮は作用の発生をState内にクランプし、State宛の到達を開始に追従させます。複数Stateをまとめて動かすと、内部接続の両時刻も同じ差分だけ移します。外部接続と時間制約が両立しなければ全体を拒否します。
+
+## 経路・Gap・介入可能時間窓
+
+敵Transition選択時は、そこへのblock作用から有向グラフを逆に辿ります。Stateへの流入Interactionと前段Transitionを辿り、敵の状態を観測する作用に到達したらBlue側経路の起点とします。無関係な下流分岐は取り込みません。
+
+各候補経路を独立評価し、別経路の役割を合成しません。
+
+1. 観測：detection / observation。味方が作用元または観測先。
+2. 判断：味方Stateに `phase: decision` を指定。
+3. 指令：味方を作用元とするcommand。
+4. 攻撃：味方を作用元とするattack / interference。
+
+この順序で接続され、各作用が次の段階に間に合うと「構造完結」です。さらに時間窓内に到達し、経路の全要素を支える技術がexistingなら「条件充足」とします。Actor BindingはそのActorのStateを支えるものとしても評価し、要素自身のBindingと併せて確認します。未Bindingは未評価、research/planned/gap/unknownは未成熟として区別します。敵自身の技術情報はBlueの充足判定に必須ではありません。
+
+選択経路は技術状態を色分けし、gap位置より上流のタイムライン強調を切ります。全候補はInspectorで選択できます。`SOME`は条件充足の候補が1つ以上、`ALL`は列挙候補のすべてが条件充足という意味です。敵全体の全ミッション妨害や全シナリオの保証ではありません。最大256経路・深さ512で打ち切り、打ち切り時はALLを未確認にします。
+
+介入窓は `[敵Transitionの開始, 終了]`。到達が開始前ならearly、終了後ならlate、境界を含めてwithin。余裕は終了−到達です。瞬間Transitionなら同時刻だけwithin。
+
+これは入力された因果・時刻・技術状態の構造評価です。運動、通信遅延、探知性能、交戦成功率はシミュレートせず、実世界の実行可能性や軍事的有効性を保証しません。

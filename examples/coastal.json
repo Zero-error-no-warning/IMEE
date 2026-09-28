@@ -324,5 +324,32 @@
       "outcomeStateId": "e5",
       "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。"
     }
-  ]
+  ],
+  "technologies": [],
+  "bindings": [],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "enemy",
+        "sensor",
+        "control",
+        "uuv",
+        "torpedo"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 60
+      },
+      "filters": {
+        "technology": true,
+        "interaction": true,
+        "planned": true,
+        "quiet": true
+      },
+      "laneHeight": 52,
+      "mode": "mission"
+    }
+  }
 }

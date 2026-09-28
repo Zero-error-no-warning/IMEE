@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "潜水艦グループ — ソナー・魚雷による任務阻止",
+  "title": "Technology / Gap — 介入経路の検討",
   "time": {
     "unit": "minutes",
     "duration": 60,
@@ -140,7 +140,8 @@
       "end": 33,
       "activity": "active",
       "status": "actual",
-      "notes": ""
+      "notes": "",
+      "phase": "decision"
     },
     {
       "id": "u1",
@@ -326,10 +327,275 @@
       "effect": "block",
       "outcomeStateId": "e5",
       "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。"
+    },
+    {
+      "id": "late-hit",
+      "fromStateId": "t2",
+      "targetType": "transition",
+      "targetId": "escape",
+      "label": "遅延する介入案",
+      "kind": "attack",
+      "sourceTime": 46,
+      "time": 54,
+      "effect": "block",
+      "outcomeStateId": null,
+      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。",
+      "proposed": true
     }
   ],
-  "technologies": [],
-  "bindings": [],
+  "technologies": [
+    {
+      "id": "tech-existing",
+      "name": "既存システム基盤",
+      "status": "existing",
+      "trl": 9,
+      "notes": "操作説明用の架空の技術評価"
+    },
+    {
+      "id": "tech-sonar",
+      "name": "協調音響識別",
+      "status": "research",
+      "trl": 4,
+      "notes": "研究中の識別能力"
+    },
+    {
+      "id": "tech-link",
+      "name": "水中指令通信",
+      "status": "gap",
+      "trl": null,
+      "notes": "必要な通信能力が未確保"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "binding-enemy",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "enemy"
+    },
+    {
+      "id": "binding-sensor",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "sensor"
+    },
+    {
+      "id": "binding-control",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "control"
+    },
+    {
+      "id": "binding-uuv",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "uuv"
+    },
+    {
+      "id": "binding-torpedo",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "torpedo"
+    },
+    {
+      "id": "binding-e1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e1"
+    },
+    {
+      "id": "binding-e2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e2"
+    },
+    {
+      "id": "binding-e3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e3"
+    },
+    {
+      "id": "binding-e4",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e4"
+    },
+    {
+      "id": "binding-e5",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e5"
+    },
+    {
+      "id": "binding-s1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "s1"
+    },
+    {
+      "id": "binding-s2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "s2"
+    },
+    {
+      "id": "binding-c1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c1"
+    },
+    {
+      "id": "binding-c2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c2"
+    },
+    {
+      "id": "binding-c3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c3"
+    },
+    {
+      "id": "binding-u1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u1"
+    },
+    {
+      "id": "binding-u2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u2"
+    },
+    {
+      "id": "binding-u3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u3"
+    },
+    {
+      "id": "binding-t1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "t1"
+    },
+    {
+      "id": "binding-t2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "t2"
+    },
+    {
+      "id": "binding-et1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "et1"
+    },
+    {
+      "id": "binding-et2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "et2"
+    },
+    {
+      "id": "binding-escape",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "escape"
+    },
+    {
+      "id": "binding-disabled",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "disabled"
+    },
+    {
+      "id": "binding-st1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "st1"
+    },
+    {
+      "id": "binding-ct1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ct1"
+    },
+    {
+      "id": "binding-ct2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ct2"
+    },
+    {
+      "id": "binding-ut1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ut1"
+    },
+    {
+      "id": "binding-ut2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ut2"
+    },
+    {
+      "id": "binding-tt1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "tt1"
+    },
+    {
+      "id": "binding-detect",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "detect"
+    },
+    {
+      "id": "binding-report",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "report"
+    },
+    {
+      "id": "binding-order",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "order"
+    },
+    {
+      "id": "binding-launch",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "launch"
+    },
+    {
+      "id": "binding-hit",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "hit"
+    },
+    {
+      "id": "binding-research",
+      "technologyId": "tech-sonar",
+      "targetType": "state",
+      "targetId": "s2"
+    },
+    {
+      "id": "binding-gap",
+      "technologyId": "tech-link",
+      "targetType": "interaction",
+      "targetId": "order"
+    },
+    {
+      "id": "binding-late",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "late-hit"
+    }
+  ],
   "views": {
     "main": {
       "collapsedActors": [],
