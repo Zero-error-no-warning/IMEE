@@ -45,6 +45,13 @@
         </button>
       </div>
       <div class="view-tools">
+        <select id="view-mode" aria-label="表示モード">
+          <option value="mission">Mission View</option>
+          <option value="technology">Technology View</option>
+          <option value="gap">Gap View</option>
+          <option value="interaction">Interaction View</option></select
+        ><button id="view-settings">表示設定</button
+        ><button id="group-selected" title="Ctrl / ⌘ + G">まとめる</button>
         <label class="snap-label"
           >スナップ
           <select id="snap" aria-label="スナップ間隔">
@@ -177,6 +184,18 @@
           C 選択したStateから接続 / F 検索 / Esc 取消 / Delete 削除 / Enter 編集
           / Ctrl+Z 元に戻す / Ctrl+Shift+Z やり直す。選択したStateは ← →
           で移動、Shift+← → で終端を伸縮します。
+        </dd>
+        <dt>複数選択・コピー</dt>
+        <dd>
+          Ctrl / ⌘ +
+          クリックで選択を追加・解除。空白からのドラッグで矩形選択。Ctrl / ⌘ +
+          DでState・Actor・Groupを複製、C / X /
+          Vで文書内コピー・切り取り・貼り付け。Gで選択ActorをGroup化、Shift+Gで解除します。
+        </dd>
+        <dt>技術と経路</dt>
+        <dd>
+          上部でTechnology / Gap / Interaction
+          Viewを選択。詳細パネル・右クリックから技術を関連付けます。敵Transition選択で候補経路と時間窓を確認。判断段階はStateの役割欄で指定します。経路評価は登録した因果・技術・時刻による構造評価です。
         </dd>
         <dt>保存</dt>
         <dd>

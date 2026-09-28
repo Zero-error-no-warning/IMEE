@@ -281,3 +281,18 @@ test("ALL applies to the enumerated candidate paths and Blue support needs no en
   assert.equal(a.all, true);
   assert.equal(a.ids.has("e1"), false);
 });
+
+test("proxy bundling never combines a proposed and confirmed intervention even with identical labels", () => {
+  const d = research();
+  d.interactions.find((i) => i.id === "late-hit").label = d.interactions.find(
+    (i) => i.id === "hit",
+  ).label;
+  M.setCollapsed(d, "uuv", true);
+  const proxies = M.interactionProxies(
+    d,
+    new Set(M.hierarchy(d).map((r) => r.actor.id)),
+  );
+  const attack = proxies.filter((p) => p.kind === "attack");
+  assert.equal(attack.length, 2);
+  assert.ok(attack.every((p) => p.interactions.length === 1));
+});

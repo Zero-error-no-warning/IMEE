@@ -729,7 +729,14 @@
       const a = representative(from),
         b = representative(to);
       if (!a || !b || a === b || (a === from && b === to)) continue;
-      const key = JSON.stringify([a, b, i.kind, i.effect, i.label]);
+      const key = JSON.stringify([
+        a,
+        b,
+        i.kind,
+        i.effect,
+        i.label,
+        !!i.proposed,
+      ]);
       if (!bundles.has(key))
         bundles.set(key, {
           fromActorId: a,

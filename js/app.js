@@ -23,6 +23,7 @@
   const sides = { friendly: "味方", hostile: "敵", neutral: "中立" };
   const kinds = {
     detection: "発見",
+    observation: "観測",
     command: "命令",
     information: "情報共有",
     support: "支援",
@@ -41,8 +42,10 @@
   let selection = null,
     linkSource = null,
     scale = 16,
-    viewStart = 0,
-    viewSpan = initial.time.duration,
+    viewStart = history.doc.views.main.visibleTimeRange.start,
+    viewSpan =
+      history.doc.views.main.visibleTimeRange.end -
+      history.doc.views.main.visibleTimeRange.start,
     plotLeft = 208,
     frame,
     layout,
@@ -53,6 +56,17 @@
     focusChain = false,
     inspectorHidden = true,
     searchQuery = "";
+  let multi = [],
+    clipboard = null;
+  const selectedItems = () =>
+    multi.length
+      ? multi.filter((x) => item(x.type, x.id))
+      : selection
+        ? [selection]
+        : [];
+  const chosen = (id) => selectedItems().some((x) => x.id === id);
+  const view = () => doc().views.main;
+  const collapsed = (id) => M.isCollapsed(doc(), id);
   let dialogApply = null,
     toastTimer,
     renderedRelated = null;
@@ -90,6 +104,7 @@
     }
   }
   function commit(next, message = "変更しました") {
+    next = M.migrate(next);
     const changed = history.commit(next);
     preview = null;
     if (changed) {
@@ -117,26 +132,40 @@
   const xTime = (x) => frame.start + (x - plotLeft) / scale;
   function beginConnection(id) {
     linkSource = id;
+    multi = [];
     selection = { type: "state", id };
     render();
   }
   function toggleActor(id) {
+    multi = [];
     selection = { type: "actor", id };
     linkSource = null;
     safeChange((d) => {
       const a = item("actor", id, d);
-      a.collapsed = !a.collapsed;
+      M.setCollapsed(d, id, !M.isCollapsed(d, id));
     }, "グループの表示を変更しました");
   }
   function updateSelection() {
-    const chain = focusChain && selection ? M.related(doc(), selection) : null;
+    const chain =
+      (focusChain || isEnemyTransition(selection)) && selection
+        ? causalIds(doc(), selection)
+        : null;
     svg.querySelectorAll("[data-type]").forEach((el) => {
-      el.classList.toggle("selected", el.dataset.id === selection?.id);
+      el.classList.toggle("selected", chosen(el.dataset.id));
       el.classList.toggle(
         "dimmed",
         !!chain && el.dataset.type !== "actor" && !chain.has(el.dataset.id),
       );
     });
+    svg
+      .querySelectorAll(".interaction-label")
+      .forEach(
+        (el) =>
+          (el.textContent = chosen(el.closest("[data-id]").dataset.id)
+            ? el.dataset.fullLabel
+            : el.dataset.shortLabel),
+      );
+    connectionFeedback();
     svg.querySelectorAll(".selection-time").forEach((el) => el.remove());
     if (selection?.type === "state") {
       const s = state(selection.id),
@@ -157,8 +186,17 @@
         ?.append(text);
     }
   }
-  function select(type, id) {
-    selection = { type, id };
+  function select(type, id, additive = false) {
+    if (additive) {
+      const current = selectedItems();
+      multi = current.some((x) => x.id === id)
+        ? current.filter((x) => x.id !== id)
+        : [...current, { type, id }];
+      selection = multi.at(-1) || null;
+    } else {
+      multi = [];
+      selection = { type, id };
+    }
     updateSelection();
     renderInspector();
   }
@@ -186,7 +224,7 @@
   }
   function edgeClass(id) {
     const related = renderedRelated;
-    return `${selection?.id === id ? " selected" : ""}${related && !related.has(id) ? " dimmed" : ""}`;
+    return `${chosen(id) ? " selected" : ""}${related && !related.has(id) ? " dimmed" : ""}`;
   }
   const svgStyle = `
     text{font-family:Inter,"Segoe UI","Noto Sans JP",sans-serif}.grid{stroke:#edf1f2;stroke-width:1}.tick{fill:#82949a;font-size:10px}.rowline{stroke:#e3eaec;stroke-width:1}.state{cursor:grab}.state:active{cursor:grabbing}.state .body{stroke-width:1.2}.state.selected .body{stroke:#087f80;stroke-width:2.4}.state:hover .body{stroke-width:2}.state text{pointer-events:none}.state .resize{cursor:ew-resize;fill:#fff;fill-opacity:0}.state .handle-line{stroke:#69948d;opacity:0;pointer-events:none}.state:hover .handle-line,.state.selected .handle-line{opacity:1}.port{fill:white;stroke:#087f80;stroke-width:1.5;opacity:.6;cursor:crosshair}.state:hover .port,.state.selected .port,.link-mode .port{opacity:1}.edge{cursor:pointer}.edge .hit{stroke:transparent;stroke-width:13;fill:none}.edge .line{fill:none;stroke-linejoin:round;stroke-linecap:round;stroke-width:1.6}.edge.selected .line{stroke-width:3}.edge:hover .line{stroke-width:2.6}.edge-label{font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:5;stroke-linejoin:round;fill:#69878a}.edge.block .edge-label{fill:#b34c4d}.dimmed{opacity:.17}.actor-label{cursor:grab}.actor-label text{pointer-events:none}.actor-label:hover .actor-bg{fill:#edf5f3}.actor-label.selected .actor-bg{fill:#e4f1ec}.actor-label .actor-name{font-size:12px;fill:#27454e;font-weight:600}.blocked-cross{stroke:#c14d51;stroke-width:2.3;fill:none}.pending-ring{fill:none;stroke:#098784;stroke-width:2;stroke-dasharray:4 3}.drop-indicator{stroke:#087f80;stroke-width:3}.export-hide{display:none}
@@ -202,22 +240,52 @@
     if (!full) {
       viewStart = frame.start;
       viewSpan = frame.span;
+      if (!preview) {
+        view().visibleTimeRange = { start: frame.start, end: frame.end };
+        view().zoom = d.time.duration / frame.span;
+        saveLocal();
+      }
     }
     scale = frame.scale;
     plotLeft = frame.plotLeft;
-    layout = M.layout(d, scale, {
+    const filtered = full
+      ? d
+      : {
+          ...d,
+          transitions: d.transitions.filter(
+            (t) => view().filters.planned || t.status !== "planned",
+          ),
+          states: d.states.filter(
+            (s) =>
+              (view().filters.planned || s.status !== "planned") &&
+              (view().filters.quiet || s.activity !== "quiet"),
+          ),
+        };
+    layout = M.layout(filtered, scale, {
       start: frame.start,
       plotLeft,
       width: frame.width,
       includeHidden: full,
     });
-    renderedRelated = focusChain && selection ? M.related(d, selection) : null;
+    renderedRelated =
+      (focusChain || isEnemyTransition(selection)) && selection
+        ? causalIds(d, selection)
+        : null;
+    svg.dataset.view = view().mode;
     svg.setAttribute("width", layout.width);
     svg.setAttribute("height", layout.height);
     svg.classList.toggle("link-mode", !!linkSource);
     const parts = [
       `<title>${esc(d.title)}</title><desc>横軸は時間（${units[d.time.unit]}）、縦軸はActor。状態の幅は継続時間。破線は予定、赤い×は阻止された遷移。</desc><style>${svgStyle}</style><defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b9c9f"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#388c91"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c14d51"/></marker></defs><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="plot-clip"><rect x="${plotLeft - 12}" y="64" width="${layout.width - plotLeft - 12}" height="${layout.height - 64}"/></clipPath></defs><g id="plot" clip-path="url(#plot-clip)">`,
     ];
+    parts.push(
+      `<defs>${Object.keys(kinds)
+        .map(
+          (kind) =>
+            `<marker id="arrow-${kind}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="${interactionStyle(kind).color}"/></marker>`,
+        )
+        .join("")}</defs>`,
+    );
     const tickStep =
       [
         0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600,
@@ -239,19 +307,20 @@
     }
     // Transitions are drawn behind states. A vertical branch does not alter its time coordinate.
     for (const t of d.transitions) {
+      if (!full && !view().filters.planned && t.status === "planned") continue;
       const a = layout.positions.get(t.from),
         b = layout.positions.get(t.to);
       if (!a || !b) continue;
       const blockers = d.interactions.filter(
-        (i) => i.effect === "block" && i.targetId === t.id,
+        (i) => i.effect === "block" && !i.proposed && i.targetId === t.id,
       );
       const path = `M ${a.x + a.width} ${a.y + 16} V ${b.y + 16} H ${b.x}`;
       parts.push(
         `<g data-type="transition" data-id="${esc(t.id)}" class="edge${blockers.length ? " block" : ""}${edgeClass(t.id)}"><title>${esc(state(t.from).name)} → ${esc(state(t.to).name)}${blockers.length ? "（阻止）" : t.status === "planned" ? "（予定）" : ""}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${blockers.length ? "#c14d51" : "#8b9c9f"}" ${t.status === "planned" ? 'stroke-dasharray="5 4"' : ""} marker-end="url(#arrow-${blockers.length ? "red" : "gray"})"/>`,
       );
-      if (t.label)
+      if (t.label || b.x - a.x - a.width >= 90)
         parts.push(
-          `<text class="edge-label" x="${(a.x + a.width + b.x) / 2}" y="${b.y + 42}" text-anchor="middle">${esc(t.label)}</text>`,
+          `<text class="edge-label" x="${(a.x + a.width + b.x) / 2}" y="${b.y + (b.x > a.x + a.width ? 10 : 42)}" text-anchor="middle">${esc(t.label || "遷移")}${state(t.to).start > state(t.from).end ? ` · ${fmt(state(t.to).start - state(t.from).end)} ${units[d.time.unit]}` : ""}</text>`,
         );
       for (const block of blockers) {
         const p = transitionPoint(t, block.time);
@@ -292,6 +361,7 @@
     for (const t of d.transitions) {
       const a = state(t.from),
         b = state(t.to);
+      if (!full && !view().filters.planned && t.status === "planned") continue;
       if (a.end !== b.start) continue;
       const p = transitionPoint(t, b.start);
       if (!p) continue;
@@ -300,7 +370,9 @@
       );
     }
     // Interactions share the same time scale. Their attachment points denote event times.
+    const labelBoxes = [];
     for (const i of d.interactions) {
+      if (!full && !view().filters.interaction) continue;
       const s = layout.positions.get(i.fromStateId);
       if (!s) continue;
       let target;
@@ -318,9 +390,30 @@
       const middleY = down ? y1 + 15 : y1 - 15,
         path = `M ${x1} ${y1} V ${middleY} H ${x2} V ${y2}`;
       const blocked = i.effect === "block",
-        color = blocked ? "#c14d51" : "#388c91";
+        style = interactionStyle(i.kind),
+        color = style.color;
+      const labelX = Math.min(
+          frame.width - 100,
+          Math.max(plotLeft, Math.max(x1, x2) + 7),
+        ),
+        labelY = middleY - 4;
+      const labelWidth = Math.min(160, i.label.length * 10);
+      const overlap = labelBoxes.some(
+        (b) =>
+          Math.abs(b.y - labelY) < 15 &&
+          labelX < b.x + b.w &&
+          labelX + labelWidth > b.x,
+      );
+      labelBoxes.push({ x: labelX, y: labelY, w: labelWidth });
+      const label = chosen(i.id)
+        ? i.label
+        : overlap
+          ? "…"
+          : i.label.length > 16
+            ? i.label.slice(0, 15) + "…"
+            : i.label;
       parts.push(
-        `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${blocked ? 'stroke-dasharray="5 3"' : ""} marker-end="url(#arrow-${blocked ? "red" : "teal"})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label" x="${Math.max(x1, x2) + 7}" y="${middleY - 4}">${esc(i.label)}</text>`,
+        `<g class="edge${blocked ? " block" : ""}${edgeClass(i.id)}" data-type="interaction" data-id="${esc(i.id)}"><title>${i.proposed ? "検討案 / " : ""}${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${color}" ${i.proposed ? 'stroke-dasharray="3 6"' : style.dash ? `stroke-dasharray="${style.dash}"` : ""} style="stroke-width:${style.width}" marker-end="url(#arrow-${i.kind})"/><circle cx="${x1}" cy="${y1}" r="3" fill="white" stroke="${color}"/><text class="edge-label interaction-label" data-full-label="${esc(i.label)}" data-short-label="${esc(label)}" x="${labelX}" y="${labelY}">${i.proposed ? "検討: " : ""}${esc(label)}</text>`,
       );
       if (i.outcomeStateId && layout.positions.has(i.outcomeStateId)) {
         const o = layout.positions.get(i.outcomeStateId);
@@ -330,12 +423,14 @@
       }
       parts.push("</g>");
     }
+    if (!full && view().filters.interaction) renderProxies(parts, filtered);
+    renderTechnologyTags(parts, d, full);
     if (!d.actors.length)
       parts.push(
         '<text x="230" y="112" font-size="14" fill="#73858b">「＋ Actor」からミッションの登場主体を追加してください。</text>',
       );
     for (const row of layout.rows) {
-      if (full || !row.actor.collapsed || !row.hasChildren) continue;
+      if (full || !collapsed(row.actor.id) || !row.hasChildren) continue;
       const ids = M.descendants(d, row.actor.id);
       ids.delete(row.actor.id);
       const hiddenStates = new Set(
@@ -349,7 +444,7 @@
             : hiddenStates.has(item("transition", i.targetId).from)),
       ).length;
       parts.push(
-        `<g data-toggle="${esc(row.actor.id)}" style="cursor:pointer"><text x="${plotLeft + 5}" y="${row.top + row.height - 10}" font-size="10" fill="#7c9095">▸ ${ids.size} Actors / ${hiddenStates.size} States · 関連する作用 ${hiddenEdges}件を非表示</text></g>`,
+        `<g data-toggle="${esc(row.actor.id)}" style="cursor:pointer"><text x="${plotLeft + 5}" y="${row.top + row.height - 10}" font-size="10" fill="#7c9095">▸ ${ids.size} Actors / ${hiddenStates.size} States · 関連作用 ${hiddenEdges}件 · 外部接続は束ね表示</text></g>`,
       );
     }
     parts.push("</g>");
@@ -362,10 +457,10 @@
         nameX = 43 + indent;
       const maxChars = Math.max(3, Math.floor((plotLeft - 24 - nameX) / 11));
       const toggle = row.hasChildren
-        ? `<g data-toggle="${esc(a.id)}" role="button" tabindex="0" aria-label="${esc(a.name)}を${a.collapsed ? "展開" : "折りたたむ"}" aria-expanded="${!a.collapsed}"><rect x="${14 + indent}" y="${row.top + 25}" width="24" height="28" fill="white" fill-opacity="0"/><text x="${20 + indent}" y="${row.top + 44}" fill="#477e7b" font-size="12">${a.collapsed && !full ? "▸" : "▾"}</text></g>`
+        ? `<g data-toggle="${esc(a.id)}" role="button" tabindex="0" aria-label="${esc(a.name)}を${collapsed(a.id) ? "展開" : "折りたたむ"}" aria-expanded="${!collapsed(a.id)}"><rect x="${14 + indent}" y="${row.top + 25}" width="24" height="28" fill="white" fill-opacity="0"/><text x="${20 + indent}" y="${row.top + 44}" fill="#477e7b" font-size="12">${collapsed(a.id) && !full ? "▸" : "▾"}</text></g>`
         : `<text x="${20 + indent}" y="${row.top + 44}" font-size="12" fill="#a3b9bb">${row.depth ? "└" : "⠿"}</text>`;
       parts.push(
-        `<g class="actor-label${selection?.id === a.id ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="${plotLeft - 12}" height="${row.height}" fill="${a.isGroup || row.hasChildren ? "#f0f6f4" : "#fafcfc"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${plotLeft - 12}" y2="${row.top + row.height}"/>${toggle}<text class="actor-name" x="${nameX}" y="${row.top + 43}">${esc(a.name.length > maxChars ? a.name.slice(0, maxChars) + "…" : a.name)}</text><text x="${nameX}" y="${row.top + 61}" font-size="9" fill="${c.stroke}">${sides[a.side]}${row.hasChildren || a.isGroup ? " / グループ" : ""}</text><title>${esc(a.name)} · 中央へドロップで子に、上下端へドロップで並べ替え</title></g>`,
+        `<g class="actor-label${chosen(a.id) ? " selected" : ""}" data-type="actor" data-id="${esc(a.id)}"><rect class="actor-bg" x="0" y="${row.top}" width="${plotLeft - 12}" height="${row.height}" fill="${a.isGroup || row.hasChildren ? "#f0f6f4" : "#fafcfc"}"/><line class="rowline" x1="0" y1="${row.top + row.height}" x2="${plotLeft - 12}" y2="${row.top + row.height}"/>${toggle}<text class="actor-name" x="${nameX}" y="${row.top + 43}">${esc(a.name.length > maxChars ? a.name.slice(0, maxChars) + "…" : a.name)}</text><text x="${nameX}" y="${row.top + 61}" font-size="9" fill="${c.stroke}">${sides[a.side]}${row.hasChildren || a.isGroup ? " / グループ" : ""}</text><title>${esc(a.name)} · 中央へドロップで子に、上下端へドロップで並べ替え</title></g>`,
       );
     }
     parts.push(
@@ -399,6 +494,7 @@
         );
     }
     svg.innerHTML = parts.join("");
+    connectionFeedback();
     sticky();
   }
   function sticky() {
@@ -411,6 +507,7 @@
   }
   function render() {
     if (selection && !item(selection.type, selection.id)) selection = null;
+    multi = multi.filter((x) => item(x.type, x.id));
     renderSVG();
     renderInspector();
     $("#document-title").textContent = doc().title;
@@ -419,6 +516,7 @@
       `${doc().actors.length} Actors · ${doc().states.length} States`;
     $("#undo").disabled = !history.past.length;
     $("#redo").disabled = !history.future.length;
+    $("#view-mode").value = view().mode;
     $("#zoom-label").textContent = `${fmt(doc().time.duration / viewSpan)}×`;
     $("#time-window").textContent =
       `${time(viewStart)} — ${time(viewStart + viewSpan)}`;
@@ -453,8 +551,12 @@
       d = doc();
     let html =
       '<div class="inspector-heading"><span class="panel-eyebrow">INSPECTOR</span><button data-action="close" aria-label="詳細パネルを閉じる">×</button></div>';
+    if (selectedItems().length > 1)
+      html += `<div class="panel-section"><strong>${selectedItems().length} 件を選択</strong><div class="panel-actions"><button data-action="duplicate">まとめて複製</button><button data-action="group">グループ化</button><button data-action="delete">削除</button></div></div>`;
     if (!selection) {
-      const blocks = d.interactions.filter((i) => i.effect === "block");
+      const blocks = d.interactions.filter(
+        (i) => i.effect === "block" && !i.proposed,
+      );
       html +=
         '<div class="empty-graphic" aria-hidden="true">↗</div><h2 class="panel-title">状態から、<br>ミッションを読む。</h2><p class="panel-subtitle">Stateや矢印を選択すると、時間・接続・因果関係を確認できます。</p>';
       if (blocks.length) {
@@ -491,7 +593,7 @@
         const a = state(x.from),
           b = state(x.to),
           blocks = d.interactions.filter(
-            (i) => i.targetId === x.id && i.effect === "block",
+            (i) => i.targetId === x.id && i.effect === "block" && !i.proposed,
           );
         html += facts([
           ["接続元", a.name],
@@ -520,14 +622,21 @@
           ["種類", kinds[x.kind]],
           ["発生", time(x.sourceTime)],
           ["到達", time(x.time)],
-          ["効果", x.effect === "block" ? "予定遷移の阻止" : "状態変化の原因"],
+          [
+            "効果",
+            x.proposed
+              ? "検討案（未成立）"
+              : x.effect === "block"
+                ? "予定遷移の阻止"
+                : "状態変化の原因",
+          ],
         ]);
-        if (x.effect === "block")
+        if (x.effect === "block" && !x.proposed)
           html += `<div class="block-card"><strong>成立しなかった予定遷移</strong><p>${esc(target)}${x.outcomeStateId ? `<br>妨害後：${esc(state(x.outcomeStateId).name)}` : ""}</p></div>`;
       }
       html +=
         '<div class="panel-actions"><button data-action="edit">編集</button>' +
-        (type === "state"
+        (["state", "actor"].includes(type)
           ? '<button data-action="duplicate">複製</button>'
           : "") +
         '<button data-action="delete" class="danger">削除</button></div>';
@@ -559,6 +668,7 @@
           html += `<div class="panel-section"><h3>接続</h3><div class="search-results">${edges.map((e) => `<button data-jump="${esc(e.id)}" data-jump-type="${e.type}">${esc(e.label)}</button>`).join("")}</div></div>`;
       }
     }
+    html += researchInspector();
     html += `<div class="panel-section"><h3>Stateを探す</h3><input id="search" class="search-input" type="search" placeholder="状態名・Actor名で検索" aria-label="状態を検索" value="${esc(searchQuery)}"><div id="search-results" class="search-results"></div></div>`;
     pane.innerHTML = html;
     renderSearch();
@@ -596,15 +706,24 @@
         changed = false;
       while (actor?.parentId) {
         actor = item("actor", actor.parentId, next);
-        if (actor.collapsed) {
-          actor.collapsed = false;
+        if (M.isCollapsed(next, actor.id)) {
+          M.setCollapsed(next, actor.id, false);
           changed = true;
         }
+      }
+      if (!view().filters.planned && s.status === "planned") {
+        next.views.main.filters.planned = true;
+        changed = true;
+      }
+      if (!view().filters.quiet && s.activity === "quiet") {
+        next.views.main.filters.quiet = true;
+        changed = true;
       }
       if (changed) commit(next, "検索対象のグループを展開しました");
       if (s.start < viewStart || s.end > viewStart + viewSpan)
         viewStart = (s.start + s.end - viewSpan) / 2;
     }
+    multi = [];
     selection = { type, id };
     render();
     const p = sId && layout.positions.get(sId);
@@ -679,10 +798,13 @@
             isGroup: data.isGroup === "true",
           };
           if (existing) Object.assign(item("actor", a.id, d), value);
-          else d.actors.push(value);
-          if (value.parentId)
-            item("actor", value.parentId, d).collapsed = false;
+          else {
+            d.actors.push(value);
+            d.views.main.actorOrder.push(value.id);
+          }
+          if (value.parentId) M.setCollapsed(d, value.parentId, false);
         }, "Actorを保存しました");
+        multi = [];
         selection = { type: "actor", id: a.id };
       },
     );
@@ -700,19 +822,28 @@
       (data) => {
         change((d) => {
           item("actor", id, d).parentId = data.parentId || null;
-          if (data.parentId) item("actor", data.parentId, d).collapsed = false;
+          if (data.parentId) M.setCollapsed(d, data.parentId, false);
         }, "階層を変更しました");
       },
     );
   }
   function ungroup(id) {
+    safeChange((d) => M.ungroupActor(d, id), "グループを解除しました");
+  }
+  function groupSelected() {
+    const ids = selectedItems()
+      .filter((x) => x.type === "actor")
+      .map((x) => x.id);
+    if (!ids.length) {
+      toast("まとめるActorをCtrl / ⌘ + クリックで選択してください。");
+      return;
+    }
     safeChange((d) => {
-      const a = item("actor", id, d);
-      for (const child of d.actors)
-        if (child.parentId === id) child.parentId = a.parentId || null;
-      a.isGroup = false;
-      a.collapsed = false;
-    }, "子Actorを1階層外へ移動しました");
+      const id = M.groupActors(d, ids);
+      multi = [];
+      multi = [];
+      selection = { type: "actor", id };
+    }, "選択Actorをグループ化しました");
   }
   function editState(existing = null, actorId = null, at = 0) {
     if (!doc().actors.length) {
@@ -755,6 +886,10 @@
           ["active", "活動"],
           ["quiet", "平常・待機"],
         ])}</div>` +
+        selectField("経路分析上の役割", "phase", s.phase || "other", [
+          ["other", "未指定"],
+          ["decision", "判断（明示指定）"],
+        ]) +
         notesField(s.notes),
       (data) => {
         change((d) => {
@@ -769,6 +904,7 @@
             followState(d, s, value);
           } else d.states.push(value);
         }, "Stateを保存しました");
+        multi = [];
         selection = { type: "state", id: s.id };
       },
     );
@@ -802,6 +938,8 @@
     dialog(
       existing ? "Transitionを編集" : "Transitionを作成",
       `<div class="dialog-summary">${esc(state(t.from).name)} → ${esc(state(t.to).name)}<br>${time(state(t.from).end)} → ${time(state(t.to).start)}</div>` +
+        `<p class="muted">所要時間：${fmt(state(t.to).start - state(t.from).end)} ${units[doc().time.unit]}。下の時間変更は前Stateの終了・後Stateの開始を変更します。共有する接続にも影響します。</p>` +
+        `<div class="field-row">${field("遷移開始（前State終了）", "transitionStart", state(t.from).end, "number", 'required step="any"')}${field("遷移終了（後State開始）", "transitionEnd", state(t.to).start, "number", 'required step="any"')}</div>` +
         field("ラベル（任意）", "label", t.label, "text", 'maxlength="300"') +
         selectField("遷移の区分", "status", t.status, [
           ["actual", "実際"],
@@ -809,9 +947,19 @@
         ]),
       (data) => {
         change((d) => {
-          if (existing) Object.assign(item("transition", t.id, d), data);
-          else d.transitions.push({ ...t, ...data });
+          const a = state(t.from, d),
+            b = state(t.to, d),
+            oldA = M.clone(a),
+            oldB = M.clone(b);
+          a.end = Number(data.transitionStart);
+          b.start = Number(data.transitionEnd);
+          followState(d, oldA, a);
+          followState(d, oldB, b);
+          const value = { label: data.label, status: data.status };
+          if (existing) Object.assign(item("transition", t.id, d), value);
+          else d.transitions.push({ ...t, ...value });
         }, "Transitionを保存しました");
+        multi = [];
         selection = { type: "transition", id: t.id };
       },
     );
@@ -889,6 +1037,11 @@
             .map((s) => [s.id, `${s.name} / ${time(s.start)}`]),
         ],
       );
+    if (i.targetType === "transition")
+      html += selectField("到達時刻の扱い", "proposed", String(!!i.proposed), [
+        ["false", "成立した作用（時間窓内のみ）"],
+        ["true", "検討案（時間窓外も登録して評価）"],
+      ]);
     html += notesField(i.notes);
     dialog(
       existing
@@ -902,6 +1055,7 @@
           const value = {
             ...i,
             ...data,
+            proposed: data.proposed === "true",
             sourceTime: Number(data.sourceTime),
             time: Number(data.time),
             outcomeStateId: data.outcomeStateId || null,
@@ -909,6 +1063,7 @@
           if (existing) Object.assign(item("interaction", i.id, d), value);
           else d.interactions.push(value);
         }, "Interactionを保存しました");
+        multi = [];
         selection = { type: "interaction", id: i.id };
       },
     );
@@ -924,54 +1079,471 @@
     })[selection.type](x);
   }
   function deleteSelected() {
-    if (!selection) return;
-    const selected = { ...selection },
-      x = item(selected.type, selected.id);
+    const items = selectedItems();
+    if (!items.length) return;
     const execute = () => {
-      change(
-        (d) => M.remove(d, selected.type, selected.id),
-        "削除しました（元に戻せます）",
-      );
-      selection = null;
+      safeChange((d) => {
+        for (const x of items) M.remove(d, x.type, x.id);
+        multi = [];
+        selection = null;
+      }, "選択項目を削除しました（Undoで戻せます）");
     };
-    if (
-      selected.type === "actor" &&
-      (M.descendants(doc(), x.id).size > 1 ||
-        doc().states.some((s) => s.actorId === x.id))
-    )
+    if (items.some((x) => x.type === "actor"))
       dialog(
-        "Actorを削除",
-        `<p class="dialog-summary">「${esc(x.name)}」と、配下の全Actor・State・接続を削除します。Undoで元に戻せます。</p>`,
+        "選択Actorを削除",
+        `<p>選択した${items.length}項目と配下のState・接続・Bindingを削除します。Undoで元に戻せます。</p>`,
         execute,
       );
     else execute();
-    render();
   }
   function duplicateSelected() {
-    if (selection?.type !== "state") return;
-    const s = state(selection.id),
-      copy = {
-        ...M.clone(s),
-        id: M.id("state"),
-        name: `${s.name} のコピー`.slice(0, 300),
-      };
-    safeChange((d) => d.states.push(copy), "Stateを複製しました");
-    selection = { type: "state", id: copy.id };
-    render();
+    const items = selectedItems().filter((x) =>
+      ["actor", "state"].includes(x.type),
+    );
+    if (!items.length) return;
+    safeChange((d) => {
+      multi = M.paste(d, M.fragment(d, items));
+      selection = multi.at(-1) || null;
+    }, "選択項目を複製しました");
+  }
+  function copySelection(cut = false) {
+    const items = selectedItems().filter((x) =>
+      ["actor", "state"].includes(x.type),
+    );
+    if (!items.length) return;
+    clipboard = M.fragment(doc(), items);
+    if (cut)
+      safeChange((d) => {
+        for (const x of items) M.remove(d, x.type, x.id);
+        multi = [];
+        selection = null;
+      }, "切り取りました（文書内クリップボード）");
+    else toast("コピーしました（この文書内でCtrl / ⌘ + V）");
+  }
+  function pasteSelection() {
+    if (!clipboard) return;
+    safeChange((d) => {
+      multi = M.paste(d, clipboard);
+      selection = multi.at(-1) || null;
+    }, "参照を付け替えて貼り付けました");
   }
   function moveActor(delta) {
     if (selection?.type !== "actor") return;
     safeChange((d) => {
       const a = item("actor", selection.id, d),
-        siblings = d.actors.filter(
-          (x) => (x.parentId || null) === (a.parentId || null),
-        ),
+        siblings = M.hierarchy(d, true)
+          .map((x) => x.actor)
+          .filter((x) => (x.parentId || null) === (a.parentId || null)),
         i = siblings.indexOf(a),
         target = siblings[i + delta];
       if (target)
         M.placeActor(d, a.id, target.id, delta < 0 ? "before" : "after");
     }, "Actorを並べ替えました");
   }
+  let selectedPath = 0;
+  const techColors = {
+    existing: "#21806b",
+    research: "#a66a13",
+    planned: "#426cb2",
+    gap: "#c44550",
+    unknown: "#77818b",
+  };
+  function supportStatus(type, id) {
+    const technologies = [
+      ...M.technologyFor(doc(), type, id),
+      ...(type === "state"
+        ? M.technologyFor(doc(), "actor", state(id).actorId)
+        : []),
+    ];
+    return (
+      ["gap", "research", "planned", "unknown", "existing"].find((status) =>
+        technologies.some((t) => t.status === status),
+      ) || "unknown"
+    );
+  }
+  function isEnemyTransition(sel) {
+    return (
+      sel?.type === "transition" &&
+      item("actor", state(item("transition", sel.id)?.to)?.actorId)?.side ===
+        "hostile"
+    );
+  }
+  function causalIds(d, sel) {
+    if (!isEnemyTransition(sel)) return M.related(d, sel);
+    const analysis = M.analyzeTransition(d, sel.id),
+      path = analysis.paths[selectedPath];
+    if (!path) return analysis.ids;
+    const result = new Set([sel.id]);
+    // Walk from the intervention upstream; a capability gap visibly terminates the highlighted route.
+    for (const e of path.route) {
+      result.add(e.id);
+      const technologies = [
+        ...M.technologyFor(d, e.type, e.id),
+        ...(e.type === "state"
+          ? M.technologyFor(d, "actor", state(e.id, d).actorId)
+          : []),
+      ];
+      if (technologies.some((t) => t.status === "gap")) break;
+    }
+    return result;
+  }
+  function interactionStyle(kind) {
+    if (["detection", "observation"].includes(kind))
+      return { color: "#8056ad", dash: "6 4", width: 1.8 };
+    if (kind === "information")
+      return { color: "#46515e", dash: "5 4", width: 1.7 };
+    if (["attack", "interference"].includes(kind))
+      return { color: "#c44550", dash: "", width: 3.2 };
+    return {
+      color: "#18858c",
+      dash: kind === "support" ? "2 3" : "",
+      width: 2,
+    };
+  }
+  function connectionFeedback(hover = null) {
+    svg.classList.toggle("connecting", !!linkSource);
+    for (const el of svg.querySelectorAll(
+      '[data-type="state"],[data-type="transition"]',
+    )) {
+      let valid = false;
+      if (linkSource) {
+        const source = state(linkSource),
+          x = item(el.dataset.type, el.dataset.id);
+        if (source && x)
+          valid =
+            el.dataset.type === "state"
+              ? x.id !== source.id &&
+                (x.actorId !== source.actorId
+                  ? source.start <= x.start
+                  : source.end <= x.start)
+              : x.status === "planned" &&
+                state(x.to).actorId !== source.actorId;
+      }
+      el.classList.toggle("connect-target", valid);
+      el.classList.toggle(
+        "connect-hover",
+        valid && hover?.id === el.dataset.id,
+      );
+    }
+  }
+  function renderProxies(parts, d) {
+    const labels = [];
+    const rows = new Map(layout.rows.map((r) => [r.actor.id, r]));
+    for (const proxy of M.interactionProxies(d, new Set(rows.keys()))) {
+      const from = rows.get(proxy.fromActorId),
+        to = rows.get(proxy.toActorId),
+        style = interactionStyle(proxy.kind);
+      const first = proxy.interactions[0],
+        x1 = timeX(Math.min(...proxy.interactions.map((i) => i.sourceTime))),
+        x2 = timeX(Math.max(...proxy.interactions.map((i) => i.time)));
+      const y1 = from.top + from.height - 18,
+        y2 = to.top + to.height - 18,
+        path = `M ${x1} ${y1} H ${x2} V ${y2}`;
+      const labelX = Math.max(
+          plotLeft,
+          Math.min(frame.width - 145, (x1 + x2) / 2),
+        ),
+        labelY = y1 - 5;
+      const fullLabel = `${first.proposed ? "検討: " : ""}${proxy.label} ×${proxy.interactions.length}`;
+      const width = Math.min(180, fullLabel.length * 10),
+        collision = labels.some(
+          (b) =>
+            Math.abs(b.y - labelY) < 14 &&
+            labelX < b.x + b.w &&
+            labelX + width > b.x,
+        );
+      const shortLabel = collision
+        ? ""
+        : fullLabel.length > 18
+          ? fullLabel.slice(0, 17) + "…"
+          : fullLabel;
+      if (!collision) labels.push({ x: labelX, y: labelY, w: width });
+      parts.push(
+        `<g class="interaction-proxy edge" data-type="interaction" data-id="${esc(first.id)}"><title>${esc(proxy.interactions.map((i) => `${i.label}: ${time(i.sourceTime)} → ${time(i.time)}`).join("\n"))}\n折りたたみ表示。端点は最早発生〜最遅到達。元の接続は詳細または展開で確認。</title><path class="hit" d="${path}"/><path class="line" d="${path}" stroke="${style.color}" stroke-dasharray="${first.proposed ? "3 6" : style.dash}" style="stroke-width:${style.width}" marker-end="url(#arrow-${proxy.kind})"/><text class="edge-label interaction-label" data-full-label="${esc(fullLabel)}" data-short-label="${esc(shortLabel)}" x="${labelX}" y="${labelY}">${esc(chosen(first.id) ? fullLabel : shortLabel)}</text></g>`,
+      );
+    }
+  }
+  function renderTechnologyTags(parts, d, full) {
+    if (!full && !view().filters.technology) return;
+    const targets = [
+      ...d.states.map((s) => ({
+        type: "state",
+        id: s.id,
+        p: layout.positions.get(s.id),
+      })),
+      ...d.transitions
+        .filter((t) => full || view().filters.planned || t.status !== "planned")
+        .map((t) => ({
+          type: "transition",
+          id: t.id,
+          p: transitionPoint(t, (state(t.from).end + state(t.to).start) / 2),
+        })),
+      ...d.interactions
+        .filter(() => full || view().filters.interaction)
+        .map((i) => ({
+          type: "interaction",
+          id: i.id,
+          p: layout.positions.has(i.fromStateId)
+            ? {
+                x: timeX(i.sourceTime),
+                y: layout.positions.get(i.fromStateId).y - 12,
+              }
+            : null,
+        })),
+      ...layout.rows.map((r) => ({
+        type: "actor",
+        id: r.actor.id,
+        p: { x: plotLeft, y: r.top + 8 },
+      })),
+    ];
+    for (const e of targets) {
+      if (!e.p) continue;
+      const tech = M.technologyFor(d, e.type, e.id);
+      if (!tech.length) continue;
+      const worst =
+        tech.find((t) => t.status === "gap") ||
+        tech.find((t) => t.status !== "existing") ||
+        tech[0];
+      const detail = view().mode === "technology" || view().mode === "gap";
+      const label = detail
+        ? `${worst.name.slice(0, 10)} · ${worst.status}${tech.length > 1 ? ` +${tech.length - 1}` : ""}`
+        : `T${tech.length}${worst.status === "gap" ? " × GAP" : ""}`;
+      const x = Math.min(frame.width - 130, Math.max(plotLeft, e.p.x)),
+        y = e.type === "state" ? e.p.y + 47 : e.p.y + 9;
+      parts.push(
+        `<g class="technology-tag" data-type="${e.type}" data-id="${esc(e.id)}"><title>${esc(tech.map((t) => `${t.name} / ${t.status} / TRL ${t.trl ?? "?"}`).join("\n"))}</title><text x="${x}" y="${y}" fill="${techColors[worst.status]}" font-size="9" font-weight="600">${esc(label)}</text></g>`,
+      );
+    }
+  }
+  function editTechnology(id = null) {
+    const t = doc().technologies.find((t) => t.id === id) || {
+      id: M.id("technology"),
+      name: "新しい技術",
+      status: "unknown",
+      trl: null,
+      notes: "",
+    };
+    dialog(
+      id ? "Technologyを編集（全Bindingに反映）" : "Technology / R&Dを追加",
+      field("技術名", "name", t.name, "text", 'required maxlength="300"') +
+        selectField(
+          "成熟・開発状態",
+          "status",
+          t.status,
+          M.technologyStatuses.map((s) => [s, s]),
+        ) +
+        selectField("TRL", "trl", t.trl ?? "", [
+          ["", "未評価"],
+          ...Array.from({ length: 9 }, (_, i) => [
+            String(i + 1),
+            String(i + 1),
+          ]),
+        ]) +
+        notesField(t.notes),
+      (data) =>
+        change((d) => {
+          const value = {
+            ...t,
+            ...data,
+            trl: data.trl === "" ? null : Number(data.trl),
+          };
+          if (id)
+            Object.assign(
+              d.technologies.find((x) => x.id === id),
+              value,
+            );
+          else d.technologies.push(value);
+        }, "Technologyを保存しました"),
+    );
+  }
+  function editBinding() {
+    const target = selection;
+    if (!target) {
+      toast(
+        "関連付けるActor / State / Transition / Interactionを選択してください。",
+      );
+      return;
+    }
+    if (!doc().technologies.length) {
+      editTechnology();
+      toast("技術を作成後、もう一度「技術を関連付け」を選択してください。");
+      return;
+    }
+    dialog(
+      "技術を関連付け",
+      `<p>${esc(item(target.type, target.id).name || item(target.type, target.id).label || target.id)}を支える技術</p>` +
+        selectField(
+          "Technology",
+          "technologyId",
+          doc().technologies[0].id,
+          doc().technologies.map((t) => [t.id, `${t.name} / ${t.status}`]),
+        ),
+      (data) =>
+        change((d) => {
+          if (
+            !d.bindings.some(
+              (b) =>
+                b.targetId === target.id &&
+                b.technologyId === data.technologyId,
+            )
+          )
+            d.bindings.push({
+              id: M.id("binding"),
+              targetType: target.type,
+              targetId: target.id,
+              technologyId: data.technologyId,
+            });
+        }, "Bindingを追加しました"),
+    );
+  }
+  function researchInspector() {
+    let html =
+      '<div class="panel-section"><h3>Technology / R&D</h3><div class="panel-actions"><button data-action="technology">＋ 技術</button>' +
+      (selection ? '<button data-action="bind">技術を関連付け</button>' : "") +
+      "</div>";
+    const tech = selection
+      ? M.technologyFor(doc(), selection.type, selection.id)
+      : doc().technologies;
+    if (["gap", "technology"].includes(view().mode))
+      html += `<p class="tech-legend">${Object.entries(techColors)
+        .map(
+          ([status, color]) =>
+            `<span style="color:${color}">● ${status}</span>`,
+        )
+        .join(" · ")}</p>`;
+    html += tech
+      .map(
+        (t) =>
+          `<div class="tech-card" style="border-color:${techColors[t.status]}"><button data-technology="${esc(t.id)}">${esc(t.name)}</button><small>${t.status} · TRL ${t.trl ?? "未評価"}</small>${t.bindingId ? `<button data-unbind="${esc(t.bindingId)}" aria-label="${esc(t.name)}のBinding解除">解除</button>` : ""}</div>`,
+      )
+      .join("");
+    if (!tech.length)
+      html += '<p class="muted">技術の関連付けなし（未評価）。</p>';
+    if (["technology", "gap"].includes(view().mode) && selection)
+      html += `<details><summary>技術カタログ（${doc().technologies.length}）</summary>${doc()
+        .technologies.map(
+          (t) =>
+            `<button data-technology="${esc(t.id)}">${esc(t.name)} / ${t.status}</button>`,
+        )
+        .join("")}</details>`;
+    if (view().mode === "gap") {
+      const gapBindings = doc().bindings.filter((b) =>
+        doc().technologies.some(
+          (t) => t.id === b.technologyId && t.status !== "existing",
+        ),
+      );
+      html +=
+        `<h3>未成熟技術の依存先 · ${gapBindings.length}</h3>` +
+        gapBindings
+          .map(
+            (b) =>
+              `<button class="gap-dependency" data-jump-type="${b.targetType}" data-jump="${esc(b.targetId)}">${esc(doc().technologies.find((t) => t.id === b.technologyId).name)} → ${esc(item(b.targetType, b.targetId).name || item(b.targetType, b.targetId).label || b.targetId)}</button>`,
+          )
+          .join("");
+    }
+    html += "</div>";
+    if (selection?.type === "interaction") {
+      const bundle = M.interactionProxies(
+        doc(),
+        new Set(layout.rows.map((r) => r.actor.id)),
+      ).find((p) => p.interactions.some((i) => i.id === selection.id));
+      if (bundle)
+        html += `<div class="panel-section"><h3>束ねた作用 · ${bundle.interactions.length} 件</h3>${bundle.interactions.map((i) => `<button data-jump="${esc(i.id)}" data-jump-type="interaction">${esc(i.label)} · ${time(i.sourceTime)} → ${time(i.time)}</button>`).join("")}</div>`;
+      const i = item("interaction", selection.id),
+        o = M.opportunity(doc(), i);
+      if (o)
+        html += `<div class="panel-section"><h3>介入可能時間窓</h3>${facts([
+          ["開始 / 終了", `${time(o.start)} — ${time(o.end)}`],
+          [
+            "到達評価",
+            {
+              early: "時間窓より早い",
+              late: "この作用は遅すぎる",
+              within: "時間窓内",
+            }[o.status],
+          ],
+          ["終了までの余裕", `${fmt(o.margin)} ${units[doc().time.unit]}`],
+          [
+            "登録",
+            i.proposed
+              ? "検討案（阻止成立扱いにしない）"
+              : "成立した作用として登録",
+          ],
+        ])}</div>`;
+    }
+    if (isEnemyTransition(selection)) {
+      const a = M.analyzeTransition(doc(), selection.id),
+        t = item("transition", selection.id),
+        from = state(t.from),
+        to = state(t.to);
+      html += `<div class="panel-section"><h3>介入経路 / 時間窓</h3><p>${time(from.end)} — ${time(to.start)} · ${fmt(to.start - from.end)} ${units[doc().time.unit]}</p><p>SOME: ${a.some ? "成立条件を満たす経路あり" : "未確認"} / ALL: ${a.all ? "全候補が条件を満たす" : "未確認"}</p><p class="muted">宣言された因果・技術・時刻の構造評価。実世界の有効性・成功率は判定しません。各経路に観測→判断（Stateで指定）→指令→攻撃と、Blue経路の全要素にexisting技術が必要です。SOMEは少なくとも1経路、ALLは列挙した全候補経路についての判定です。</p>`;
+      html += a.paths
+        .map(
+          (p, n) =>
+            `<div class="path-card ${p.complete ? "complete" : "gap"}"><button data-path="${n}" aria-pressed="${selectedPath === n}">経路 ${n + 1} · ${p.complete ? "条件充足" : "Gap / 未評価"}</button><p>${p.route
+              .slice()
+              .reverse()
+              .map(
+                (e) =>
+                  `<span style="color:${techColors[supportStatus(e.type, e.id)]}">${esc(item(e.type, e.id).name || item(e.type, e.id).label || "遷移")}</span>`,
+              )
+              .join(
+                " → ",
+              )}</p><small>不足役割: ${esc(p.missingRoles.join(", ") || "なし")} / 構造 ${p.structural ? "完結" : "未完結"} / 未評価要素 ${p.unbound.length} / 未成熟技術 ${p.gaps.length}${p.temporalGap || !p.ordered ? " / 因果順序の断絶" : ""} / ${p.opportunity.status === "late" ? "到達が遅すぎる" : p.opportunity.status === "early" ? "到達が早すぎる" : "時間窓内"}</small></div>`,
+        )
+        .join("");
+      if (!a.paths.length) html += "<p>接続された介入候補がありません。</p>";
+      html += a.warnings.map((w) => `<p>${esc(w)}</p>`).join("") + "</div>";
+    }
+    return html;
+  }
+  function viewSettings() {
+    const v = view();
+    dialog(
+      "Viewの表示設定",
+      [
+        ...Object.entries({
+          technology: "Technologyタグ",
+          interaction: "Interaction",
+          planned: "予定State / Transition",
+          quiet: "平常・待機State",
+        }),
+      ]
+        .map(([key, label]) =>
+          selectField(label, key, String(v.filters[key]), [
+            ["true", "表示"],
+            ["false", "非表示"],
+          ]),
+        )
+        .join("") +
+        field(
+          "レーン高さ",
+          "laneHeight",
+          v.laneHeight,
+          "number",
+          'min="40" max="160" required',
+        ),
+      (data) => {
+        const next = M.clone(doc());
+        for (const key of Object.keys(v.filters))
+          next.views.main.filters[key] = data[key] === "true";
+        next.views.main.laneHeight = Number(data.laneHeight);
+        M.validate(next);
+        history.doc.views.main = next.views.main;
+        saveLocal();
+        render();
+      },
+    );
+  }
+  $("#view-mode").addEventListener("change", (e) => {
+    view().mode = e.target.value;
+    svg.dataset.view = view().mode;
+    if (["technology", "gap"].includes(view().mode)) inspectorHidden = false;
+    saveLocal();
+    render();
+  });
+  $("#view-settings").addEventListener("click", viewSettings);
+  $("#group-selected").addEventListener("click", groupSelected);
   function documentSettings() {
     const d = doc();
     dialog(
@@ -1000,6 +1572,7 @@
             snap: Number(data.snap),
             unit: data.unit,
           };
+          n.views.main.visibleTimeRange = { start: 0, end: n.time.duration };
         }, "ミッション設定を更新しました");
         fit();
       },
@@ -1050,10 +1623,25 @@
     if (e.button !== 0) return;
     scroll.focus({ preventScroll: true });
     const info = targetInfo(e);
-    if (!info || e.target.closest("[data-toggle]")) return;
+    if (e.target.closest("[data-toggle]")) return;
+    if (!info) {
+      const p = point(e);
+      if (p.y >= 64)
+        drag = {
+          type: "marquee",
+          x: e.clientX,
+          y: e.clientY,
+          start: p,
+          additive: e.ctrlKey || e.metaKey,
+          prior: selectedItems(),
+          moved: false,
+        };
+      return;
+    }
     if (e.target.matches("[data-port]")) {
       e.preventDefault();
       linkSource = info.id;
+      multi = [];
       selection = info;
       drag = { type: "link", x: e.clientX, y: e.clientY };
       updateSelection();
@@ -1074,7 +1662,11 @@
         copy: e.ctrlKey || e.metaKey,
         moved: false,
       };
-      selection = info;
+      if (!(e.ctrlKey || e.metaKey)) {
+        if (!chosen(info.id)) multi = [];
+        selection = info;
+      }
+      drag.items = chosen(info.id) ? selectedItems() : [info];
       // Keep the original pointer target until click/double-click dispatches.
     } else if (info.type === "actor") {
       drag = {
@@ -1084,7 +1676,11 @@
         y: e.clientY,
         moved: false,
       };
-      selection = info;
+      if (!(e.ctrlKey || e.metaKey)) {
+        if (!chosen(info.id)) multi = [];
+        selection = info;
+      }
+      drag.items = chosen(info.id) ? selectedItems() : [info];
     }
   });
   window.addEventListener("pointermove", (e) => {
@@ -1102,7 +1698,46 @@
       dy = e.clientY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) < 4 && !drag.moved) return;
     drag.moved = true;
+    if (drag.type === "marquee") {
+      const p = point(e),
+        r = {
+          x: Math.min(p.x, drag.start.x),
+          y: Math.min(p.y, drag.start.y),
+          w: Math.abs(p.x - drag.start.x),
+          h: Math.abs(p.y - drag.start.y),
+        };
+      const hits = [];
+      for (const row of layout.rows)
+        if (
+          r.x < plotLeft - 12 &&
+          r.y < row.top + row.height &&
+          r.y + r.h > row.top
+        )
+          hits.push({ type: "actor", id: row.actor.id });
+      for (const [id, q] of layout.positions)
+        if (
+          r.x < q.x + q.width &&
+          r.x + r.w > q.x &&
+          r.y < q.y + 32 &&
+          r.y + r.h > q.y
+        )
+          hits.push({ type: "state", id });
+      multi = [
+        ...new Map(
+          [...(drag.additive ? drag.prior : []), ...hits].map((x) => [x.id, x]),
+        ).values(),
+      ];
+      selection = multi.at(-1) || null;
+      updateSelection();
+      svg.querySelector("#marquee")?.remove();
+      svg.insertAdjacentHTML(
+        "beforeend",
+        `<rect id="marquee" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="#078a8a" fill-opacity=".12" stroke="#078a8a" pointer-events="none"/>`,
+      );
+      return;
+    }
     if (drag.type === "link") {
+      connectionFeedback(targetInfo(e));
       const from = layout.positions.get(linkSource),
         p = point(e);
       if (!from) return;
@@ -1143,6 +1778,43 @@
       s = M.clone(drag.original),
       step = d.time.snap,
       delta = M.snap(dx / scale, step);
+    if (drag.items?.length > 1 && !drag.handle) {
+      let moving = drag.items;
+      if (drag.copy) {
+        drag.copied ||= M.fragment(drag.base, drag.items);
+        multi = M.paste(d, drag.copied);
+        selection = multi.at(-1) || null;
+        moving = multi;
+      }
+      const ids = M.selectionClosure(d, moving).states,
+        states = d.states.filter((s) => ids.has(s.id));
+      const shift = Math.max(
+        -Math.min(...states.map((s) => s.start)),
+        Math.min(
+          delta,
+          d.time.duration - Math.max(...states.map((s) => s.end)),
+        ),
+      );
+      M.moveSelection(d, moving, shift);
+      if (drag.items.every((x) => x.type === "state")) {
+        const actors = layout.rows.map((r) => r.actor.id),
+          target = rowAt(point(e).y);
+        const indexes = states.map((s) => actors.indexOf(s.actorId));
+        const offset = Math.max(
+          -Math.min(...indexes),
+          Math.min(
+            actors.length - 1 - Math.max(...indexes),
+            actors.indexOf(target?.actor.id) -
+              actors.indexOf(drag.original.actorId),
+          ),
+        );
+        if (target)
+          states.forEach((s, n) => (s.actorId = actors[indexes[n] + offset]));
+      }
+      preview = d;
+      renderSVG();
+      return;
+    }
     if (drag.handle === "start")
       s.start = Math.max(
         0,
@@ -1165,8 +1837,14 @@
     }
     if (drag.copy && !drag.handle) {
       drag.copyId ||= M.id("state");
+      const originalId = s.id;
       s.id = drag.copyId;
       d.states.push(s);
+      drag.copyBindings ||= d.bindings
+        .filter((b) => b.targetType === "state" && b.targetId === originalId)
+        .map((b) => ({ ...b, id: M.id("binding"), targetId: s.id }));
+      d.bindings.push(...M.clone(drag.copyBindings));
+      multi = [];
       selection = { type: "state", id: s.id };
     } else {
       Object.assign(item("state", s.id, d), s);
@@ -1205,10 +1883,34 @@
     }
     ignoreClick = true;
     setTimeout(() => (ignoreClick = false), 0);
+    if (finished.type === "marquee") {
+      svg.querySelector("#marquee")?.remove();
+      renderInspector();
+      return;
+    }
     if (finished.type === "actor") {
       if (finished.targetId)
         safeChange((d) => {
-          M.placeActor(d, finished.id, finished.targetId, finished.position);
+          const actorIds = new Set(
+            (finished.items?.length
+              ? finished.items
+              : [{ type: "actor", id: finished.id }]
+            )
+              .filter((x) => x.type === "actor")
+              .map((x) => x.id),
+          );
+          const roots = [...actorIds].filter(
+            (id) =>
+              ![...actorIds].some(
+                (other) => id !== other && M.descendants(d, other).has(id),
+              ),
+          );
+          if (roots.some((id) => M.descendants(d, id).has(finished.targetId)))
+            throw new Error("選択範囲の中には移動できません。");
+          for (const id of finished.position === "after"
+            ? roots.reverse()
+            : roots)
+            M.placeActor(d, id, finished.targetId, finished.position);
         }, "Actorを並べ替えました");
       else render();
     }
@@ -1217,6 +1919,7 @@
         commit(preview, "Stateを変更しました");
       } catch (error) {
         preview = null;
+        multi = [];
         selection = { type: "state", id: finished.id };
         render();
         toast(error.message);
@@ -1239,12 +1942,14 @@
       p = point(e);
     if (e.target.matches("[data-port]")) return;
     if (info) {
+      selectedPath = 0;
       if (linkSource) connect(info.type, info.id);
-      else select(info.type, info.id);
+      else select(info.type, info.id, e.ctrlKey || e.metaKey);
       return;
     }
     if (p.x < plotLeft - 12 || p.y < scroll.scrollTop + 64) return;
     selection = null;
+    multi = [];
     linkSource = null;
     updateSelection();
     renderInspector();
@@ -1253,6 +1958,7 @@
     if (e.target.closest("[data-toggle]")) return;
     const info = targetInfo(e);
     if (info) {
+      multi = [];
       selection = info;
       editSelected();
     } else {
@@ -1287,6 +1993,7 @@
     const info = targetInfo(e),
       p = point(e);
     if (info) {
+      if (!chosen(info.id)) multi = [];
       selection = info;
       updateSelection();
       renderInspector();
@@ -1300,6 +2007,13 @@
           },
         },
       ];
+      entries.push({ label: "技術を関連付け", action: () => editBinding() });
+      if (["actor", "state"].includes(info.type))
+        entries.push(
+          { label: "コピー", action: () => copySelection() },
+          { label: "切り取り", action: () => copySelection(true) },
+          { label: "貼り付け", action: pasteSelection },
+        );
       if (info.type === "state")
         entries.push(
           { label: "ここから接続", action: () => beginConnection(info.id) },
@@ -1309,6 +2023,9 @@
         const a = item("actor", info.id),
           hasChildren = doc().actors.some((x) => x.parentId === a.id);
         entries.push(
+          { label: "Actor / Groupを複製", action: duplicateSelected },
+          { label: "選択Actorをグループ化", action: groupSelected },
+          { label: "グループ解除", action: () => ungroup(a.id) },
           {
             label: "Stateを追加",
             action: () => editState(null, a.id, viewStart),
@@ -1323,7 +2040,7 @@
         if (hasChildren)
           entries.push(
             {
-              label: a.collapsed ? "展開" : "折りたたむ",
+              label: collapsed(a.id) ? "展開" : "折りたたむ",
               action: () => toggleActor(a.id),
             },
             { label: "子Actorを1階層外へ出す", action: () => ungroup(a.id) },
@@ -1346,6 +2063,7 @@
               },
             ]
           : []),
+        { label: "貼り付け", action: pasteSelection },
         { label: "Actorを追加", action: () => editActor() },
         { label: "グループを追加", action: () => editActor(null, null, true) },
         { label: "全期間を表示", action: fit },
@@ -1374,6 +2092,23 @@
   $("#inspector").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.dataset.technology) {
+      editTechnology(b.dataset.technology);
+      return;
+    }
+    if (b.dataset.unbind) {
+      safeChange(
+        (d) =>
+          (d.bindings = d.bindings.filter((x) => x.id !== b.dataset.unbind)),
+        "Bindingを解除しました",
+      );
+      return;
+    }
+    if (b.dataset.path) {
+      selectedPath = Number(b.dataset.path);
+      render();
+      return;
+    }
     if (b.dataset.jump) {
       jump(b.dataset.jumpType, b.dataset.jump);
       return;
@@ -1383,6 +2118,10 @@
         inspectorHidden = true;
         render();
       },
+      technology: () => editTechnology(),
+      bind: () => editBinding(),
+      group: groupSelected,
+      ungroup: () => ungroup(selection.id),
       parent: () => editParent(selection.id),
       child: () => editActor(null, selection.id),
       edit: editSelected,
@@ -1429,7 +2168,10 @@
   function undo() {
     if (history.undo()) {
       selection = null;
+      multi = [];
       linkSource = null;
+      viewStart = view().visibleTimeRange.start;
+      viewSpan = view().visibleTimeRange.end - viewStart;
       saveLocal();
       render();
       $("#status").textContent = "元に戻しました";
@@ -1438,7 +2180,10 @@
   function redo() {
     if (history.redo()) {
       selection = null;
+      multi = [];
       linkSource = null;
+      viewStart = view().visibleTimeRange.start;
+      viewSpan = view().visibleTimeRange.end - viewStart;
       saveLocal();
       render();
       $("#status").textContent = "やり直しました";
@@ -1605,9 +2350,12 @@
         "JSONを読み込む",
         `<p class="dialog-summary">「${esc(next.title)}」を読み込みます。現在の内容は置き換わります。Undoで戻せます。</p>`,
         () => {
-          commit(next, "JSONを読み込みました");
           selection = null;
-          fit();
+          multi = [];
+          clipboard = null;
+          viewStart = next.views.main.visibleTimeRange.start;
+          viewSpan = next.views.main.visibleTimeRange.end - viewStart;
+          commit(next, "JSONを読み込みました");
         },
       );
     } catch (error) {
@@ -1619,6 +2367,21 @@
       { label: "SVGを書き出す", action: exportSVG },
       { label: "ミッション設定", action: documentSettings },
       {
+        label: "Technology / Gapのサンプル",
+        action: () =>
+          dialog(
+            "技術・経路サンプルを読み込む",
+            "<p>現在の内容を置き換えます。Undoで戻せます。</p>",
+            () => {
+              selection = null;
+              multi = [];
+              clipboard = null;
+              commit(createResearchSample());
+              fit();
+            },
+          ),
+      },
+      {
         label: "潜水艦グループのサンプル",
         action: () =>
           dialog(
@@ -1627,6 +2390,8 @@
             () => {
               commit(createGroupedSample());
               selection = null;
+              multi = [];
+              clipboard = null;
               fit();
             },
           ),
@@ -1648,6 +2413,8 @@
                 interactions: [],
               });
               selection = null;
+              multi = [];
+              clipboard = null;
               fit();
             },
           ),
@@ -1661,6 +2428,8 @@
             () => {
               commit(createSample());
               selection = null;
+              multi = [];
+              clipboard = null;
               fit();
             },
           ),
@@ -1675,6 +2444,18 @@
       return;
     const ctrl = e.ctrlKey || e.metaKey,
       key = e.key.toLowerCase();
+    if (ctrl && ["c", "x", "v"].includes(key)) {
+      e.preventDefault();
+      key === "v" ? pasteSelection() : copySelection(key === "x");
+      return;
+    }
+    if (ctrl && key === "g") {
+      e.preventDefault();
+      e.shiftKey && selection?.type === "actor"
+        ? ungroup(selection.id)
+        : groupSelected();
+      return;
+    }
     if (ctrl && key === "s") {
       e.preventDefault();
       saveJSON();
@@ -1695,6 +2476,7 @@
       preview = null;
       linkSource = null;
       selection = null;
+      multi = [];
       $("#context-menu").hidden = true;
       render();
       return;
@@ -1726,12 +2508,19 @@
       return;
     }
     if (
-      selection?.type === "state" &&
+      ["state", "actor"].includes(selection?.type) &&
       (key === "arrowleft" || key === "arrowright")
     ) {
       e.preventDefault();
       const delta = doc().time.snap * (key === "arrowleft" ? -1 : 1);
       safeChange((d) => {
+        if (
+          selection.type === "actor" ||
+          (!e.shiftKey && selectedItems().length > 1)
+        ) {
+          M.moveSelection(d, selectedItems(), delta);
+          return;
+        }
         const s = state(selection.id, d),
           before = M.clone(s);
         if (e.shiftKey) s.end += delta;
@@ -1767,6 +2556,6 @@
     }
   });
   render();
-  requestAnimationFrame(fit);
+  requestAnimationFrame(render);
   if (storageWarning) toast(storageWarning);
 })();

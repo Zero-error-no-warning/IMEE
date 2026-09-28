@@ -186,7 +186,7 @@ test("Actor reorder buttons preserve causal references", async (t) => {
   const a = await app(t, sample());
   a.click('[data-id="enemy"].actor-label');
   a.click('[data-action="down"]');
-  assert.equal(a.savedDoc().actors[1].id, "enemy");
+  assert.equal(a.savedDoc().views.main.actorOrder[1], "enemy");
   M.validate(a.savedDoc());
 });
 test("deleting an actor confirms the cascade and is undoable", async (t) => {
@@ -201,7 +201,7 @@ test("deleting an actor confirms the cascade and is undoable", async (t) => {
     false,
   );
   a.click("#undo");
-  assert.deepEqual(a.savedDoc(), sample());
+  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
 });
 test("failed dialog edits preserve the document and keep the error visible", async (t) => {
   const a = await app(t, sample());
@@ -235,7 +235,10 @@ test("renders imported names as literal text without injecting SVG or HTML", asy
 test("JSON export round trips and SVG export is self-contained and scroll-independent", async (t) => {
   const a = await app(t, sample());
   a.click("#save-btn");
-  assert.deepEqual(M.parse(await a.readBlob(a.downloads[0].blob)), sample());
+  assert.deepEqual(
+    M.parse(await a.readBlob(a.downloads[0].blob)),
+    M.migrate(sample()),
+  );
   a.$("#canvas-scroll").scrollLeft = 100;
   a.$("#canvas-scroll").scrollTop = 120;
   a.$("#canvas-scroll").dispatchEvent(new a.w.Event("scroll"));
@@ -266,7 +269,7 @@ test("Actor drag changes ordering without altering state times", async (t) => {
   a.event(el, "pointerdown", { clientX: 50, clientY: 100 });
   a.event(a.w, "pointermove", { clientX: 50, clientY: target });
   a.event(a.w, "pointerup", { clientX: 50, clientY: target });
-  assert.equal(a.savedDoc().actors[2].id, "enemy");
+  assert.equal(a.savedDoc().views.main.actorOrder[2], "enemy");
   assert.deepEqual(a.savedDoc().states, sample().states);
 });
 test("dragging from a State port opens a connection dialog for the dropped target", async (t) => {
@@ -304,9 +307,9 @@ test("JSON file import confirms replacement, preserves references, and supports 
   await a.$("#file-input").onchange({ target: a.$("#file-input") });
   assert.ok(a.$("#editor-dialog[open]"));
   a.submit();
-  assert.deepEqual(a.savedDoc(), d);
+  assert.deepEqual(a.savedDoc(), M.migrate(d));
   a.click("#undo");
-  assert.deepEqual(a.savedDoc(), sample());
+  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
 });
 test("invalid JSON file never replaces the current document", async (t) => {
   const a = await app(t, sample());
@@ -315,7 +318,7 @@ test("invalid JSON file never replaces the current document", async (t) => {
   });
   await a.$("#file-input").onchange({ target: a.$("#file-input") });
   assert.equal(a.$("#editor-dialog").open, false);
-  assert.deepEqual(a.savedDoc(), sample());
+  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
   assert.match(a.$("#toast").textContent, /読み込みできません/);
 });
 test("instantaneous transitions have a visible point marker at the exact event time", async (t) => {
@@ -397,9 +400,9 @@ test("collapse hides descendant states and links with an explicit summary, and e
   const a = await app(t, nested());
   a.click('[data-id="uuv"] [data-toggle]');
   assert.equal(a.$('[data-id="t2"]'), null);
-  assert.equal(a.$('[data-id="hit"]'), null);
+  assert.ok(a.$('[data-id="hit"].interaction-proxy'));
   assert.match(a.$("#plot").textContent, /2 Actors \/ 4 States/);
-  assert.match(a.$("#plot").textContent, /非表示/);
+  assert.match(a.$("#plot").textContent, /束ね表示/);
   assert.equal(a.savedDoc().states.length, 15);
   a.click('[data-id="uuv"] [data-toggle]');
   assert.ok(a.$('[data-id="t2"]'));
@@ -415,10 +418,7 @@ test("search reveals a State inside collapsed ancestors and brings its time into
   a.$("#search").dispatchEvent(new a.w.Event("input", { bubbles: true }));
   a.click("#search-results button");
   assert.ok(a.$('[data-id="t2"]'));
-  assert.equal(
-    a.savedDoc().actors.find((x) => x.id === "uuv").collapsed,
-    false,
-  );
+  assert.equal(M.isCollapsed(a.savedDoc(), "uuv"), false);
 });
 test("Actor context menus support child creation, reparenting, collapse, ungroup and reorder", async (t) => {
   const a = await app(t, nested());
@@ -456,7 +456,7 @@ test("dropping an Actor in the center reparents it; Undo restores the whole grou
     "uuv",
   );
   a.click("#undo");
-  assert.deepEqual(a.savedDoc(), nested());
+  assert.deepEqual(a.savedDoc(), M.migrate(nested()));
 });
 test("SVG export includes all time and hidden descendants while keeping the editor view intact", async (t) => {
   const a = await app(t, nested());

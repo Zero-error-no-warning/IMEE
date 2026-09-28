@@ -983,3 +983,73 @@ footer {
     min-height: 28px;
   }
 }
+
+/* Research and direct-selection surfaces remain inside the existing workbench. */
+#view-mode {
+  max-width: 145px;
+}
+.toolbar {
+  flex-wrap: wrap;
+}
+.view-tools {
+  flex-wrap: wrap;
+}
+.tech-card {
+  border-left: 3px solid;
+  padding: 6px 8px;
+  margin: 8px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.tech-card small {
+  display: block;
+  color: #586b73;
+}
+.path-card {
+  border-left: 3px solid #c44550;
+  background: #fff8f4;
+  padding: 8px;
+  margin: 8px 0;
+}
+.path-card.complete {
+  border-color: #21806b;
+  background: #f0f8f4;
+}
+.path-card p {
+  font-size: 11px;
+  line-height: 1.8;
+}
+.gap-dependency {
+  display: block;
+  margin: 5px 0;
+  width: 100%;
+  text-align: left;
+}
+#timeline .edge .hit {
+  stroke-width: 18;
+}
+#timeline .connect-target .body {
+  stroke: #088d96;
+  stroke-width: 2.5;
+}
+#timeline .connect-target.edge .line {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 2px #16c6c1);
+}
+#timeline .connect-hover .body,
+#timeline .connect-hover.edge .line {
+  stroke: #ee9b18;
+  stroke-width: 4;
+}
+#timeline.connecting .connect-target .port {
+  opacity: 1;
+  r: 6;
+}
+#timeline[data-view="interaction"] .state:not(.selected) .body {
+  fill-opacity: 0.25;
+}
+.technology-tag {
+  cursor: pointer;
+}
