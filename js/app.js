@@ -164,7 +164,7 @@
     if (!x) {
       panel.insertAdjacentHTML(
         "beforeend",
-        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。正の因果は実線、負の因果は波線で接続します。</p>`,
+        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。Task・分岐は直線、正の因果は三角波、負の因果は滑らかな波線で接続します。</p>`,
       );
       if (selection.length) {
         panel.append(
@@ -187,7 +187,7 @@
       facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
     }
     if (s.type === "causalLink") {
-      facts = `${x.polarity === "negative" ? "負の因果（波線）" : "正の因果（実線）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;
+      facts = `${x.polarity === "negative" ? "負の因果（滑らかな波線）" : "正の因果（三角波）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;
       const o = M.opportunity(doc(), x);
       if (o) facts += `<br>介入時間窓 ${o.start}〜${o.end} / ${esc(o.message)}`;
     }
@@ -554,8 +554,8 @@
           "polarity",
           "因果の向き",
           [
-            ["positive", "正の因果 — 実線"],
-            ["negative", "負の因果 — 波線"],
+            ["positive", "正の因果 — 三角波"],
+            ["negative", "負の因果 — 滑らかな波線"],
           ],
           c.polarity,
         ) +

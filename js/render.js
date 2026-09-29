@@ -68,10 +68,10 @@
         Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
       let marker = centeredEnd ? "state-arrow" : "arrow";
       svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}</title>`;
-      if (e.polarity === "negative") {
+      if (e.type === "causalLink") {
         const segment = L.routeSegments(e.points).at(-1);
         const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
-        marker = "negative-arrow-" + edges.indexOf(e);
+        marker = "causal-arrow-" + edges.indexOf(e);
         // Orient by the routed centerline, never by the final wave sample.
         svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${color}"/></marker></defs>`;
       }
@@ -79,7 +79,7 @@
         svg += `<path class="hit" d="${L.path(e.points)}" fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke"/>`;
       if (chosen || gap)
         svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="7" opacity=".25" pointer-events="none"/>`;
-      svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
+      svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}" marker-end="url(#${marker})"/></g>`;
     }
     const summaryJunctions = new Set();
     for (const j of junctions.values()) {

@@ -44,14 +44,17 @@ test("same-time result States use Y sublanes, never alter X", () => {
   assert.equal(a.x, b.x);
   assert.notEqual(a.y, b.y);
 });
-test("positive remains solid; negative is genuinely wavy after routing without dashes", () => {
+test("causes use triangle or smooth waves while Tasks and outcomes retain straight routes", () => {
   const d = sample(),
     g = L.layout(d),
     c = g.edges.find((e) => e.id === "negative");
   assert.notEqual(c.path, L.path(c.points));
   assert(c.path.split("L").length > 20);
   const positive = g.edges.find((e) => e.id === "report");
-  assert.equal(positive.path, L.path(positive.points));
+  assert.notEqual(positive.path, L.path(positive.points));
+  assert.notEqual(positive.path, L.wave(positive.points));
+  for (const edge of g.edges.filter(e => e.type === 'task'))
+    assert.equal(edge.path, L.path(edge.points));
   const output = R.render(d, g);
   assert(!/dasharray|dashed|dotted/.test(output));
 });
@@ -61,6 +64,37 @@ test("legacy planned/proposed fields do not change text, fill, opacity or visibi
   d.causalLinks[0].proposed = true; d.views.main.filters.planned = false;
   assert.equal(R.render(d,L.layout(d)),baseline);
   assert.equal(svg(d).querySelector('[data-id="s0"] .body').getAttribute("fill"), M.actorColor(d,d.actors.find(a=>a.id==='sensor')));
+});
+test("triangle wave has sharp alternating peaks at the shared amplitude and period", () => {
+  const values = L.wave([{x:0,y:0},{x:150,y:0}],2.8,15,null,"triangle")
+    .match(/-?\d+(?:\.\d+)?/g).map(Number);
+  const points = [];
+  for (let i=0;i<values.length;i+=2) points.push({x:values[i],y:values[i+1]});
+  const middle = points.filter(p=>p.x>=15 && p.x<=120);
+  assert(middle.every(p=>Math.abs(p.y)<=2.8));
+  const peaks = middle.filter(p=>Math.abs(p.y)===2.8);
+  assert(peaks.length>10);
+  for(let i=1;i<peaks.length;i++) {
+    assert.equal(peaks[i].x-peaks[i-1].x,7.5);
+    assert.equal(peaks[i].y,-peaks[i-1].y);
+  }
+  for(let i=1;i<middle.length-1;i++) {
+    const a=middle[i-1],b=middle[i],c=middle[i+1];
+    if(b.y===0) assert(Math.abs((b.y-a.y)/(b.x-a.x)-(c.y-b.y)/(c.x-b.x))<1e-8);
+  }
+});
+test("same-Actor positive cause is triangular in every View and SVG export", () => {
+  const d=sample();
+  d.causalLinks.push({id:'same-actor',source:{type:'state',id:'s0'},target:{type:'state',id:'s1'},polarity:'positive',label:'同Actor作用'});
+  for(const mode of ['mission','causality','technology','gap']) {
+    d.views.main.mode=mode;
+    const g=L.layout(d),edge=g.edges.find(e=>e.id==='same-actor');
+    assert.notEqual(edge.path,L.path(edge.points));
+    const dom=svg(d),line=dom.querySelector('[data-id="same-actor"] .line');
+    assert.equal(line.getAttribute('stroke-linejoin'),'miter');
+    const exported=new JSDOM(R.render(d,g,{export:true}),{contentType:'image/svg+xml'}).window.document;
+    assert([...exported.querySelectorAll('.line')].some(p=>p.getAttribute('d')===edge.path));
+  }
 });
 test("multiple causal links share one Task junction at exact time", () => {
   const d = sample();
@@ -196,10 +230,12 @@ test("wave sampling works vertically / horizontally / elbows and retains endpoin
       { x: 100, y: 50 },
     ],
   ]) {
-    const wave = L.wave(points);
-    assert(wave.startsWith(L.path([points[0]])));
-    assert(wave.endsWith(L.path([points.at(-1)]).slice(1)));
-    assert(wave.split("L").length > 10);
+    for (const shape of ["sine", "triangle"]) {
+      const wave = L.wave(points, 2.8, 15, null, shape);
+      assert(wave.startsWith(L.path([points[0]])));
+      assert(wave.endsWith(L.path([points.at(-1)]).slice(1)));
+      assert(wave.split("L").length > 10);
+    }
   }
 });
 test("Task / outcome / causal labels remain near their own line even when space is full", () => {
@@ -280,6 +316,11 @@ test("maximum zoom samples only visible wave detail while retaining semantic anc
   const g = L.layout(d),
     edge = g.edges.find((e) => e.id === "negative");
   assert(edge.path.length < 40000);
+  d.causalLinks.find(c => c.id === 'negative').polarity = 'positive';
+  const triangle = L.layout(d).edges.find(e => e.id === 'negative');
+  assert(triangle.path.length < 40000);
+  assert.deepEqual(triangle.points, edge.points);
+  assert.notEqual(triangle.path, edge.path);
   assert.equal(edge.points[0].x, g.vp.x(42));
   assert.equal(edge.points.at(-1).x, g.vp.x(49));
 });

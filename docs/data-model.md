@@ -68,7 +68,7 @@ TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ
 
 outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
 
-通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身のlineは正の因果として実線です。
+通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。
 
 UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
 
@@ -97,7 +97,7 @@ source / targetの形式：
 
 State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。Task端点はTask実行期間外でも全期間内の指定時刻に保存できます。期間外端点はTaskの実線上にはなく、時間窓外の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
 
-polarityが唯一の因果線種です。positiveは実線、negativeは経路に沿った波線で、いずれも矢印headを持ちます。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
+polarityが唯一の因果線種です。positiveは三角波、negativeは滑らかな波線で、いずれも経路に沿って振幅2.8px・周期15pxで描きます。端点付近では振幅を抑え、矢印headは波形ではなく基準経路末尾の方向に固定します。Task・分岐結果の線は直線です。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
 
 State / Taskの旧status（actual / planned / proposed）とCausalLink.proposedは読込・保存の互換性のため受け付けますが、表示・フィルタ・分析には使いません。新規作成では付けません。シナリオの仮定はnotesで説明します。ラベル補助線も細いニュートラルな実線です。
 
