@@ -241,13 +241,13 @@ test("zoom preserves canvas width and uses visible time range", () => {
   assert.equal(zoom.vp.x(20), zoom.vp.left);
   assert.equal(zoom.vp.x(40), zoom.vp.right);
 });
-test("collapsed group retains child nodes/tasks and hides associated causal links without mutation", () => {
+test("collapsed group projects child timelines and hides internal causal links without mutation", () => {
   const d=sample(), before=M.clone(d);
   d.views.main.collapsedActors=["group"];
   const g=L.layout(d);
   assert.equal(g.states.size,d.states.length);
   assert.equal(g.tasks.size,d.tasks.length);
-  assert(!g.edges.some(e=>e.type==='causalLink'));
+  assert.deepEqual(g.edges.filter(e=>e.type==='causalLink').map(e=>e.id),['negative']);
   assert.equal(g.states.get('s0').displayActorId,'group');
   assert.equal(g.states.get('s0').x,g.vp.x(2));
   assert.deepEqual(d.causalLinks,before.causalLinks);

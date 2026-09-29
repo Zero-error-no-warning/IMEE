@@ -69,12 +69,13 @@ test('research example has one specific maturity gap on a complete timed interve
   assert(M.analyzeTask(d,'jam').all);
 });
 
-test('hierarchy sample aggregates two-UUV tasks and hides reports and orders', () => {
+test('hierarchy sample projects two-UUV tasks and retains external reports and orders', () => {
   const d=sample.grouped(), before=JSON.stringify(d.causalLinks);
   d.views.main.collapsedActors=['team'];
   const g=L.layout(d);
   assert(g.states.has('a0')); assert(g.states.has('b0'));
-  for(const id of ['confirm-report','incomplete-report','recall']) assert(!g.edges.some(e=>e.id===id));
+  for(const id of ['confirm-report','incomplete-report','recall']) assert(g.edges.some(e=>e.id===id));
+  assert(!g.edges.some(e=>e.id==='cue'));
   assert.equal(JSON.stringify(d.causalLinks),before);
 });
 

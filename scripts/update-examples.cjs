@@ -11,6 +11,13 @@ for (const [name, image, d] of [
   fs.writeFileSync(path.join(root, 'examples', name + '.json'), JSON.stringify(d, null, 2) + '\n');
   fs.writeFileSync(path.join(root, 'docs', image + '.svg'), R.render(d, L.layout(d, 1200), { export: true }) + '\n');
 }
+const collapsed = sample.grouped();
+collapsed.views.main.collapsedActors = ['uuv'];
+const technology = sample.research();
+technology.views.main.mode = 'technology';
+technology.views.main.filters.technology = true;
+for (const [name,d] of [['grouped-collapsed',collapsed],['technology',technology]])
+  fs.writeFileSync(path.join(root,'docs',name+'.svg'), R.render(d,L.layout(d,1200),{export:true})+'\n');
 const tutorial = require('../js/tutorial-sample');
 for (const [name, d] of [['coastal', tutorial()], ['submarine', tutorial.grouped()], ['research', tutorial.research()]])
   fs.writeFileSync(path.join(root, 'examples/tutorial', name + '.json'), JSON.stringify(d, null, 2) + '\n');

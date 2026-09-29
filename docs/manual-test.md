@@ -45,7 +45,7 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 
 1. Actor / 子Actor / 子Groupを作る。ドラッグで上下順序変更・親変更。循環は禁止されること。
 2. Ctrl / ⌘＋Actorクリック→まとめる→Group解除を確認。Stateを持つGroupの解除はActor自身を残すこと。
-3. Groupを折りたたみ、子孫のState・Taskが元の時刻・色・所属で親レーンに残ること。親と子孫に接続する因果線だけが消え、展開すると戻ること。折りたたんだ子Stateを時間方向へドラッグしてもActorが変わらないこと。
+3. Groupを折りたたみ、子Actorの行が消え、子孫のState・Taskが親Actorの色・共通タイムラインへ投影されること。同時刻の状態・分岐だけ上下に分かれること。内部の因果線だけが消え、外部との接続は元の時刻で残り、展開すると元へ戻ること。折りたたんだ子Stateを時間方向へドラッグしてもActorが変わらないこと。
 4. Ctrl / ⌘＋クリック、矩形選択で複数Stateを選ぶ。一括移動・複製・削除、Undo / Redoで戻せること。
 5. Actor / GroupをCtrl / ⌘＋Dで再帰複製。子Actor、State、Task、junction、BindingのIDが再発行され、内部因果だけがコピーされること。
 6. Ctrl / ⌘＋C / X / Vで文書内貼り付け。元Actorが残るStateコピーと、Actorを含むコピーの両方を確認する。
@@ -54,7 +54,7 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 
 1. ズームしても横幅が1画面内。スライダー、時間範囲、Space＋ドラッグでパン、全体で復元。
 2. Inspector・検索・編集ダイアログが画面内に収まり、開閉できること。F検索で対象の祖先Groupが開き、時刻範囲が移動すること。
-3. Technologyを登録し、actor / state / task / causalLinkへBinding。背景・枠付き吹き出し、Tooltip、カタログの依存先を確認。
+3. Technologyを登録し、actor / state / task / causalLinkへBinding。背景・枠付き吹き出し、Tooltip、カタログの依存先を確認。狭い表示幅と多数のBindingでも吹き出しがノード・文字・経路線・他の吹き出しに重ならず、必要に応じて行が広がること。引き出し線が矩形を避け、太い塗り潰しにならないこと。技術フィルタをオフにすると余白が戻ること。
 4. Technology / Gap / Causality Viewへ変更。Task分類を変えても正負以外の線種・種類別色が増えないこと。
 5. 敵Taskを選び、観測→判断→指令→攻撃の経路、時刻窓、技術Gapを確認。経路上の技術をresearch / gap / unknownへ変更して未充足になること。
 6. negative因果にTask終了より遅い到達timeを設定。「到達が遅すぎます」とSOME未充足を確認する。

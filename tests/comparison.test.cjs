@@ -72,11 +72,11 @@ test('intervention preserves the full 44..52 escape window and separates the act
   assert.equal(g.states.get('e4').x,g.vp.x(52));
   assert.equal(M.get(d,'state','e4').status,'planned');assert.equal(M.get(d,'state','e5').status,'actual');
 });
-test('submarine collapse retains original sonar/torpedo nodes and tasks while hiding interference',()=>{
+test('submarine collapse projects sonar/torpedo timelines and retains external interference',()=>{
   const d=sample.grouped();d.views.main.collapsedActors=['uuv'];
   const g=L.layout(d),hit=g.edges.find(e=>e.id==='hit');
   assert(g.states.has('s1'));assert(g.states.has('t1'));assert(g.states.has('u1'));
-  assert.equal(hit,undefined);assert.equal(g.states.get('s1').displayActorId,'uuv');
+  assert.equal(hit.actorId,'uuv');assert.equal(hit.points[0].x,g.vp.x(46));assert.equal(hit.points.at(-1).x,g.vp.x(46));assert.equal(g.states.get('s1').displayActorId,'uuv');
   assert.equal(g.states.get('end-t2').x,g.vp.x(46));
 });
 test('restored comparison samples and separate tutorial menu load without replacing each other',async()=>{

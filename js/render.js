@@ -29,7 +29,7 @@
     unknown: "#687680",
   };
   function render(doc, layout, options = {}) {
-    const { vp, rows, states, edges, junctions, height, filters } = layout,
+    const { vp, rows, states, edges, junctions, height } = layout,
       v = doc.views.main,
       selection = options.selection || [],
       selected = (id) => selection.some((s) => s.id === id),
@@ -80,12 +80,11 @@
       svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
     }
     for (const j of junctions.values()) {
-      const task=M.get(doc,"task",j.taskId), owner=M.get(doc,"state",task.fromStateId).actorId;
-      const color=M.actorColor(doc,M.get(doc,"actor",owner));
+      const color=M.actorColor(doc,M.get(doc,"actor",j.actorId));
       svg += `<g class="junction"${data("task", j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
     }
     for (const s of states.values()) {
-      const a = M.get(doc, "actor", s.actorId), color = M.actorColor(doc,a);
+      const a = M.get(doc, "actor", s.displayActorId), color = M.actorColor(doc,a);
       svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${data("state", s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc(s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="7" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
       if (options.gapIds?.has(s.id)) svg += `<circle cx="${s.x}" cy="${s.y}" r="12" fill="none" stroke="#d17a30" opacity=".6"/>`;
       if (selected(s.id))
@@ -103,44 +102,10 @@
         svg += `<path class="label-leader" d="M${b.anchor.x},${b.anchor.y} L${b.x + b.width / 2},${b.y + b.height / 2}" stroke="#9aa8ad" stroke-width="0.7" fill="none"/>`;
       svg += `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="white" fill-opacity=".94"/><text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
     }
-    if (filters.technology) {
-      const occupied = [...layout.occupied];
-      for (const b of doc.bindings) {
-        const tech = M.get(doc, "technology", b.technologyId);
-        if (v.mode === "gap" && tech.status === "existing") continue;
-        let p, tagPoints;
-        if (b.targetType === "state") p = states.get(b.targetId);
-        if (b.targetType === "task" || b.targetType === "causalLink") {
-          const e = edges.find((e) => e.id === b.targetId);
-          if (e) { p = e.labelInfo.anchor; tagPoints = e.points; }
-        }
-        if (b.targetType === "actor") {
-          const row = rows.find((r) => r.actor.id === b.targetId);
-          if (row) p = { x: vp.left + 55, y: row.y + 52 };
-        }
-        if (!p) continue;
-        const text =
-          v.mode === "mission"
-            ? tech.name
-            : v.mode === "gap" ? `${tech.name} · TRL ${tech.trl ?? "?"}`
-            : `${tech.name} · ${tech.status} · TRL ${tech.trl ?? "?"}`;
-        const box = L.label(
-          text,
-          tagPoints || [
-            { x: p.x, y: p.y - 25 },
-            { x: p.x, y: p.y - 25 },
-          ],
-          occupied,
-          180,
-          edges.flatMap(e => L.routeSegments(e.points)),
-        );
-        box.y = Math.max(34, Math.min(height - box.height - 6, box.y));
-        box.x = Math.max(
-          vp.left - 12,
-          Math.min(vp.width - box.width - 8, box.x),
-        );
-        svg += `<g class="technology-tag"${data("technology", tech.id)}><title>${esc(tech.name)} / ${tech.status} / TRL ${tech.trl ?? "未評価"}</title><path d="M${p.x},${p.y - 7} L${box.x + box.width / 2},${box.y + box.height}" stroke="${techColors[tech.status]}" stroke-width=".7"/><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" fill="#fffdf5" stroke="${techColors[tech.status]}" stroke-width=".8"/><text x="${box.x + box.width / 2}" y="${box.y + 12}" font-size="10" text-anchor="middle" fill="${techColors[tech.status]}">${esc(box.text)}</text></g>`;
-      }
+    for (const tag of layout.technologyTags) {
+      const {tech,box} = tag;
+      const target = M.get(doc,tag.binding.targetType,tag.binding.targetId);
+      svg += `<g class="technology-tag"${data("technology", tech.id)}><title>${esc(tech.name)} / ${tech.status} / TRL ${tech.trl ?? "未評価"} · ${esc(target.name || target.label)}</title><path class="technology-leader" fill="none" pointer-events="none" d="${L.path(tag.leader)}" stroke="${techColors[tech.status]}" stroke-width=".7"/><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" fill="#fffdf5" stroke="${techColors[tech.status]}" stroke-width=".8"/><text x="${box.x + box.width / 2}" y="${box.y + 14}" font-size="10" text-anchor="middle" fill="${techColors[tech.status]}">${esc(tag.text)}</text></g>`;
     }
     svg += "</g>";
     for (const row of rows) {
@@ -155,11 +120,6 @@
           ? a.name.slice(0, 12 - Math.min(row.depth, 4)) + "…"
           : a.name;
       svg += `<text x="${x + 16}" y="${row.center + 4}" font-weight="600" font-size="11">${esc(name)}</text><title>${esc(a.name)}</title>`;
-      if (row.aggregated)
-        for (const lane of row.actorLanes) {
-          const child=M.get(doc,"actor",lane.actorId), color=M.actorColor(doc,child);
-          svg += `<circle cx="${x+22}" cy="${lane.y}" r="3" fill="${color}"/><text x="${x+30}" y="${lane.y+4}" font-size="10" fill="${color}">${esc(child.name.slice(0,10))}<title>${esc(child.name)}</title></text>`;
-        }
       svg += "</g>";
     }
     return svg + "</svg>";

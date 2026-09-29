@@ -51,7 +51,7 @@ test('negative arrowheads follow the routed centerline in every direction and af
     assert(Math.abs(tailAngle-expected)<0.5);
   }
 });
-test('nested collapse retains all child IDs, times and colors, hides group-related causes only',()=>{
+test('nested collapse projects children to parent color and hides internal causes only',()=>{
   const d=sample(),before=M.clone(d);
   d.actors.push({id:'external',name:'外部',side:'neutral',color:'#888888'});d.views.main.actorOrder.push('external');
   d.states.push({id:'ext',actorId:'external',name:'外部State',time:46});
@@ -61,7 +61,7 @@ test('nested collapse retains all child IDs, times and colors, hides group-relat
   const g=L.layout(d);assert.equal(g.states.size,d.states.length);assert.equal(g.tasks.size,d.tasks.length);
   for(const s of d.states){const p=g.states.get(s.id);assert.equal(p.actorId,s.actorId);assert.equal(p.x,g.vp.x(s.time));}
   for(const id of ['s0','i0','r0']) assert.equal(g.states.get(id).displayActorId,'group');
-  assert.deepEqual(g.edges.filter(e=>e.type==='causalLink').map(e=>e.id),['unrelated']);
+  assert.deepEqual(g.edges.filter(e=>e.type==='causalLink').map(e=>e.id),['negative','unrelated']);
   assert.deepEqual(d.causalLinks.slice(0,3),before.causalLinks);
   d.views.main.collapsedActors=[];assert.equal(L.layout(d).edges.filter(e=>e.type==='causalLink').length,4);
 });

@@ -106,6 +106,8 @@ State / Taskの旧status（actual / planned / proposed）とCausalLink.proposed�
 
 statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、nullまたは省略で未評価。Binding対象はactor / state / task / causalLinkのみです。StateとTaskの分析には直接Bindingに加え、その直接のActorのBindingを適用します。祖先Groupの技術は自動継承しません。Technologyカタログは複製間で共有し、Binding自身のIDは複製時に再発行します。
 
+技術吹き出しはレイアウト計算に含め、Actor行に専用の注記領域を確保します。矩形とノード・ラベル・他の吹き出し・経路線分との衝突を避け、狭い場所では短縮表示し、必要に応じて表示上の行高さを増やします。views.main.laneHeightや時刻・所属データは変更しません。引き出し線はノード・文字・吹き出しの矩形を避けます。技術全文・成熟度・TRL・対象名はTooltipで確認できます。技術フィルタをオフにすると注記領域も外します。
+
 ## Views
 
 ```js
@@ -119,7 +121,7 @@ views: { main: {
 
 modeはmission / technology / gap / causality。laneHeightは52〜160px。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-折りたたみ時は親と子孫のState・Taskを親レーン内へ集約し、元のActorごとにサブレーンを分けます。時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。親または子孫に接続する因果線は非表示にし、無関係の因果線は残します。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
+折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けず、重なるState・分岐だけ上下に分けます。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
 ## コピー・削除・履歴
 

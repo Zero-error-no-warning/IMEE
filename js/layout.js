@@ -246,7 +246,7 @@
     }
     return lines;
   }
-  function label(text, points, occupied, maxWidth = 150, lineSegments = []) {
+  function label(text, points, occupied, maxWidth = 150, lineSegments = [], reserved = []) {
     const a = points[0],
       b = points.at(-1);
     const anchor = pointOnRoute(points, (a.x + b.x) / 2, (a.y + b.y) / 2);
@@ -263,33 +263,81 @@
       for (const dx of [w / 2 + 8, -w / 2 - 8]) offsets.push({ dx, dy: -h / 2 });
     for (const dy of [-22, 6, -40, 24])
       for (const dx of [0, -18, 18, -36, 36]) offsets.push({ dx, dy });
-    for (const { dx, dy } of offsets) {
+    const anchors = [anchor];
+    if (reserved.length) for (const t of [0.25,0.75,0.1,0.9])
+      anchors.push(pointOnRoute(points,a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t));
+    for (const candidateAnchor of anchors) for (const { dx, dy } of offsets) {
         const box = {
-          x: anchor.x - w / 2 + dx,
-          y: anchor.y + dy,
+          x: candidateAnchor.x - w / 2 + dx,
+          y: candidateAnchor.y + dy,
           width: w,
           height: h,
         };
         const score =
+          reserved.reduce((s, o) => s + (overlaps(box, o) ? 1 : 0), 0) * 10000 +
           occupied.reduce((s, o) => s + (overlaps(box, o) ? 1 : 0), 0) * 100 +
           lineSegments.reduce((n, segment) => n + segmentInsideBox(segment, box), 0) * 12 +
           Math.abs(dx) +
-          Math.abs(dy + 22);
-        choices.push({ ...box, score });
+          Math.abs(dy + 22) + Math.hypot(candidateAnchor.x-anchor.x,candidateAnchor.y-anchor.y)*0.04;
+        choices.push({ ...box, score, anchor:candidateAnchor });
       }
     choices.sort((a, b) => a.score - b.score);
     const box = choices[0];
     occupied.push(box);
     return {
       ...box,
-      anchor,
+      anchor:box.anchor,
       text: display,
       fullText: text,
       leader: Math.hypot(
-        Math.max(box.x - anchor.x, 0, anchor.x - box.x - box.width),
-        Math.max(box.y - anchor.y, 0, anchor.y - box.y - box.height),
+        Math.max(box.x - box.anchor.x, 0, box.anchor.x - box.x - box.width),
+        Math.max(box.y - box.anchor.y, 0, box.anchor.y - box.y - box.height),
       ) > 18,
     };
+  }
+  function technologyLeader(anchor, box, obstacles, lines) {
+    const padded = obstacles.filter(b => b !== box).map(b =>
+      ({x:b.x-3,y:b.y-3,width:b.width+6,height:b.height+6}));
+    const contains = (b,p) => p.x>b.x && p.x<b.x+b.width && p.y>b.y && p.y<b.y+b.height;
+    const bounds = {x:Math.min(anchor.x,box.x)-48,y:Math.min(anchor.y,box.y)-48,
+      width:Math.abs(anchor.x-box.x)+box.width+96,height:Math.abs(anchor.y-box.y)+box.height+96};
+    // Only the source body can contain the attachment point. All other nodes,
+    // captions and bubbles are obstacles, including the destination bubble.
+    const blocked = padded.filter(b => !contains(b,anchor));
+    blocked.push(box);
+    const starts = [{x:anchor.x,y:anchor.y-9},{x:anchor.x+9,y:anchor.y},
+      {x:anchor.x,y:anchor.y+9},{x:anchor.x-9,y:anchor.y}].filter(p => !blocked.some(b => contains(b,p)));
+    const endX = Math.max(box.x+6,Math.min(box.x+box.width-6,anchor.x));
+    const endY = Math.max(box.y+4,Math.min(box.y+box.height-4,anchor.y));
+    const ends = [{x:endX,y:box.y},{x:endX,y:box.y+box.height},
+      {x:box.x,y:endY},{x:box.x+box.width,y:endY}];
+    const nodes = [...starts,...ends];
+    for (const b of blocked.filter(b => overlaps(b,bounds))) for (const x of [b.x-1,b.x+b.width+1])
+      for (const y of [b.y-1,b.y+b.height+1]) {
+        const point = {x,y};
+        if (!blocked.some(o => contains(o,point))) nodes.push(point);
+      }
+    const distance = nodes.map((_,i) => i<starts.length ? 0 : Infinity), previous = [], visited = new Set();
+    while (visited.size < nodes.length) {
+      let at=-1;
+      for (let i=0;i<nodes.length;i++) if (!visited.has(i) && (at<0 || distance[i]<distance[at])) at=i;
+      if (at<0 || !Number.isFinite(distance[at])) break;
+      if (at>=starts.length && at<starts.length+ends.length) {
+        const result=[];
+        for (let i=at;i!==undefined;i=previous[i]) result.unshift(nodes[i]);
+        return result;
+      }
+      visited.add(at);
+      for (let i=0;i<nodes.length;i++) {
+        if (visited.has(i)) continue;
+        const segment={a:nodes[at],b:nodes[i]};
+        const length=Math.hypot(segment.b.x-segment.a.x,segment.b.y-segment.a.y);
+        if (distance[at]+length+4>=distance[i] || blocked.some(b => segmentInsideBox(segment,b)>0.01)) continue;
+        const score=distance[at]+length+4+lines.reduce((sum,line)=>sum+parallelOverlap(segment,line,4)*4,0);
+        if (score<distance[i]) {distance[i]=score;previous[i]=at;}
+      }
+    }
+    return []; // The tooltip still identifies bindings in a fully enclosed area.
   }
   function viewport(duration, width, start = 0, end = duration) {
     const left = Math.min(166, width * 0.28),
@@ -324,45 +372,66 @@
       occupied = [],
       nodeBodies = [];
     let y = 54;
-    const allActors = M.hierarchy(doc, true).map(r => r.actor);
     const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
     const folded = new Set(options.full ? [] : v.collapsedActors);
-    for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
-      const top = y, aggregated = folded.has(actor.id), actorLanes = [];
-      const owners = allActors.filter(a => displayActor(a.id) === actor.id);
-      let laneCount = 0;
-      for (const owner of owners) {
-        const ss = doc.states.filter(s => s.actorId === owner.id && visible(s))
-          .sort((a,b) => a.time - b.time);
-        if (!ss.length) continue;
-        const lanes = [], baseLane = laneCount;
-        for (const s of ss) {
-          const x = vp.x(s.time), needed = 30;
-          const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
-            doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
-          const predecessor = incoming && states.get(incoming.fromStateId);
-          const previousLane = predecessor ? predecessor.lane - baseLane : undefined;
-          const sideBranch = incoming?.toStateId && incoming.toStateId !== s.id;
-          const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
-          let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
-            ? preferred : lanes.findIndex(end => end < x - needed / 2);
-          if (lane < 0) lane = lanes.length;
-          lanes[lane] = x + needed / 2;
-          const cy = top + (aggregated ? 30 : 0) + 24 + (baseLane + lane) * v.laneHeight;
-          states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:7,
-            lane:baseLane + lane, lines:textLines(s.name,112) });
-          nodeBodies.push({x:x-9,y:cy-9,width:18,height:18});
-        }
-        actorLanes.push({actorId:owner.id, y:top + (aggregated ? 30 : 0) + 24 + baseLane*v.laneHeight});
-        laneCount += lanes.length;
+    const internal = c => {
+      const source = displayActor(M.endpoint(doc, c.source).actorId);
+      const target = displayActor(M.endpoint(doc, c.target).actorId);
+      return source === target && folded.has(source);
+    };
+    const technologyBindings = filters.technology ? doc.bindings.filter(b => {
+      const tech = M.get(doc, "technology", b.technologyId);
+      if (v.mode === "gap" && tech.status === "existing") return false;
+      if (b.targetType === "causalLink") {
+        const c = M.get(doc, "causalLink", b.targetId);
+        return filters.causalLink && !internal(c);
       }
-      const height = actor.isGroup && !laneCount ? 38 :
-        (aggregated ? 30 : 0) + Math.max(1,laneCount)*v.laneHeight + 6;
-      rows.push({actor,depth,y:top,height,center:top+24,aggregated,actorLanes});
-      y += height;
+      return true;
+    }).map(b => {
+      const target = M.get(doc, b.targetType, b.targetId);
+      const actorId = b.targetType === "actor" ? target.id
+        : b.targetType === "state" ? target.actorId
+        : b.targetType === "task" ? M.get(doc, "state", target.fromStateId).actorId
+        : M.endpoint(doc, target.source).actorId;
+      return { binding:b, actorId:displayActor(actorId) };
+    }) : [];
+    for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
+      const top = y, aggregated = folded.has(actor.id), lanes = [];
+      // Project the whole subtree onto ONE parent timeline. Sublanes are only
+      // for concurrent states/branches, never one lane per child Actor.
+      const ss = doc.states.filter(s => displayActor(s.actorId) === actor.id && visible(s))
+        .sort((a,b) => a.time - b.time);
+      for (const s of ss) {
+        const x = vp.x(s.time), needed = 30;
+        const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
+          doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
+        const previousLane = incoming && states.get(incoming.fromStateId)?.lane;
+        const sideBranch = incoming?.toStateId && incoming.toStateId !== s.id;
+        const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
+        let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
+          ? preferred : lanes.findIndex(end => end < x - needed / 2);
+        if (lane < 0) lane = lanes.length;
+        lanes[lane] = x + needed / 2;
+        const cy = top + 24 + lane * v.laneHeight;
+        states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:7,
+          lane, lines:textLines(s.name,112) });
+        nodeBodies.push({x:x-9,y:cy-9,width:18,height:18});
+      }
+      const count = technologyBindings.filter(b => b.actorId === actor.id).length;
+      const baseHeight = actor.isGroup && !lanes.length ? 38 :
+        Math.max(1,lanes.length) * v.laneHeight + 6;
+      // A separate annotation band keeps bubbles off the timeline and captions.
+      // Geometry does not depend on the length of State/Task/causal captions.
+      const technologyTop = top + Math.max(baseHeight, (Math.max(1,lanes.length)-1)*v.laneHeight + 86) + 8;
+      const columns = Math.max(1, Math.floor((vp.width-vp.left-24)/200));
+      const technologyHeight = count ? Math.ceil(count/columns)*28 + 8 + (options.technologySpace?.[actor.id] || 0) : 0;
+      const rowHeight = count ? technologyTop-top+technologyHeight : baseHeight;
+      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,
+        technologyTop,technologyHeight});
+      y += rowHeight;
     }
-    const height = y + 24,
-      router = createEdgeRouter(
+    let height = y + 24;
+    const router = createEdgeRouter(
         nodeBodies,
         { left: vp.left, right: vp.right, top: 36, bottom: height - 12 },
       );
@@ -394,7 +463,7 @@
         part: "task",
         points,
         label: t.label,
-        actorId: from.actorId,
+        actorId: from.displayActorId,
         task: t,
       };
       edges.push(e);
@@ -406,7 +475,7 @@
       const task = tasks.get(tid);
       if (!task) return null;
       const p = pointOnRoute(task.points, vp.x(time), task.from.y);
-      const j = { key, taskId: tid, time, ...p, r: 4, explicit };
+      const j = { key, taskId: tid, actorId:task.from.displayActorId, time, ...p, r: 4, explicit };
       junctions.set(key, j);
       occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
       return j;
@@ -426,7 +495,7 @@
                 outcomeIndex: i,
                 points: route(p, to, true),
                 label: o.label,
-                actorId: states.get(t.fromStateId).actorId,
+                actorId: states.get(t.fromStateId).displayActorId,
               });
           }
         }
@@ -442,22 +511,82 @@
     if (filters.causalLink)
       for (const c of doc.causalLinks) {
         const sourceActorId = M.endpoint(doc,c.source).actorId;
-        const targetActorId = M.endpoint(doc,c.target).actorId;
-        // Aggregated groups show their own/descendant State and Task timelines,
-        // not causal proxy lines. Unrelated expanded actors retain their links.
-        if (folded.has(displayActor(sourceActorId)) || folded.has(displayActor(targetActorId))) continue;
+        // Only causal links wholly inside the same collapsed subtree disappear.
+        if (internal(c)) continue;
         const a=anchor(c.source), b=anchor(c.target);
         if (!a || !b) continue;
         edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
-          label:c.label,polarity:c.polarity,actorId:sourceActorId});
+          label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId)});
       }
     const lineSegments = edges.flatMap(e => routeSegments(e.points));
     // Reflow State text after routing. Text collisions never feed back into geometry.
     occupied.length = 0;
     occupied.push(...nodeBodies);
     for (const j of junctions.values()) occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
+    const technologyTags = [], unplaced = [];
+    for (const {binding, actorId} of technologyBindings) {
+      const row = rows.find(r => r.actor.id === actorId);
+      let anchor;
+      if (binding.targetType === "state") anchor = states.get(binding.targetId);
+      else if (binding.targetType === "actor") anchor = row && {x:vp.left+30,y:row.center};
+      else {
+        const edge = edges.find(e => e.id === binding.targetId);
+        if (edge) {
+          const start = Math.max(vp.left, Math.min(...edge.points.map(p => p.x)));
+          const end = Math.min(vp.right, Math.max(...edge.points.map(p => p.x)));
+          if (start <= end) anchor = pointOnRoute(edge.points, (start+end)/2,
+            (edge.points[0].y+edge.points.at(-1).y)/2);
+        }
+      }
+      if (!anchor || !row || anchor.x < vp.left-14 || anchor.x > vp.width) continue;
+      const tech = M.get(doc, "technology", binding.technologyId);
+      const fullText = v.mode === "mission" ? tech.name
+        : v.mode === "gap" ? `${tech.name} · TRL ${tech.trl ?? "?"}`
+        : `${tech.name} · ${tech.status} · TRL ${tech.trl ?? "?"}`;
+      const max = Math.max(16, Math.min(180,vp.width-vp.left-40));
+      let text, box;
+      // If lines divide a narrow viewport, use a shorter caption with the full
+      // value in its tooltip before asking for more row height.
+      for (const cap of [...new Set([max,Math.min(max,140),Math.min(max,100),Math.min(max,70)])]) {
+        text = fullText;
+        while (width(text,10) > cap && text.length > 1) text = text.slice(0,-1);
+        if (text !== fullText) text = text.slice(0,-1) + "…";
+        const w = width(text,10)+12, h = 20;
+        const left = vp.left+8, right = vp.width-w-12;
+        const preferred = Math.max(left,Math.min(right,anchor.x-w/2));
+        const xs = [preferred,left,right];
+        for (let x=left; x<=right; x+=12) xs.push(x);
+        xs.sort((a,b) => Math.abs(a-preferred)-Math.abs(b-preferred));
+        for (let ty=row.technologyTop; ty+h<=row.y+row.height-6 && !box; ty+=28)
+          for (const x of xs) {
+            const candidate = {x,y:ty,width:w,height:h};
+            const padded = {x:x-5,y:ty-5,width:w+10,height:h+10};
+            if (occupied.some(o => overlaps(padded,o)) ||
+                lineSegments.some(line => segmentInsideBox(line,padded)>0)) continue;
+            box = candidate;
+            break;
+          }
+        if (box) break;
+      }
+      const tag = {binding,actorId,tech,anchor:{x:anchor.x,y:anchor.y},text,fullText,box};
+      if (box) { technologyTags.push(tag); occupied.push(box); }
+      else unplaced.push(tag);
+    }
+    if (unplaced.length && (options.technologyPass || 0) < 8) {
+      const technologySpace = {...options.technologySpace};
+      for (const tag of unplaced) technologySpace[tag.actorId] = (technologySpace[tag.actorId] || 0)+28;
+      return layout(doc,widthValue,{...options,technologySpace,technologyPass:(options.technologyPass || 0)+1});
+    }
+    // Pathological density: keep every binding readable in an overflow band,
+    // below all graph geometry, rather than drawing a bubble across a node/line.
+    for (const tag of unplaced) {
+      tag.box = {x:vp.left+8,y:height,width:Math.min(192,vp.width-vp.left-24),height:20};
+      tag.overflow = true;
+      height += 28;
+      technologyTags.push(tag); occupied.push(tag.box);
+    }
     for (const s of states.values()) {
-      const peers = [...states.values()].filter(p => p.actorId === s.actorId && p.lane === s.lane && p.id !== s.id);
+      const peers = [...states.values()].filter(p => p.displayActorId === s.displayActorId && p.lane === s.lane && p.id !== s.id);
       const gap = Math.min(124, ...peers.map(p => Math.abs(p.x - s.x)));
       const maxWidth = Math.max(28, Math.min(112, gap - 10));
       s.lines = textLines(s.name, maxWidth);
@@ -482,6 +611,7 @@
         occupied,
         150,
         lineSegments,
+        technologyTags.map(t => t.box),
       );
       e.path =
         e.polarity === "negative"
@@ -491,6 +621,8 @@
             })
           : path(e.points);
     }
+    for (const tag of technologyTags)
+      tag.leader = technologyLeader(tag.anchor,tag.box,occupied,lineSegments);
     return {
       vp,
       rows,
@@ -500,6 +632,7 @@
       edges,
       height,
       filters,
+      technologyTags,
       occupied,
     };
   }
@@ -512,6 +645,7 @@
     width,
     textLines,
     overlaps,
+    segmentInsideBox,
     createEdgeRouter,
     parallelOverlap,
     routeSegments,
