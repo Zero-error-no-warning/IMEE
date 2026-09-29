@@ -44,7 +44,7 @@ test("same-time result States use Y sublanes, never alter X", () => {
   assert.equal(a.x, b.x);
   assert.notEqual(a.y, b.y);
 });
-test("causes use triangle or smooth waves while Tasks and outcomes retain straight routes", () => {
+test("causes use square or smooth waves while Tasks and outcomes retain straight routes", () => {
   const d = sample(),
     g = L.layout(d),
     c = g.edges.find((e) => e.id === "negative");
@@ -65,25 +65,25 @@ test("legacy planned/proposed fields do not change text, fill, opacity or visibi
   assert.equal(R.render(d,L.layout(d)),baseline);
   assert.equal(svg(d).querySelector('[data-id="s0"] .body').getAttribute("fill"), M.actorColor(d,d.actors.find(a=>a.id==='sensor')));
 });
-test("triangle wave has sharp alternating peaks at the shared amplitude and period", () => {
-  const values = L.wave([{x:0,y:0},{x:150,y:0}],2.8,15,null,"triangle")
+test("square wave has flat plateaus and perpendicular steps at the shared amplitude and period", () => {
+  const values = L.wave([{x:0,y:0},{x:150,y:0}],2.8,15,null,"square")
     .match(/-?\d+(?:\.\d+)?/g).map(Number);
   const points = [];
   for (let i=0;i<values.length;i+=2) points.push({x:values[i],y:values[i+1]});
-  const middle = points.filter(p=>p.x>=15 && p.x<=120);
-  assert(middle.every(p=>Math.abs(p.y)<=2.8));
-  const peaks = middle.filter(p=>Math.abs(p.y)===2.8);
-  assert(peaks.length>10);
-  for(let i=1;i<peaks.length;i++) {
-    assert.equal(peaks[i].x-peaks[i-1].x,7.5);
-    assert.equal(peaks[i].y,-peaks[i-1].y);
+  for(let i=1;i<points.length;i++)
+    assert(points[i].x===points[i-1].x || points[i].y===points[i-1].y, 'no sloped transitions');
+  const middle = points.filter(p=>p.x>=15 && p.x<=120), plateaus=[];
+  assert(middle.every(p=>Math.abs(p.y)===2.8));
+  for(let i=1;i<middle.length;i++) {
+    const a=middle[i-1],b=middle[i];
+    if(a.x!==b.x) {
+      assert.equal(b.x-a.x,7.5);assert.equal(a.y,b.y);plateaus.push(a.y);
+    } else assert.equal(b.y,-a.y);
   }
-  for(let i=1;i<middle.length-1;i++) {
-    const a=middle[i-1],b=middle[i],c=middle[i+1];
-    if(b.y===0) assert(Math.abs((b.y-a.y)/(b.x-a.x)-(c.y-b.y)/(c.x-b.x))<1e-8);
-  }
+  assert(plateaus.length>10);
+  for(let i=1;i<plateaus.length;i++) assert.equal(plateaus[i],-plateaus[i-1]);
 });
-test("same-Actor positive cause is triangular in every View and SVG export", () => {
+test("same-Actor positive cause is square in every View and SVG export", () => {
   const d=sample();
   d.causalLinks.push({id:'same-actor',source:{type:'state',id:'s0'},target:{type:'state',id:'s1'},polarity:'positive',label:'同Actor作用'});
   for(const mode of ['mission','causality','technology','gap']) {
@@ -230,7 +230,7 @@ test("wave sampling works vertically / horizontally / elbows and retains endpoin
       { x: 100, y: 50 },
     ],
   ]) {
-    for (const shape of ["sine", "triangle"]) {
+    for (const shape of ["sine", "square"]) {
       const wave = L.wave(points, 2.8, 15, null, shape);
       assert(wave.startsWith(L.path([points[0]])));
       assert(wave.endsWith(L.path([points.at(-1)]).slice(1)));
@@ -317,10 +317,10 @@ test("maximum zoom samples only visible wave detail while retaining semantic anc
     edge = g.edges.find((e) => e.id === "negative");
   assert(edge.path.length < 40000);
   d.causalLinks.find(c => c.id === 'negative').polarity = 'positive';
-  const triangle = L.layout(d).edges.find(e => e.id === 'negative');
-  assert(triangle.path.length < 40000);
-  assert.deepEqual(triangle.points, edge.points);
-  assert.notEqual(triangle.path, edge.path);
+  const square = L.layout(d).edges.find(e => e.id === 'negative');
+  assert(square.path.length < 40000);
+  assert.deepEqual(square.points, edge.points);
+  assert.notEqual(square.path, edge.path);
   assert.equal(edge.points[0].x, g.vp.x(42));
   assert.equal(edge.points.at(-1).x, g.vp.x(49));
 });

@@ -177,7 +177,7 @@
       .map((p, i) => (i ? "L" : "M") + p.x.toFixed(2) + "," + p.y.toFixed(2))
       .join(" ");
   function wave(points, amplitude = 2.8, wavelength = 15, bounds = null, shape = "sine") {
-    // Sampling each routed segment keeps corners and exact endpoints; taper near corners.
+    // Keep exact endpoints and a straight tail near corners / arrowheads.
     const result = [];
     let distance = 0;
     for (const { a, b } of routeSegments(points)) {
@@ -204,32 +204,39 @@
       }
       result.push(a);
       if (lo <= hi) {
-        const samples = [];
-        if (shape === "triangle") {
-          // Sample exact quarter-period points so clipped / diagonal waves retain sharp peaks.
-          samples.push(lo, hi);
-          const step = wavelength / 4;
-          for (let n = Math.ceil((distance + len * lo) / step); n * step < distance + len * hi; n++)
-            samples.push((n * step - distance) / len);
-          for (const s of [5, len - 12, len - 7])
-            if (s > len * lo && s < len * hi) samples.push(s / len);
-          samples.sort((a,b) => a-b);
+        if (shape === "square") {
+          const start = Math.max(5, len * lo), end = Math.min(len - 7, len * hi),
+            step = wavelength / 2,
+            append = (s, offset) => result.push({
+              x: a.x + dx * s / len - dy / len * offset,
+              y: a.y + dy * s / len + dx / len * offset,
+            });
+          if (start < end) {
+            let index = Math.floor((distance + start) / step),
+              offset = index % 2 === 0 ? amplitude : -amplitude;
+            append(start, 0);
+            append(start, offset);
+            // Two points at each transition preserve perpendicular steps, even after clipping.
+            for (let s = (++index) * step - distance; s < end; s = (++index) * step - distance) {
+              append(s, offset);
+              offset = -offset;
+              append(s, offset);
+            }
+            append(end, offset);
+            append(end, 0);
+          }
         } else {
           const count = Math.max(1, Math.ceil((len * (hi - lo)) / 2));
-          for (let i = 0; i <= count; i++) samples.push(lo + ((hi - lo) * i) / count);
-        }
-        for (const t of samples) {
-          const s = len * t,
-            fade = Math.min(1, s / 5, Math.max(0, (len - s - 7) / 5)),
-            sine = Math.sin(((distance + s) * 2 * Math.PI) / wavelength),
-            offset =
-              (shape === "triangle" ? 2 / Math.PI * Math.asin(sine) : sine) *
-              amplitude *
-              fade;
-          result.push({
-            x: a.x + dx * t - (dy / len) * offset,
-            y: a.y + dy * t + (dx / len) * offset,
-          });
+          for (let i = 0; i <= count; i++) {
+            const t = lo + ((hi - lo) * i) / count,
+              s = len * t,
+              fade = Math.min(1, s / 5, Math.max(0, (len - s - 7) / 5)),
+              offset = Math.sin(((distance + s) * 2 * Math.PI) / wavelength) * amplitude * fade;
+            result.push({
+              x: a.x + dx * t - (dy / len) * offset,
+              y: a.y + dy * t + (dx / len) * offset,
+            });
+          }
         }
       }
       result.push(b);
@@ -674,7 +681,7 @@
           ? wave(e.points, 2.8, 15, {
               left: vp.left - 24,
               right: vp.width + 12,
-            }, e.polarity === "negative" ? "sine" : "triangle")
+            }, e.polarity === "negative" ? "sine" : "square")
           : path(e.points);
     }
     for (const tag of technologyTags)

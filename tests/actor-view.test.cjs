@@ -39,7 +39,7 @@ test('positive and negative arrowheads follow the routed centerline in every dir
     [{x:300,y:100},{x:450,y:230}], [{x:300,y:100},{x:430,y:100},{x:430,y:230}],
   ]) {
     const d=sample(),g=L.layout(d),edge=g.edges.find(e=>e.id==='negative');
-    edge.polarity=polarity;edge.points=points;edge.path=L.wave(points,2.8,15,null,polarity==='positive'?'triangle':'sine');
+    edge.polarity=polarity;edge.points=points;edge.path=L.wave(points,2.8,15,null,polarity==='positive'?'square':'sine');
     const last=L.routeSegments(points).at(-1),expected=Math.atan2(last.b.y-last.a.y,last.b.x-last.a.x)*180/Math.PI;
     const dom=xml(d,g),p=dom.querySelector('[data-id="negative"] .line');
     const marker=dom.querySelector(p.getAttribute('marker-end').slice(4,-1));

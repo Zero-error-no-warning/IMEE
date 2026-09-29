@@ -97,7 +97,7 @@ source / targetの形式：
 
 State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。Task端点はTask実行期間外でも全期間内の指定時刻に保存できます。期間外端点はTaskの実線上にはなく、時間窓外の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
 
-polarityが唯一の因果線種です。positiveは三角波、negativeは滑らかな波線で、いずれも経路に沿って振幅2.8px・周期15pxで描きます。端点付近では振幅を抑え、矢印headは波形ではなく基準経路末尾の方向に固定します。Task・分岐結果の線は直線です。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
+polarityが唯一の因果線種です。positiveは矩形波、negativeは滑らかな波線で、いずれも経路に沿って振幅2.8px・周期15pxで描きます。端点付近では基準経路に戻し、矢印headは波形ではなく基準経路末尾の方向に固定します。Task・分岐結果の線は直線です。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
 
 State / Taskの旧status（actual / planned / proposed）とCausalLink.proposedは読込・保存の互換性のため受け付けますが、表示・フィルタ・分析には使いません。新規作成では付けません。シナリオの仮定はnotesで説明します。ラベル補助線も細いニュートラルな実線です。
 
