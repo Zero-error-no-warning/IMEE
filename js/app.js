@@ -206,9 +206,9 @@
     if (["state", "task", "actor"].includes(s.type))
       actions.append(button("ここから接続", () => beginConnection(s)));
     if (s.type === "task")
-      actions.append(button("結果を追加", () => addResult(s.id)));
+      actions.append(button("分岐を追加", () => addResult(s.id)));
     if (s.type === "causalLink" && x.target.type === "task")
-      actions.append(button("この作用による分岐を追加", () => addCausalResult(s.id)));
+      actions.append(button("分岐を追加", () => addCausalResult(s.id)));
     if (s.type === "actor") {
       actions.append(
         button("子Actor追加", () => editActor(null, x.id)),
@@ -459,24 +459,25 @@
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
     if (cause?.target.type === "task")
-      addResult(cause.target.id, {time:cause.target.time,cause});
+      addResult(cause.target.id, {time:cause.target.time,fixedTime:true});
   }
   function addResult(tid, context = {}) {
     const t = M.get(doc(), "task", tid),
       s = M.get(doc(), "state", t.fromStateId),
       w = M.taskWindow(doc(), t),
       time = context.time ?? w.end,
-      fixedTime = !!context.cause || context.junction,
+      fixedTime = !!context.fixedTime,
       actor = M.get(doc(), "actor", s.actorId);
     if (time < w.start || time > w.end) {
       toast("作用時刻がTaskの実行期間外のため、分岐を追加できません。Taskの期間または作用時刻を編集してください。");
       return;
     }
     dialog(
-      context.cause ? "この作用による分岐を追加" : "Taskの結果を追加",
-      `<p class="dialog-summary">${esc(actor.name)} / ${esc(t.label)}<br>Taskの実行期間: ${w.start}〜${w.end}${context.cause ? "<br>作用: "+esc(context.cause.label)+" / 到達 T+"+time : ""}</p>` +
+      "分岐を追加",
+      `<p class="dialog-summary">${esc(actor.name)} / ${esc(t.label)}<br>Taskの実行期間: ${w.start}〜${w.end}</p>` +
+        '<p id="branch-related-causes" class="dialog-summary" hidden></p>' +
         field("time", "分岐する時刻", time, "number") +
-        field("label", "結果ラベル", context.cause ? "作用後" : "別の結果") +
+        field("label", "結果ラベル", "別の結果") +
         choices("toStateId", "接続先State", [
           ["", "新しいStateを作成"],
           ...doc().states.filter(x => x.actorId === s.actorId && x.id !== s.id)
@@ -498,12 +499,22 @@
       }),
     );
     const timeInput = $('#dialog-fields [name="time"]');
+    const updateRelatedCauses = () => {
+      const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === tid && c.target.time === +timeInput.value),
+        summary = $('#branch-related-causes');
+      summary.hidden = !causes.length;
+      summary.innerHTML = causes.length
+        ? `この時刻に到達する作用（T+${esc(timeInput.value)}）:<br>${causes.map(c => esc(c.label)).join("<br>")}<br><span class="muted">参考表示です。作用と分岐の紐付けや、分岐条件は設定されません。</span>`
+        : "";
+    };
     timeInput.readOnly = fixedTime;
+    updateRelatedCauses();
     let previousTime = time;
     timeInput.oninput = () => {
       const stateTime = $('#dialog-fields [name="stateTime"]');
       if (+stateTime.value === previousTime) stateTime.value = timeInput.value;
       previousTime = +timeInput.value;
+      updateRelatedCauses();
     };
     $('#dialog-fields [name="toStateId"]').onchange = (e) => {
       const fields = $('#new-result-state');
@@ -1012,17 +1023,11 @@
         const junction = e.target.closest(".junction[data-time]"),
           w = M.taskWindow(doc(), M.get(doc(), "task", s.id)),
           time = junction ? +junction.dataset.time : Math.max(w.start,Math.min(w.end,timeAt(p.x)));
-        entries.push([junction ? "この時点から分岐を追加" : "結果を追加",
-          () => addResult(s.id, {time,junction:!!junction})]);
-        if (junction) {
-          const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === s.id && c.target.time === time);
-          for (const cause of causes)
-            entries.push([causes.length === 1 ? "この作用による分岐を追加" : `「${cause.label}」による分岐を追加`,
-              () => addCausalResult(cause.id)]);
-        }
+        entries.push(["分岐を追加",
+          () => addResult(s.id, {time,fixedTime:!!junction})]);
       }
       if (s.type === "causalLink" && M.get(doc(), "causalLink", s.id).target.type === "task")
-        entries.push(["この作用による分岐を追加", () => addCausalResult(s.id)]);
+        entries.push(["分岐を追加", () => addCausalResult(s.id)]);
       if (s.type === "actor")
         entries.push(
           ["子Actor追加", () => editActor(null, s.id)],

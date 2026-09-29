@@ -85,7 +85,7 @@ test("Alt drag creates causal link to precise Task time and polarity editable in
 });
 test("right-click add result creates shared white junction and new State", async (t) => {
   const a = await app(t);
-  context(a, "search", "結果を追加");
+  context(a, "search", "分岐を追加");
   a.fill("time", 14);
   a.fill("label", "NG");
   a.fill("name", "捜索継続");
