@@ -108,9 +108,9 @@ State / Taskの旧status（actual / planned / proposed）とCausalLink.proposed�
 { id, technologyId, targetType: "task", targetId, notes: "" } // bindings[]
 ```
 
-statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、nullまたは省略で未評価。Binding対象はactor / state / task / causalLinkのみです。StateとTaskの分析には直接Bindingに加え、その直接のActorのBindingを適用します。祖先Groupの技術は自動継承しません。Technologyカタログは複製間で共有し、Binding自身のIDは複製時に再発行します。
+statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、nullまたは省略で未評価。Binding対象はactor / state / task / causalLinkのみです。UIでの新規紐付けはActor・Task・作用に限ります。Stateへの旧Bindingはデータ・分析ともに保持し、詳細パネルからTask・作用・Actorへの付け先変更ができます。同じ技術が変更先にある場合は重複をまとめます。Actor全体の技術・装備と旧StateのBindingは詳細パネルで表示します。StateとTaskの分析には直接Bindingに加え、その直接のActorのBindingを適用します。祖先Groupの技術は自動継承しません。Technologyカタログは複製間で共有し、Binding自身のIDは複製時に再発行します。
 
-技術吹き出しはレイアウト計算に含め、Actor行に専用の注記領域を確保します。矩形とノード・ラベル・他の吹き出し・経路線分との衝突を避け、狭い場所では短縮表示し、必要に応じて表示上の行高さを増やします。views.main.laneHeightや時刻・所属データは変更しません。引き出し線はノード・文字・吹き出しの矩形を避けます。技術全文・成熟度・TRL・対象名はTooltipで確認できます。技術フィルタをオフにすると注記領域も外します。
+Task・作用の技術名は対象ラベルの直下にまとめ、ラベルと技術名を一体として配置します。ノード・文字・他の技術名・経路との衝突を避け、必要に応じて表示上のActor行間隔を増やします。views.main.laneHeightや時刻・所属データは変更しません。短いTaskなどで線上に見出しを置けない場合は、対象の近くに短い補助線付き見出しを置きます。4件を超える技術や、短縮しても収まらない技術は対象付近の「技N」に集約し、ホバーで一覧、選択で対象の詳細パネルを開きます。技術全文・成熟度・TRL・対象名はTooltipで確認できます。Gap Viewの技術名にはTRLも添えます。技術フィルタをオフにすると追加の間隔も外します。
 
 ## Views
 
@@ -123,7 +123,7 @@ views: { main: {
 }}
 ```
 
-modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
+modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。技術表示時は必要に応じて間隔を広げます。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
 折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
@@ -154,4 +154,4 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 
 State / junction / Task作用端点のXは時刻から求め、変更しません。共有始点・共有終点・共通区間は有限のオフセット候補で分離。上下Actor間は向かい合う円周へ接続します。負の因果は調整後の折れ線をサンプリングし、各区間の法線方向へ周期オフセットを加えます。端点・角は波幅を減衰させ、アンカーを保持します。矢じり直前は直線にし、矢じりの向きは波の接線ではなく経路の最後の基準線分に合わせます。
 
-Task・分岐結果のラベルは元経路上に中心を置き、白背景と線と同色の細い枠で囲みます。既存経路上の候補からノード・文字・技術吹き出しとの重なりを避けて選び、線を曲げません。狭い区間は文字を省略し、枠も入らない短い区間では線のTooltipで全文を確認します。作用ラベルは経路近傍に配置し、線と同色の下線を付けます。作用ラベルの候補は元経路の中央付近から横±36px、縦−40〜＋24pxで、技術吹き出しがある場合は経路上の近隣位置も使います。文字は最大幅で省略し全文はTooltip / Inspectorへ。遠方の空き領域へ配置しません。State名も局所改行・省略し、円の大きさや時刻を変えません。
+Task・分岐結果のラベルは元経路上に中心を置き、白背景と線と同色の細い枠で囲みます。既存経路上の候補からノード・文字・技術吹き出しとの重なりを避けて選び、線を曲げません。狭い区間は文字を省略し、枠も入らない短い区間では線のTooltipで全文を確認します。作用ラベルは経路近傍に配置し、線と同色の下線を付けます。作用ラベルの候補は元経路の中央付近から横±36px、縦−40〜＋24pxで、技術名がある場合は一体の幅を考慮した横位置と経路上の近隣位置も使います。文字は最大幅で省略し全文はTooltip / Inspectorへ。遠方の空き領域へ配置しません。State名も局所改行・省略し、円の大きさや時刻を変えません。

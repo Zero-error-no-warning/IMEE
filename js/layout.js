@@ -266,7 +266,7 @@
     }
     return lines;
   }
-  function label(text, points, occupied, maxWidth = 150, lineSegments = [], reserved = []) {
+  function label(text, points, occupied, maxWidth = 150, lineSegments = [], reserved = [], attachment = null) {
     const a = points[0],
       b = points.at(-1);
     const anchor = pointOnRoute(points, (a.x + b.x) / 2, (a.y + b.y) / 2);
@@ -275,16 +275,16 @@
       display = display.slice(0, -1);
     if (display !== text) display = display.slice(0, -1) + "…";
     const w = width(display) + 10,
-      h = 18;
+      h = 18, groupWidth = Math.max(w,...(attachment?.items.map(x=>x.width) || []));
     // Finite, local candidates only. Crowded labels may overlap rather than escape.
     const choices = [];
     const offsets = [];
     if (Math.abs(b.y - a.y) > Math.abs(b.x - a.x))
-      for (const dx of [w / 2 + 8, -w / 2 - 8]) offsets.push({ dx, dy: -h / 2 });
+      for (const dx of [groupWidth / 2 + 10, -groupWidth / 2 - 10]) offsets.push({ dx, dy: -h / 2 });
     for (const dy of [-22, 6, -40, 24])
       for (const dx of [0, -18, 18, -36, 36]) offsets.push({ dx, dy });
     const anchors = [anchor];
-    if (reserved.length) for (const t of [0.25,0.75,0.1,0.9])
+    if (reserved.length || attachment) for (const t of [0.4,0.6,0.3,0.7,0.2,0.8,0.1,0.9])
       anchors.push(pointOnRoute(points,a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t));
     for (const candidateAnchor of anchors) for (const { dx, dy } of offsets) {
         const box = {
@@ -293,6 +293,7 @@
           width: w,
           height: h,
         };
+        if (attachment && (occupied.some(o=>overlaps(box,o)) || !attachmentFits(box,attachment,occupied,lineSegments))) continue;
         const score =
           reserved.reduce((s, o) => s + (overlaps(box, o) ? 1 : 0), 0) * 10000 +
           occupied.reduce((s, o) => s + (overlaps(box, o) ? 1 : 0), 0) * 100 +
@@ -303,6 +304,7 @@
       }
     choices.sort((a, b) => a.score - b.score);
     const box = choices[0];
+    if (!box) return null;
     occupied.push(box);
     return {
       ...box,
@@ -315,7 +317,7 @@
       ) > 18,
     };
   }
-  function taskLabel(text, points, occupied, lineSegments) {
+  function taskLabel(text, points, occupied, lineSegments, attachment = null) {
     const segments = routeSegments(points),
       a = points[0], b = points.at(-1),
       middle = pointOnRoute(points, (a.x+b.x)/2, (a.y+b.y)/2),
@@ -327,11 +329,11 @@
     while (true) {
       const display = chars.join("") + (chars.length < fullLength ? "…" : ""),
         w = width(display)+10, h = 18, choices = [];
-      for (const {a,b} of segments) for (const t of [0.5,0.4,0.6,0.3,0.7,0.2,0.8,0.1,0.9]) {
+      for (const {a,b} of segments) for (const t of Array.from({length:39},(_,i)=>(i+1)/40)) {
         const anchor = {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t},
           box = {x:anchor.x-w/2,y:anchor.y-h/2,width:w,height:h},
           padded = {x:box.x-2,y:box.y-2,width:w+4,height:h+4};
-        if (occupied.some(o => overlaps(padded,o))) continue;
+        if (occupied.some(o => overlaps(padded,o)) || !attachmentFits(box,attachment,occupied,lineSegments)) continue;
         const score = otherLines.reduce((n,line) => n+segmentInsideBox(line,padded),0)*12 +
           Math.hypot(anchor.x-middle.x,anchor.y-middle.y);
         choices.push({...box,anchor,score,text:display,fullText:text,leader:false});
@@ -347,49 +349,20 @@
     // Very short / crowded segments retain their complete label in the edge Tooltip.
     return null;
   }
-  function technologyLeader(anchor, box, obstacles, lines) {
-    const padded = obstacles.filter(b => b !== box).map(b =>
-      ({x:b.x-3,y:b.y-3,width:b.width+6,height:b.height+6}));
-    const contains = (b,p) => p.x>b.x && p.x<b.x+b.width && p.y>b.y && p.y<b.y+b.height;
-    const bounds = {x:Math.min(anchor.x,box.x)-48,y:Math.min(anchor.y,box.y)-48,
-      width:Math.abs(anchor.x-box.x)+box.width+96,height:Math.abs(anchor.y-box.y)+box.height+96};
-    // Only the source body can contain the attachment point. All other nodes,
-    // captions and bubbles are obstacles, including the destination bubble.
-    const blocked = padded.filter(b => !contains(b,anchor));
-    blocked.push(box);
-    const starts = [{x:anchor.x,y:anchor.y-9},{x:anchor.x+9,y:anchor.y},
-      {x:anchor.x,y:anchor.y+9},{x:anchor.x-9,y:anchor.y}].filter(p => !blocked.some(b => contains(b,p)));
-    const endX = Math.max(box.x+6,Math.min(box.x+box.width-6,anchor.x));
-    const endY = Math.max(box.y+4,Math.min(box.y+box.height-4,anchor.y));
-    const ends = [{x:endX,y:box.y},{x:endX,y:box.y+box.height},
-      {x:box.x,y:endY},{x:box.x+box.width,y:endY}];
-    const nodes = [...starts,...ends];
-    for (const b of blocked.filter(b => overlaps(b,bounds))) for (const x of [b.x-1,b.x+b.width+1])
-      for (const y of [b.y-1,b.y+b.height+1]) {
-        const point = {x,y};
-        if (!blocked.some(o => contains(o,point))) nodes.push(point);
-      }
-    const distance = nodes.map((_,i) => i<starts.length ? 0 : Infinity), previous = [], visited = new Set();
-    while (visited.size < nodes.length) {
-      let at=-1;
-      for (let i=0;i<nodes.length;i++) if (!visited.has(i) && (at<0 || distance[i]<distance[at])) at=i;
-      if (at<0 || !Number.isFinite(distance[at])) break;
-      if (at>=starts.length && at<starts.length+ends.length) {
-        const result=[];
-        for (let i=at;i!==undefined;i=previous[i]) result.unshift(nodes[i]);
-        return result;
-      }
-      visited.add(at);
-      for (let i=0;i<nodes.length;i++) {
-        if (visited.has(i)) continue;
-        const segment={a:nodes[at],b:nodes[i]};
-        const length=Math.hypot(segment.b.x-segment.a.x,segment.b.y-segment.a.y);
-        if (distance[at]+length+4>=distance[i] || blocked.some(b => segmentInsideBox(segment,b)>0.01)) continue;
-        const score=distance[at]+length+4+lines.reduce((sum,line)=>sum+parallelOverlap(segment,line,4)*4,0);
-        if (score<distance[i]) {distance[i]=score;previous[i]=at;}
-      }
-    }
-    return []; // The tooltip still identifies bindings in a fully enclosed area.
+  function attachedBoxes(caption, attachment) {
+    if (!attachment) return [];
+    return attachment.items.map((item,i) => ({
+      x:caption.x+caption.width/2-item.width/2,
+      y:caption.y+caption.height+5+i*24,width:item.width,height:20,
+    }));
+  }
+  function attachmentFits(caption, attachment, occupied, lines) {
+    // Long lists stay available in the target's details without stretching the whole diagram.
+    if(attachment && attachment.items.length>4) return false;
+    return attachedBoxes(caption,attachment).every(box =>
+      box.x >= attachment.left && box.x+box.width <= attachment.right &&
+      !occupied.some(o=>overlaps({x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6},o)) &&
+      !lines.some(line=>segmentInsideBox(line,{x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6})>0));
   }
   function viewport(duration, width, start = 0, end = duration) {
     const left = Math.min(166, width * 0.28),
@@ -432,6 +405,7 @@
       return source === target && folded.has(source);
     };
     const technologyBindings = filters.technology ? doc.bindings.filter(b => {
+      if (!["task", "causalLink"].includes(b.targetType)) return false;
       const tech = M.get(doc, "technology", b.technologyId);
       if (v.mode === "gap" && tech.status === "existing") return false;
       if (b.targetType === "causalLink") {
@@ -450,7 +424,11 @@
     for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
       const top = y, aggregated = folded.has(actor.id), lanes = [];
       const collapseMode = aggregated ? (v.collapsedLayout || "compact") : "spaced";
-      const spacing = collapseMode === "compact" ? 28 : v.laneHeight;
+      const rowBindings = technologyBindings.filter(b=>b.actorId===actor.id),
+        counts = new Map();
+      for (const {binding:b} of rowBindings) counts.set(b.targetType+":"+b.targetId,(counts.get(b.targetType+":"+b.targetId)||0)+1);
+      const extra = rowBindings.length ? 64+Math.min(4,Math.max(...counts.values()))*24 : 0;
+      const spacing = Math.max(collapseMode === "compact" ? 28 : v.laneHeight,extra);
       const radius = collapseMode === "compact" ? 5 : 7;
       // Project the whole subtree onto ONE parent timeline. Sublanes are only
       // for concurrent states/branches, never one lane per child Actor.
@@ -485,20 +463,12 @@
           else { state.summaryActorId=actor.id; state.summaryNames=[source.name]; atTime.set(source.time,state); }
         }
       }
-      const count = technologyBindings.filter(b => b.actorId === actor.id).length;
       const baseHeight = actor.isGroup && !lanes.length ? 38 :
         collapseMode === "single" ? 48 : collapseMode === "compact"
           ? 42 + Math.max(0,lanes.length-1)*spacing
           : Math.max(1,lanes.length)*spacing+6;
-      // A separate annotation band keeps bubbles off the timeline and captions.
-      // Geometry does not depend on the length of State/Task/causal captions.
-      const technologyTop = top + Math.max(baseHeight,
-        (Math.max(1,lanes.length)-1)*spacing + (collapseMode === "spaced" ? 86 : 44)) + 8;
-      const columns = Math.max(1, Math.floor((vp.width-vp.left-24)/200));
-      const technologyHeight = count ? Math.ceil(count/columns)*28 + 8 + (options.technologySpace?.[actor.id] || 0) : 0;
-      const rowHeight = count ? technologyTop-top+technologyHeight : baseHeight;
-      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode,
-        technologyTop,technologyHeight});
+      const rowHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
+      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode});
       y += rowHeight;
     }
     let height = y + 24;
@@ -616,68 +586,16 @@
     occupied.length = 0;
     occupied.push(...nodeBodies);
     for (const j of junctions.values()) occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
-    const technologyTags = [], unplaced = [];
-    for (const {binding, actorId} of technologyBindings) {
-      const row = rows.find(r => r.actor.id === actorId);
-      let anchor;
-      if (binding.targetType === "state") anchor = states.get(binding.targetId);
-      else if (binding.targetType === "actor") anchor = row && {x:vp.left+30,y:row.center};
-      else {
-        const edge = binding.targetType === "task" ? tasks.get(binding.targetId)?.edge
-          : edges.find(e => e.id === binding.targetId);
-        if (edge) {
-          const start = Math.max(vp.left, Math.min(...edge.points.map(p => p.x)));
-          const end = Math.min(vp.right, Math.max(...edge.points.map(p => p.x)));
-          if (start <= end) anchor = pointOnRoute(edge.points, (start+end)/2,
-            (edge.points[0].y+edge.points.at(-1).y)/2);
-        }
-      }
-      if (!anchor || !row || anchor.x < vp.left-14 || anchor.x > vp.width) continue;
-      const tech = M.get(doc, "technology", binding.technologyId);
-      const fullText = v.mode === "mission" ? tech.name
-        : v.mode === "gap" ? `${tech.name} · TRL ${tech.trl ?? "?"}`
-        : `${tech.name} · ${tech.status} · TRL ${tech.trl ?? "?"}`;
-      const max = Math.max(16, Math.min(180,vp.width-vp.left-40));
-      let text, box;
-      // If lines divide a narrow viewport, use a shorter caption with the full
-      // value in its tooltip before asking for more row height.
-      for (const cap of [...new Set([max,Math.min(max,140),Math.min(max,100),Math.min(max,70)])]) {
-        text = fullText;
-        while (width(text,10) > cap && text.length > 1) text = text.slice(0,-1);
-        if (text !== fullText) text = text.slice(0,-1) + "…";
-        const w = width(text,10)+12, h = 20;
-        const left = vp.left+8, right = vp.width-w-12;
-        const preferred = Math.max(left,Math.min(right,anchor.x-w/2));
-        const xs = [preferred,left,right];
-        for (let x=left; x<=right; x+=12) xs.push(x);
-        xs.sort((a,b) => Math.abs(a-preferred)-Math.abs(b-preferred));
-        for (let ty=row.technologyTop; ty+h<=row.y+row.height-6 && !box; ty+=28)
-          for (const x of xs) {
-            const candidate = {x,y:ty,width:w,height:h};
-            const padded = {x:x-5,y:ty-5,width:w+10,height:h+10};
-            if (occupied.some(o => overlaps(padded,o)) ||
-                lineSegments.some(line => segmentInsideBox(line,padded)>0)) continue;
-            box = candidate;
-            break;
-          }
-        if (box) break;
-      }
-      const tag = {binding,actorId,tech,anchor:{x:anchor.x,y:anchor.y},text,fullText,box};
-      if (box) { technologyTags.push(tag); occupied.push(box); }
-      else unplaced.push(tag);
-    }
-    if (unplaced.length && (options.technologyPass || 0) < 8) {
-      const technologySpace = {...options.technologySpace};
-      for (const tag of unplaced) technologySpace[tag.actorId] = (technologySpace[tag.actorId] || 0)+28;
-      return layout(doc,widthValue,{...options,technologySpace,technologyPass:(options.technologyPass || 0)+1});
-    }
-    // Pathological density: keep every binding readable in an overflow band,
-    // below all graph geometry, rather than drawing a bubble across a node/line.
-    for (const tag of unplaced) {
-      tag.box = {x:vp.left+8,y:height,width:Math.min(192,vp.width-vp.left-24),height:20};
-      tag.overflow = true;
-      height += 28;
-      technologyTags.push(tag); occupied.push(tag.box);
+    const technologyTags = [], technologyGroups = [], attachments = new Map();
+    for (const {binding,actorId} of technologyBindings) {
+      const key=binding.targetType+":"+binding.targetId,
+        tech=M.get(doc,"technology",binding.technologyId),
+        fullText=v.mode==='mission' ? tech.name : v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : `${tech.name} · ${tech.status} · TRL ${tech.trl ?? "?"}`;
+      let text=v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name;
+      while(width(text,10)>128 && text.length>1) text=text.slice(0,-1);
+      if(width(text,10)<width(v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name,10)) text=text.slice(0,-1)+"…";
+      if(!attachments.has(key)) attachments.set(key,{items:[],left:vp.left+4,right:vp.width-8,actorId});
+      attachments.get(key).items.push({binding,actorId,tech,text,fullText,width:width(text,10)+12});
     }
     for (const s of states.values()) {
       if (s.collapseMode !== "spaced") {s.lines=[];continue;}
@@ -699,26 +617,73 @@
       s.labelX = choices[0].cx;
       occupied.push(choices[0].box);
     }
-    for (const e of edges) {
-      e.labelInfo = e.hideLabel ? null : e.type === "task"
-        ? taskLabel(e.label, e.points, occupied, lineSegments) : label(
-        e.label,
-        e.points,
-        occupied,
-        150,
-        lineSegments,
-        technologyTags.map(t => t.box),
-      );
-      e.path =
-        e.type === "causalLink"
-          ? wave(e.points, 2.8, 15, {
-              left: vp.left - 24,
-              right: vp.width + 12,
-            }, e.polarity === "negative" ? "sine" : "square")
-          : path(e.points);
+    const pending = [];
+    const captionEdges = [...edges];
+    // A single-line aggregate retains the individual targets for technology captions.
+    for(const [key,attachment] of attachments) if(!captionEdges.some(e=>e.type+":"+e.id===key && e.part!=="outcome")) {
+      const binding=attachment.items[0].binding, edge=tasks.get(binding.targetId)?.edge;
+      if(edge) captionEdges.push({...edge,technologyOnly:true});
     }
-    for (const tag of technologyTags)
-      tag.leader = technologyLeader(tag.anchor,tag.box,occupied,lineSegments);
+    const priority=e=>{
+      const a=attachments.get(e.type+":"+e.id);
+      return a?.items.some(item=>item.tech.status!=="existing") ? 0 : e.type==='causalLink' ? 1 : 2;
+    };
+    if(attachments.size) captionEdges.sort((a,b)=>priority(a)-priority(b));
+    for (const e of captionEdges) {
+      let attachment=e.part==='outcome' ? null : attachments.get(e.type+":"+e.id);
+      e.labelInfo=null;
+      for(const cap of attachment ? [128,96,64] : [128]) {
+        if(attachment) attachment={...attachment,items:attachment.items.map(item=>{
+          let text=item.text;
+          while(width(text,10)>cap && text.length>1) text=text.slice(0,-1);
+          if(text!==item.text) text=text.slice(0,-1)+'…';
+          return {...item,text,width:width(text,10)+12};
+        })};
+        e.labelInfo = e.hideLabel ? null : e.type === "task"
+          ? taskLabel(e.label,e.points,occupied,lineSegments,attachment)
+          : label(e.label,e.points,occupied,150,lineSegments,[],attachment);
+        if(e.labelInfo || e.hideLabel) break;
+      }
+      if(attachment) {
+        if(!e.labelInfo) pending.push({e,attachment});
+        else addTechnologyGroup(e,e.labelInfo,attachment);
+      }
+      e.path = e.type === "causalLink"
+        ? wave(e.points,2.8,15,{left:vp.left-24,right:vp.width+12},e.polarity === "negative" ? "sine" : "square")
+        : path(e.points);
+    }
+    function addTechnologyGroup(e,caption,attachment,detached=false) {
+      const boxes=attachedBoxes(caption,attachment),tags=[];
+      for(const [i,item] of attachment.items.entries()) {
+        const tag={...item,box:boxes[i],anchor:caption.anchor,caption,leader:[]};
+        technologyTags.push(tag);tags.push(tag);occupied.push(tag.box);
+      }
+      technologyGroups.push({edge:e,caption,tags,detached:detached || !!e.technologyOnly});
+    }
+    const unplaced=[];
+    for(const {e,attachment} of pending) {
+      // Short Tasks have no room for an on-line caption. Keep a named group just
+      // below the same time interval, with a short straight attachment instead.
+      const a=e.points[0],b=e.points.at(-1),anchor=pointOnRoute(e.points,(a.x+b.x)/2,(a.y+b.y)/2);
+      let caption;
+      for(const dy of [24,48,72]) {
+        const text=textLines(e.label,128,11,1)[0],w=width(text)+10,
+          candidate={x:anchor.x-w/2,y:anchor.y+dy,width:w,height:18,text,fullText:e.label,anchor,leader:false};
+        if(occupied.some(o=>overlaps(candidate,o)) || !attachmentFits(candidate,attachment,occupied,lineSegments)) continue;
+        caption=candidate;break;
+      }
+      if(caption) {occupied.push(caption);addTechnologyGroup(e,caption,attachment,true);}
+      else unplaced.push({e,attachment});
+    }
+    // Never send a technology to an unrelated empty part of the diagram.
+    // A compact target marker exposes unresolved dense groups in the Inspector.
+    for(const {e,attachment} of unplaced) {
+      const a=e.points[0],b=e.points.at(-1),anchor=pointOnRoute(e.points,(a.x+b.x)/2,(a.y+b.y)/2);
+      if(!e.labelInfo && !e.hideLabel && !e.technologyOnly)
+        e.labelInfo=e.type==='task' ? taskLabel(e.label,e.points,occupied,lineSegments) : label(e.label,e.points,occupied,150,lineSegments);
+      const marker=e.labelInfo ? {x:e.labelInfo.x+e.labelInfo.width+12,y:e.labelInfo.y-4} : anchor;
+      technologyGroups.push({edge:e,anchor:marker,items:attachment.items,compact:true});
+    }
     return {
       vp,
       rows,
@@ -729,6 +694,7 @@
       height,
       filters,
       technologyTags,
+      technologyGroups,
       occupied,
     };
   }

@@ -8,8 +8,7 @@ function clearAnnotations(g) {
   const segments=g.edges.flatMap(e=>L.routeSegments(e.points));
   for(const tag of g.technologyTags) {
     assert(!tag.overflow,tag.binding.id+' overflow');
-    const row=g.rows.find(r=>r.actor.id===tag.actorId);
-    assert(tag.box.y>=row.y && tag.box.y+tag.box.height<=row.y+row.height);
+    assert(tag.box.y>=0 && tag.box.y+tag.box.height<=g.height);
     assert(tag.box.x>=g.vp.left && tag.box.x+tag.box.width<=g.vp.width);
     for(const obstacle of g.occupied) if(obstacle!==tag.box)
       assert(!L.overlaps(tag.box,obstacle),tag.binding.id+' bubble collides with node/caption/tag');
@@ -73,22 +72,34 @@ for(const width of [640,1050])for(const folded of [false,true])
     const d=restored.research();d.views.main.mode='technology';d.views.main.filters.technology=true;
     if(folded)d.views.main.collapsedActors=['uuv'];
     const before=JSON.stringify(d),g=L.layout(d,width);
-    assert(g.technologyTags.length>30);
+    assert(g.technologyTags.length>0);
+    const represented=g.technologyGroups.flatMap(group=>group.compact?group.items:group.tags).map(t=>t.binding.id);
+    const expected=d.bindings.filter(b=>['task','causalLink'].includes(b.targetType) &&
+      (b.targetType==='task' || g.edges.some(e=>e.id===b.targetId))).map(b=>b.id);
+    assert.deepEqual(represented.sort(),expected.sort());
+    for(const group of g.technologyGroups.filter(g=>!g.compact)) {
+      group.tags.forEach((tag,i)=>{
+        assert.equal(tag.box.y,group.caption.y+group.caption.height+5+i*24);
+        assert(Math.abs(tag.box.x+tag.box.width/2-group.caption.x-group.caption.width/2)<1e-6);
+      });
+    }
     clearAnnotations(g);
     assert.equal(JSON.stringify(d),before);
     const xml=new JSDOM(R.render(d,g),{contentType:'image/svg+xml'}).window.document;
-    for(const p of xml.querySelectorAll('.technology-leader'))assert.equal(p.getAttribute('fill'),'none');
+    assert.equal(xml.querySelectorAll('.technology-leader').length,0);
     assert.equal(xml.querySelectorAll('.technology-tag').length,g.technologyTags.length);
   });
 
-test('many bindings on one State grow the Actor row while keeping times and compact filter-off view',()=>{
+test('many bindings on one Task use a local summary without stretching a distant annotation band',()=>{
   const d=sample();
   for(let i=0;i<18;i++){
     d.technologies.push({id:'tech'+i,name:'高密度技術注記'+i,status:'research',trl:4});
-    d.bindings.push({id:'bind'+i,technologyId:'tech'+i,targetType:'state',targetId:'s0'});
+    d.bindings.push({id:'bind'+i,technologyId:'tech'+i,targetType:'task',targetId:'search'});
   }
-  const g=L.layout(d,640);assert.equal(g.technologyTags.length,18);clearAnnotations(g);
+  const g=L.layout(d,640);
+  const summary=g.technologyGroups.find(g=>g.edge.id==='search');assert(summary.compact);assert.equal(summary.items.length,18);
+  assert.equal(g.technologyTags.length,0);clearAnnotations(g);
   d.views.main.filters.technology=false;const compact=L.layout(d,640);
-  assert.equal(compact.technologyTags.length,0);assert(g.height>compact.height);
+  assert.equal(compact.technologyTags.length,0);assert(g.height>compact.height);assert(g.height-compact.height<200);
   for(const s of d.states)assert.equal(g.states.get(s.id).x,compact.states.get(s.id).x);
 });

@@ -217,7 +217,12 @@
     }
     panel.append(actions);
     if (["actor", "state", "task", "causalLink"].includes(s.type)) {
-      panel.append(button("技術を関連付け", () => editBinding(s)));
+      if(s.type !== "state") panel.append(button("技術を関連付け", () => editBinding(s)));
+      const bindings=doc().bindings.filter(b=>b.targetType===s.type && b.targetId===s.id);
+      if(s.type === "actor" && bindings.length)
+        panel.insertAdjacentHTML("beforeend",'<p class="muted">Actor全体の技術・装備</p>');
+      if(s.type === "state" && bindings.length)
+        panel.insertAdjacentHTML("beforeend",'<p class="muted">旧Stateへの技術紐付けを保持しています。対応するTask・作用への付け先変更ができます。</p>');
       for (const b of doc().bindings.filter(
         (b) => b.targetType === s.type && b.targetId === s.id,
       )) {
@@ -228,6 +233,7 @@
         card.innerHTML = `<strong>${esc(t.name)}</strong><small>${t.status} · TRL ${t.trl ?? "未評価"}</small>`;
         card.append(
           button("編集", () => editTechnology(t.id)),
+          button("付け先変更", () => retargetBinding(b.id)),
           button("解除", () =>
             change(
               (d) => (d.bindings = d.bindings.filter((x) => x.id !== b.id)),
@@ -616,6 +622,7 @@
     );
   }
   function editBinding(s) {
+    if(s.type === "state") return;
     if (!doc().technologies.length) {
       editTechnology();
       toast("技術を登録してから、もう一度「技術を関連付け」を選んでください。");
@@ -648,6 +655,25 @@
         }),
     );
   }
+  function retargetBinding(id) {
+    const b=M.get(doc(),"binding",id),tech=M.get(doc(),"technology",b.technologyId);
+    const targets=[...doc().tasks.map(t=>{
+        const actor=M.get(doc(),"actor",M.get(doc(),"state",t.fromStateId).actorId),w=M.taskWindow(doc(),t);
+        return ["task:"+t.id,`Task: ${actor.name} / ${t.label} (T+${w.start}〜${w.end})`];
+      }),
+      ...doc().causalLinks.map(c=>["causalLink:"+c.id,`作用: ${c.label} (T+${M.endpoint(doc(),c.source).time}→${M.endpoint(doc(),c.target).time})`]),
+      ...doc().actors.map(a=>["actor:"+a.id,`Actor: ${a.name}`])];
+    dialog("技術の付け先変更",`<p class="dialog-summary">${esc(tech.name)}</p>`+
+      choices("target","付け先",[["","選択してください"],...targets],
+        b.targetType==='state' ? "" : b.targetType+":"+b.targetId),v=>applyEdit(d=>{
+          if(!v.target) throw Error("付け先を選択してください。");
+          const split=v.target.indexOf(":"),targetType=v.target.slice(0,split),targetId=v.target.slice(split+1);
+          const duplicate=d.bindings.find(x=>x.id!==id && x.technologyId===b.technologyId && x.targetType===targetType && x.targetId===targetId);
+          if(duplicate) d.bindings=d.bindings.filter(x=>x.id!==id);
+          else Object.assign(M.get(d,"binding",id),{targetType,targetId});
+          return {type:targetType,id:targetId};
+        }));
+  }
   function catalog() {
     inspector(true);
     const p = $("#inspector");
@@ -669,7 +695,7 @@
       for (const b of doc().bindings.filter((b) => b.technologyId === t.id)) {
         const x = M.get(doc(), b.targetType, b.targetId);
         card.append(
-          button(x.name || x.label, () =>
+          button((b.targetType === "state" ? "旧State: " : "")+(x.name || x.label), () =>
             select({ type: b.targetType, id: b.targetId }),
           ),
         );
@@ -797,6 +823,7 @@
     const p = point(e),
       s = targetInfo(e);
     if (e.target.closest("[data-collapse]")) return;
+    if (e.target.closest(".technology-summary")) inspector(true);
     if (space) {
       drag = {
         kind: "pan",
@@ -978,6 +1005,7 @@
       connect(s, timeAt(point(e).x));
       return;
     }
+    if(e.target.closest(".technology-summary")) inspector(true);
     select(s, e.ctrlKey || e.metaKey);
   });
   $("#timeline").addEventListener("dblclick", (e) => {
@@ -1049,7 +1077,7 @@
           ["上へ", () => reorder(-1)],
           ["下へ", () => reorder(1)],
         );
-      if (s.type !== "technology")
+      if (["actor","task","causalLink"].includes(s.type))
         entries.push(["技術を関連付け", () => editBinding(s)]);
     } else {
       if (row)

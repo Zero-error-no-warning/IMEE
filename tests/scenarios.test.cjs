@@ -85,7 +85,8 @@ test('Gap view shows the unresolved technology while Technology view retains the
   assert.equal((gap.match(/class="technology-tag"/g)||[]).length,1);
   assert(gap.includes('妨害源追尾制御 · TRL 4'));
   d.views.main.mode='technology';
-  assert.equal((R.render(d,L.layout(d)).match(/class="technology-tag"/g)||[]).length,d.bindings.length);
+  const g=L.layout(d);
+  assert.equal(g.technologyGroups.flatMap(g=>g.compact?g.items:g.tags).length,d.bindings.filter(b=>['task','causalLink'].includes(b.targetType)).length);
 });
 
 test('all shipped samples load in the editor and render their complete State and Task sets', async t => {

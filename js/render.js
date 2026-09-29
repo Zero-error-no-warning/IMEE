@@ -116,10 +116,20 @@
         svg += `<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
       svg += `<text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
     }
+    for (const group of layout.technologyGroups || []) {
+      const e=group.edge,color=M.actorColor(doc,M.get(doc,"actor",e.actorId));
+      if(group.compact) {
+        const {anchor,items}=group;
+        svg += `<g class="technology-summary"${data(e.type,e.id)}><title>${esc(e.label)}: ${items.map(item=>esc(item.fullText)).join(" / ")}（選択して詳細を表示）</title><rect x="${anchor.x-16}" y="${anchor.y+5}" width="32" height="16" rx="3" fill="#fffdf5" stroke="${color}"/><text x="${anchor.x}" y="${anchor.y+17}" text-anchor="middle" font-size="10">技${items.length}</text></g>`;
+      } else if(group.detached) {
+        const b=group.caption;
+        svg += `<g class="technology-target"${data(e.type,e.id)}><title>${esc(e.label)}</title><path d="M${b.anchor.x},${b.anchor.y} L${b.x+b.width/2},${b.y}" fill="none" stroke="${color}" stroke-width=".7"/><rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="2" fill="white" stroke="${e.type==='task'?color:'none'}"/>${e.type==='causalLink'?`<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`:""}<text x="${b.x+b.width/2}" y="${b.y+12}" text-anchor="middle">${esc(b.text)}</text></g>`;
+      }
+    }
     for (const tag of layout.technologyTags) {
       const {tech,box} = tag;
       const target = M.get(doc,tag.binding.targetType,tag.binding.targetId);
-      svg += `<g class="technology-tag"${data("technology", tech.id)}><title>${esc(tech.name)} / ${tech.status} / TRL ${tech.trl ?? "未評価"} · ${esc(target.name || target.label)}</title><path class="technology-leader" fill="none" pointer-events="none" d="${L.path(tag.leader)}" stroke="${techColors[tech.status]}" stroke-width=".7"/><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" fill="#fffdf5" stroke="${techColors[tech.status]}" stroke-width=".8"/><text x="${box.x + box.width / 2}" y="${box.y + 14}" font-size="10" text-anchor="middle" fill="${techColors[tech.status]}">${esc(tag.text)}</text></g>`;
+      svg += `<g class="technology-tag"${data("technology", tech.id)}><title>${esc(tech.name)} / ${tech.status} / TRL ${tech.trl ?? "未評価"} · ${esc(target.name || target.label)}</title><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" fill="#fffdf5" stroke="${techColors[tech.status]}" stroke-width=".8"/><text x="${box.x + box.width / 2}" y="${box.y + 14}" font-size="10" text-anchor="middle" fill="${techColors[tech.status]}">${esc(tag.text)}</text></g>`;
     }
     svg += "</g>";
     for (const row of rows) {
