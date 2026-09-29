@@ -207,6 +207,8 @@
       actions.append(button("ここから接続", () => beginConnection(s)));
     if (s.type === "task")
       actions.append(button("結果を追加", () => addResult(s.id)));
+    if (s.type === "causalLink" && x.target.type === "task")
+      actions.append(button("この作用による分岐を追加", () => addCausalResult(s.id)));
     if (s.type === "actor") {
       actions.append(
         button("子Actor追加", () => editActor(null, x.id)),
@@ -454,50 +456,62 @@
       }),
     );
   }
-  function addResult(tid) {
+  function addCausalResult(cid) {
+    const cause = M.get(doc(), "causalLink", cid);
+    if (cause?.target.type === "task")
+      addResult(cause.target.id, {time:cause.target.time,cause});
+  }
+  function addResult(tid, context = {}) {
     const t = M.get(doc(), "task", tid),
       s = M.get(doc(), "state", t.fromStateId),
-      w = M.taskWindow(doc(), t);
+      w = M.taskWindow(doc(), t),
+      time = context.time ?? w.end,
+      fixedTime = !!context.cause || context.junction,
+      actor = M.get(doc(), "actor", s.actorId);
+    if (time < w.start || time > w.end) {
+      toast("作用時刻がTaskの実行期間外のため、分岐を追加できません。Taskの期間または作用時刻を編集してください。");
+      return;
+    }
     dialog(
-      "Taskの結果を追加",
-      field("time", "分岐する時刻", w.end, "number") +
-        field("label", "短い結果ラベル", "NG") +
-        choices(
-          "toStateId",
-          "接続先State",
-          [
-            ["", "新しいStateを作成"],
-            ...doc()
-              .states.filter((x) => x.actorId === s.actorId && x.id !== s.id)
-              .map((x) => [x.id, `${x.name} (T+${x.time})`]),
-          ],
-          "",
-        ) +
-        field("name", "新規State名", "結果State") +
-        field(
-          "stateTime",
-          "新規Stateの時刻",
-          Math.min(doc().time.duration, w.end + doc().time.snap * 3),
-          "number",
-        ) +
-        '<p class="muted">通常Taskの既存接続先は「継続」という結果に変わります。同じ時刻の結果は1つの白丸へ集約します。</p>',
-      (v) =>
-        applyEdit((d) => {
-          let target = v.toStateId;
-          if (!target) {
-            target = M.id("state");
-            d.states.push({
-              id: target,
-              actorId: s.actorId,
-              name: v.name,
-              time: +v.stateTime,
-              activity: "active",
-              phase: "other",
-            });
-          }
-          M.addOutcome(d, tid, +v.time, target, v.label);
-        }),
+      context.cause ? "この作用による分岐を追加" : "Taskの結果を追加",
+      `<p class="dialog-summary">${esc(actor.name)} / ${esc(t.label)}<br>Taskの実行期間: ${w.start}〜${w.end}${context.cause ? "<br>作用: "+esc(context.cause.label)+" / 到達 T+"+time : ""}</p>` +
+        field("time", "分岐する時刻", time, "number") +
+        field("label", "結果ラベル", context.cause ? "作用後" : "別の結果") +
+        choices("toStateId", "接続先State", [
+          ["", "新しいStateを作成"],
+          ...doc().states.filter(x => x.actorId === s.actorId && x.id !== s.id)
+            .map(x => [x.id, `${x.name} (T+${x.time})`]),
+        ], "") +
+        '<div id="new-result-state">' +
+        field("name", "新規State名", "") +
+        field("stateTime", "新規Stateの時刻", time, "number") + '</div>' +
+        '<p class="muted">元の到達先とTaskの終了時刻を保って、別の結果を追加します。同じ時刻の結果は1つの白丸へ集約します。新規Stateの時刻は、結果が現れる時刻に変更できます。</p>',
+      (v) => applyEdit((d) => {
+        const branchTime = fixedTime ? time : +v.time;
+        let target = v.toStateId;
+        if (!target) {
+          target = M.id("state");
+          d.states.push({id:target,actorId:s.actorId,name:v.name,time:+v.stateTime,activity:"active",phase:"other"});
+        }
+        M.addOutcome(d, tid, branchTime, target, v.label);
+        return {type:"task",id:tid};
+      }),
     );
+    const timeInput = $('#dialog-fields [name="time"]');
+    timeInput.readOnly = fixedTime;
+    let previousTime = time;
+    timeInput.oninput = () => {
+      const stateTime = $('#dialog-fields [name="stateTime"]');
+      if (+stateTime.value === previousTime) stateTime.value = timeInput.value;
+      previousTime = +timeInput.value;
+    };
+    $('#dialog-fields [name="toStateId"]').onchange = (e) => {
+      const fields = $('#new-result-state');
+      fields.hidden = !!e.target.value;
+      fields.querySelectorAll('input').forEach(input => { input.disabled = !!e.target.value; });
+    };
+    $('#dialog-fields [name="name"]').placeholder = "例：無力化、通信回復";
+    $('#dialog-fields [name="label"]').focus();
   }
   function endpointFields(name, p) {
     const opts = [
@@ -994,8 +1008,21 @@
         );
       if (["state", "task", "actor"].includes(s.type))
         entries.push(["ここから接続", () => beginConnection(s, timeAt(p.x))]);
-      if (s.type === "task")
-        entries.push(["結果を追加", () => addResult(s.id)]);
+      if (s.type === "task") {
+        const junction = e.target.closest(".junction[data-time]"),
+          w = M.taskWindow(doc(), M.get(doc(), "task", s.id)),
+          time = junction ? +junction.dataset.time : Math.max(w.start,Math.min(w.end,timeAt(p.x)));
+        entries.push([junction ? "この時点から分岐を追加" : "結果を追加",
+          () => addResult(s.id, {time,junction:!!junction})]);
+        if (junction) {
+          const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === s.id && c.target.time === time);
+          for (const cause of causes)
+            entries.push([causes.length === 1 ? "この作用による分岐を追加" : `「${cause.label}」による分岐を追加`,
+              () => addCausalResult(cause.id)]);
+        }
+      }
+      if (s.type === "causalLink" && M.get(doc(), "causalLink", s.id).target.type === "task")
+        entries.push(["この作用による分岐を追加", () => addCausalResult(s.id)]);
       if (s.type === "actor")
         entries.push(
           ["子Actor追加", () => editActor(null, s.id)],

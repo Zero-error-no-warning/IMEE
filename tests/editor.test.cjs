@@ -92,8 +92,8 @@ test("right-click add result creates shared white junction and new State", async
   a.fill("stateTime", 18);
   a.submit();
   const task = a.savedDoc().tasks[0];
-  assert.equal(task.toStateId, undefined);
-  assert.equal(task.junctions[0].outcomes.length, 2);
+  assert.equal(task.toStateId, "s1");
+  assert.equal(task.junctions[0].outcomes.length, 1);
   assert.equal(a.d.querySelectorAll('.junction[data-id="search"]').length, 1);
 });
 test("State drag changes time without resizing; invalid backward movement rolls back", async (t) => {

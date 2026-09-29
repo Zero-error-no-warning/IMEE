@@ -328,17 +328,17 @@
     return { type: "causalLink", id: c.id };
   }
   function addOutcome(d, tid, time, toStateId, label) {
-    const t = get(d, "task", tid);
+    const t = get(d, "task", tid), w = taskWindow(d, t);
+    if (!Number.isFinite(time) || time < w.start || time > w.end)
+      fail("分岐時刻はTaskの実行期間内にしてください。期間の変更はTask編集で行います。");
     t.junctions ??= [];
     let j = t.junctions.find((j) => j.time === time);
     if (!j) {
       j = { id: id("junction"), time, outcomes: [] };
       t.junctions.push(j);
     }
-    if (t.toStateId) {
-      j.outcomes.push({ toStateId: t.toStateId, label: "継続" });
-      delete t.toStateId;
-    }
+    // Keep the ordinary destination and the execution window. Adding an
+    // alternative outcome is not a request to shorten the original Task.
     j.outcomes.push({ toStateId, label });
     validate(d);
     return j;

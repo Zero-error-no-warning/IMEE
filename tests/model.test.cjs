@@ -42,19 +42,19 @@ test("different Actor / Task point connections create CausalLinks", () => {
   assert.equal(s.type, "causalLink");
   assert.equal(M.get(d, s.type, s.id).target.time, 20);
 });
-test("add result converts normal destination to explicit continuation and shares point", () => {
+test("add result preserves normal destination and execution window while sharing the point", () => {
   const d = sample();
   d.states.push({ id: "s2", actorId: "sensor", name: "未探知", time: 18 });
   M.addOutcome(d, "search", 14, "s2", "NG");
   M.addOutcome(d, "search", 14, "s1", "OK");
   const t = d.tasks[0];
-  assert.equal(t.toStateId, undefined);
+  assert.equal(t.toStateId, "s1");
   assert.equal(t.junctions.length, 1);
   assert.deepEqual(
     t.junctions[0].outcomes.map((o) => o.label),
-    ["継続", "NG", "OK"],
+    ["NG", "OK"],
   );
-  assert.deepEqual(M.taskWindow(d, t), { start: 2, end: 14 });
+  assert.deepEqual(M.taskWindow(d, t), { start: 2, end: 16 });
 });
 test("multiple junctions are representable with no duplicate times", () => {
   const d = sample();
