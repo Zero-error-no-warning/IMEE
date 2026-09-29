@@ -52,8 +52,14 @@ async function openApp(saved) {
   w.HTMLAnchorElement.prototype.click = function () {
     downloads.push({ name: this.download, blob });
   };
-  if (saved) w.localStorage.setItem("imee.document.v1", JSON.stringify(saved));
-  for (const file of ["model.js", "sample.js", "app.js"])
+  if (saved) w.localStorage.setItem("imee.document.v2", JSON.stringify(saved));
+  for (const file of [
+    "model.js",
+    "layout.js",
+    "render.js",
+    "sample.js",
+    "app.js",
+  ])
     w.eval(fs.readFileSync(path.join(root, "js", file), "utf8"));
   await new Promise((resolve) => w.requestAnimationFrame(resolve));
   const $ = (s) => d.querySelector(s);
@@ -88,7 +94,7 @@ async function openApp(saved) {
         ...options,
       }),
     );
-  const savedDoc = () => JSON.parse(w.localStorage.getItem("imee.document.v1"));
+  const savedDoc = () => JSON.parse(w.localStorage.getItem("imee.document.v2"));
   const readBlob = (b) =>
     new Promise((resolve) => {
       const reader = new w.FileReader();

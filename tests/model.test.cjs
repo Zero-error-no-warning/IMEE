@@ -1,270 +1,224 @@
-"use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const M = require("../js/model.js");
-const sample = require("../js/sample.js");
-const modify = (fn) => {
+const M = require("../js/model.js"),
+  sample = require("../js/sample.js");
+function invalid(change, pattern) {
   const d = sample();
-  fn(d);
-  return d;
-};
-test("sample describes a blocked plan and an actual alternative", () => {
-  const d = M.validate(sample()),
-    hit = d.interactions.find((i) => i.id === "hit");
-  assert.equal(hit.targetId, "escape");
-  assert.equal(hit.outcomeStateId, "e5");
-  assert.equal(d.transitions.find((t) => t.id === "escape").status, "planned");
+  change(d);
+  assert.throws(() => M.validate(d), pattern);
+}
+test("v2 stores State as a point and rejects v1 / duration State / old collections", () => {
+  const d = sample();
+  assert.equal(M.validate(d), d);
+  assert.equal(d.states[0].time, 2);
+  invalid((d) => (d.version = 1), /version: 2/);
+  invalid((d) => (d.states[0].end = 5), /一点/);
+  invalid((d) => (d.transitions = []), /旧/);
 });
-test("state width and horizontal position are strictly proportional to time at every scale", () => {
-  for (const scale of [0.1, 3, 16, 200]) {
-    const d = sample(),
-      p = M.layout(d, scale).positions;
-    for (const s of d.states) {
-      assert.equal(p.get(s.id).x, 176 + s.start * scale);
-      assert.equal(p.get(s.id).width, (s.end - s.start) * scale);
-    }
-  }
+test("normal Task derives duration from State references without duplicate time fields", () => {
+  const d = sample();
+  assert.deepEqual(M.taskWindow(d, d.tasks[0]), { start: 2, end: 16 });
+  assert.equal(d.tasks[0].start, undefined);
+  d.states[1].time = 20;
+  assert.equal(M.taskWindow(d, d.tasks[0]).end, 20);
 });
-test("overlapping actual and planned states use separate lanes, touching states share a lane", () => {
+test("same Actor State connection creates a first-class Task", () => {
+  const d = sample();
+  const s = M.createConnection(
+    d,
+    { type: "state", id: "i1" },
+    { type: "state", id: "i2" },
+  );
+  assert.equal(s.type, "task");
+  assert.equal(M.get(d, "task", s.id).toStateId, "i2");
+});
+test("different Actor / Task point connections create CausalLinks", () => {
+  const d = sample();
+  const s = M.createConnection(
+    d,
+    { type: "state", id: "s1" },
+    { type: "task", id: "identify", time: 20 },
+  );
+  assert.equal(s.type, "causalLink");
+  assert.equal(M.get(d, s.type, s.id).target.time, 20);
+});
+test("add result converts normal destination to explicit continuation and shares point", () => {
+  const d = sample();
+  d.states.push({ id: "s2", actorId: "sensor", name: "未探知", time: 18 });
+  M.addOutcome(d, "search", 14, "s2", "NG");
+  M.addOutcome(d, "search", 14, "s1", "OK");
+  const t = d.tasks[0];
+  assert.equal(t.toStateId, undefined);
+  assert.equal(t.junctions.length, 1);
+  assert.deepEqual(
+    t.junctions[0].outcomes.map((o) => o.label),
+    ["継続", "NG", "OK"],
+  );
+  assert.deepEqual(M.taskWindow(d, t), { start: 2, end: 14 });
+});
+test("multiple junctions are representable with no duplicate times", () => {
+  const d = sample();
+  d.tasks[0].junctions = [
+    { id: "j1", time: 10, outcomes: [{ toStateId: "s1", label: "早期成功" }] },
+    { id: "j2", time: 13, outcomes: [{ toStateId: "s1", label: "成功" }] },
+  ];
+  M.validate(d);
+  d.tasks[0].junctions[1].time = 10;
+  assert.throws(() => M.validate(d), /1つに/);
+});
+test("validation rejects dangling, backward, cross-Actor Task and duplicate IDs", () => {
+  invalid((d) => (d.tasks[0].toStateId = "missing"), /接続先/);
+  invalid((d) => (d.states[1].time = 0), /接続先/);
+  invalid((d) => (d.tasks[0].toStateId = "i0"), /同一Actor/);
+  invalid((d) => (d.tasks[0].id = "s0"), /ID重複/);
+  invalid((d) => (d.causalLinks[0].source.id = "missing"), /端点/);
+});
+test("causal source / target are strictly timed, proposed allows late task attachment", () => {
   const d = sample(),
-    l = M.layout(d);
-  assert.notEqual(l.positions.get("e4").lane, l.positions.get("e5").lane);
-  assert.equal(l.positions.get("t1").lane, l.positions.get("t2").lane);
-});
-test("actor reordering changes y, never time coordinates", () => {
-  const d = sample(),
-    before = M.layout(d);
-  d.actors.reverse();
-  const after = M.layout(d);
-  assert.equal(before.positions.get("e1").x, after.positions.get("e1").x);
-  assert.notEqual(before.positions.get("e1").y, after.positions.get("e1").y);
+    c = d.causalLinks[2];
+  c.target.time = 55;
+  assert.throws(() => M.validate(d), /実行期間内/);
+  c.proposed = true;
   M.validate(d);
-});
-test("zero-time and nonzero-time transitions are supported", () => {
-  const d = sample();
-  M.validate(d);
-  const t = d.transitions.find((t) => t.id === "tt1");
-  assert.equal(
-    d.states.find((s) => s.id === t.to).start -
-      d.states.find((s) => s.id === t.from).end,
-    0,
+  assert.equal(M.opportunity(d, c).within, false);
+  assert.match(M.opportunity(d, c).message, /遅すぎ/);
+  invalid(
+    (d) => (d.causalLinks[0].target = { type: "state", id: "s0" }),
+    /逆行/,
   );
+  invalid((d) => (d.causalLinks[0].source.time = 16), /重複保存/);
 });
-for (const [name, fn] of [
-  [
-    "backward transition",
-    (d) => (d.states.find((s) => s.id === "e2").start = 10),
-  ],
-  ["cross-actor transition", (d) => (d.transitions[0].to = "s2")],
-  ["nonfinite time", (d) => (d.states[0].start = NaN)],
-  ["zero-length state", (d) => (d.states[0].end = 0)],
-  ["negative time", (d) => (d.states[0].start = -1)],
-  ["state beyond horizon", (d) => (d.states[0].end = 61)],
-  ["dangling state reference", (d) => (d.transitions[0].to = "missing")],
-  ["duplicate global IDs", (d) => (d.actors[0].id = d.states[0].id)],
-  ["unsupported version", (d) => (d.version = 2)],
-  ["source event outside state", (d) => (d.interactions[0].sourceTime = 13)],
-  ["backward interaction", (d) => (d.interactions[1].sourceTime = 20)],
-  ["state event not at start", (d) => (d.interactions[1].time = 19)],
-  [
-    "block an actual transition",
-    (d) => (d.transitions.find((t) => t.id === "escape").status = "actual"),
-  ],
-  [
-    "block a state instead of transition",
-    (d) => {
-      const i = d.interactions[0];
-      i.effect = "block";
-    },
-  ],
-  [
-    "block outside transition interval",
-    (d) => (d.interactions.find((i) => i.id === "hit").time = 53),
-  ],
-  [
-    "outcome before block",
-    (d) => (d.states.find((s) => s.id === "e5").start = 45),
-  ],
-  [
-    "outcome on wrong actor",
-    (d) => (d.interactions.find((i) => i.id === "hit").outcomeStateId = "t2"),
-  ],
-  [
-    "same-actor interaction",
-    (d) => {
-      const i = d.interactions[0];
-      i.targetId = "e2";
-    },
-  ],
-  ["unbounded duration", (d) => (d.time.duration = 1000001)],
-  ["nonstring label", (d) => (d.transitions[0].label = {})],
-])
-  test(`rejects ${name}`, () => assert.throws(() => M.validate(modify(fn))));
-test("deleting an actor cascades its states, transitions and interactions", () => {
-  const d = sample();
-  M.remove(d, "actor", "enemy");
-  M.validate(d);
-  assert.equal(d.states.filter((s) => s.actorId === "enemy").length, 0);
-  assert.equal(
-    d.interactions.some((i) => i.id === "hit"),
-    false,
-  );
+test("JSON roundtrip preserves mission and all views", () => {
+  const d = sample.research();
+  assert.deepEqual(M.parse(JSON.stringify(d)), d);
 });
-test("deleting the blocked transition also removes its blocking interaction", () => {
-  const d = sample();
-  M.remove(d, "transition", "escape");
-  M.validate(d);
-  assert.equal(
-    d.interactions.some((i) => i.id === "hit"),
-    false,
-  );
-});
-test("deleting an outcome preserves the blocked plan without an alternative", () => {
-  const d = sample();
-  M.remove(d, "state", "e5");
-  M.validate(d);
-  assert.equal(d.interactions.find((i) => i.id === "hit").outcomeStateId, null);
-});
-test("deleting a blocker restores the planned transition without mutation", () => {
-  const d = sample();
-  M.remove(d, "interaction", "hit");
-  M.validate(d);
-  assert.equal(d.transitions.find((t) => t.id === "escape").status, "planned");
-});
-test("undo/redo are deep snapshots; invalid commits are atomic", () => {
+test("History undo / redo restores whole model, branches and view state", () => {
   const h = new M.History(sample()),
-    next = M.clone(h.doc);
-  next.title = "changed";
-  h.commit(next);
-  next.title = "mutated outside";
-  assert.equal(h.doc.title, "changed");
-  h.undo();
-  assert.equal(h.doc.title, sample().title);
-  h.redo();
-  assert.equal(h.doc.title, "changed");
-  const bad = M.clone(h.doc);
-  bad.states[0].start = -5;
-  assert.throws(() => h.commit(bad));
-  assert.equal(h.doc.states[0].start, 0);
-});
-test("new edits clear redo and the history is bounded", () => {
-  const h = new M.History(sample());
-  for (let n = 0; n < 110; n++) {
-    const d = M.clone(h.doc);
-    d.title = `change ${n}`;
-    h.commit(d);
-  }
-  assert.equal(h.past.length, 100);
-  h.undo();
-  const d = M.clone(h.doc);
-  d.title = "new branch";
+    d = M.clone(h.doc);
+  M.addOutcome(d, "identify", 29, "i2", "再試行");
+  d.views.main.collapsedActors = ["group"];
   h.commit(d);
-  assert.equal(h.future.length, 0);
+  h.undo();
+  assert.equal(h.doc.tasks[1].junctions[0].outcomes.length, 2);
+  h.redo();
+  assert.deepEqual(h.doc, d);
+  assert.throws(() => h.commit({ ...d, version: 1 }));
+  assert.deepEqual(h.doc, d);
 });
-test("JSON round trip preserves block references and time precision", () => {
+test("Actor hierarchy, grouping, ungrouping, cycle protection and ordering", () => {
   const d = sample();
-  d.time.snap = 0.1;
-  assert.deepEqual(M.parse(JSON.stringify(d)), M.migrate(M.clone(d)));
-  assert.throws(() => M.parse("{broken"));
-});
-test("decimal snapping avoids accumulated floating point drift", () => {
-  assert.equal(M.snap(0.1 + 0.2, 0.1), 0.3);
-  assert.equal(M.snap(1.24, 0.5), 1);
-});
-test("causal highlighting includes planned target and actual outcome", () => {
-  const ids = M.related(sample(), { type: "interaction", id: "hit" });
-  for (const id of ["hit", "escape", "e4", "e5", "t2"]) assert.ok(ids.has(id));
-});
-
-test("Actor hierarchy supports arbitrary parent Actors and nested groups", () => {
-  const d = sample();
-  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
-  d.actors.find((a) => a.id === "sensor").parentId = "torpedo";
-  M.validate(d);
-  const nodes = M.hierarchy(d);
-  assert.equal(nodes.find((n) => n.actor.id === "sensor").depth, 2);
-  assert.equal(nodes.find((n) => n.actor.id === "uuv").hasChildren, true);
-});
-test("hierarchy rejects absent parents, self-parenting, cycles and invalid collapse flags", () => {
-  for (const mutate of [
-    (d) => (d.actors[0].parentId = "missing"),
-    (d) => (d.actors[0].parentId = d.actors[0].id),
-    (d) => {
-      d.actors[0].parentId = "sensor";
-      d.actors[1].parentId = "enemy";
-    },
-    (d) => (d.actors[0].collapsed = "yes"),
-  ]) {
-    const d = sample();
-    mutate(d);
-    assert.throws(() => M.validate(d));
-  }
-});
-test("collapsing a group hides descendants without changing their state times or references", () => {
-  const d = sample();
-  d.actors.find((a) => a.id === "sensor").parentId = "uuv";
-  d.actors.find((a) => a.id === "torpedo").parentId = "sensor";
-  d.actors.find((a) => a.id === "uuv").collapsed = true;
-  const saved = JSON.stringify(d.states);
-  const layout = M.layout(d);
-  assert.equal(layout.positions.has("t2"), false);
-  assert.equal(layout.positions.has("u2"), true);
-  assert.equal(
-    M.layout(d, 16, { includeHidden: true }).positions.has("t2"),
-    true,
-  );
-  assert.equal(JSON.stringify(d.states), saved);
+  assert.equal(M.hierarchy(d).length, 5);
+  d.views.main.collapsedActors = ["group"];
+  assert.equal(M.hierarchy(d).length, 2);
+  assert.equal(M.visibleActor(d, "radio"), "group");
+  const id = M.groupActors(d, ["sensor", "control"]);
+  assert.equal(M.get(d, "actor", id).parentId, "group");
+  M.ungroupActor(d, id);
+  assert.equal(M.get(d, "actor", "sensor").parentId, "group");
+  assert.throws(() => M.placeActor(d, "group", "sensor", "inside"));
+  M.placeActor(d, "radio", "sensor", "before");
   M.validate(d);
 });
-test("moving a group reparents the root and carries every descendant", () => {
-  const d = sample();
-  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
-  M.placeActor(d, "uuv", "control", "inside");
+test("recursive copy reissues IDs, preserves internal edges and bindings, excludes outside causes", () => {
+  const d = sample.research(),
+    f = M.fragment(d, [{ type: "actor", id: "group" }]);
+  assert.equal(f.actors.length, 4);
+  assert.equal(f.states.length, 8);
+  assert.equal(f.tasks.length, 3);
+  assert.equal(f.causalLinks.length, 2);
+  const before = new Set(
+    [...d.actors, ...d.states, ...d.tasks, ...d.causalLinks, ...d.bindings].map(
+      (x) => x.id,
+    ),
+  );
+  const selected = M.paste(d, f);
+  assert(selected.every((s) => !before.has(s.id)));
+  assert.equal(d.tasks.length, 7);
   M.validate(d);
-  assert.equal(d.actors.find((a) => a.id === "uuv").parentId, "control");
-  assert.equal(d.actors.find((a) => a.id === "torpedo").parentId, "uuv");
-  assert.deepEqual([...M.descendants(d, "control")].sort(), [
-    "control",
-    "torpedo",
-    "uuv",
-  ]);
-  assert.throws(() => M.placeActor(d, "control", "torpedo", "inside"));
+  const copiedTask = d.tasks.at(-2);
+  assert(!before.has(copiedTask.id));
+  assert.notEqual(copiedTask.junctions[0].id, "j-identify");
 });
-test("deleting a group cascades the entire subtree and all dependent edges", () => {
+test("multiple states copy remaps internal Tasks, does not copy external causal links", () => {
+  const d = sample(),
+    f = M.fragment(d, [
+      { type: "state", id: "s0" },
+      { type: "state", id: "s1" },
+    ]);
+  assert.equal(f.tasks.length, 1);
+  assert.equal(f.causalLinks.length, 0);
+  const sel = M.paste(d, f, 1);
+  assert.equal(sel.length, 2);
+  assert.equal(d.states.at(-2).time, 3);
+  assert.notEqual(d.tasks.at(-1).fromStateId, "s0");
+});
+test("move selected Actor subtree shifts States, junctions and causal Task endpoints", () => {
   const d = sample();
-  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
-  M.remove(d, "actor", "uuv");
-  M.validate(d);
-  assert.equal(
-    d.actors.some((a) => a.id === "torpedo"),
-    false,
+  M.moveSelection(
+    d,
+    [
+      { type: "actor", id: "group" },
+      { type: "actor", id: "enemy" },
+    ],
+    1,
   );
-  assert.equal(
-    d.interactions.some((i) => i.id === "hit"),
-    false,
-  );
-  assert.equal(
-    d.transitions.some((t) => t.id === "escape"),
-    true,
-  );
+  assert.equal(d.states[0].time, 3);
+  assert.equal(d.tasks[1].junctions[0].time, 30);
+  assert.equal(d.causalLinks[2].source.time, 43);
+  assert.equal(d.causalLinks[2].target.time, 50);
 });
-test("view zoom changes the time span while preserving canvas width and linearity", () => {
-  for (const width of [320, 768, 1440]) {
-    const full = M.viewport(60, width),
-      zoom = M.viewport(60, width, 20, 10);
-    assert.equal(full.width, zoom.width);
-    assert.ok(Math.abs(zoom.scale / full.scale - 6) < 1e-12);
-    const l = M.layout(sample(), zoom.scale, {
-      start: zoom.start,
-      plotLeft: zoom.plotLeft,
-      width,
-    });
-    assert.equal(l.width, width);
-    assert.equal(
-      l.positions.get("e2").x,
-      zoom.plotLeft + (14 - 20) * zoom.scale,
-    );
-  }
-  assert.equal(M.viewport(60, 1000, -10, 10).start, 0);
-  assert.equal(M.viewport(60, 1000, 59, 10).start, 50);
+test("delete subtree removes dependent elements and bindings but keeps catalog", () => {
+  const d = sample.research();
+  M.remove(d, [{ type: "actor", id: "group" }]);
+  assert.equal(d.actors.length, 1);
+  assert.equal(d.states.length, 2);
+  assert.equal(d.tasks.length, 1);
+  assert.equal(d.causalLinks.length, 0);
+  assert.equal(d.technologies.length, 2);
+  M.validate(d);
+});
+test("Technology Binding accepts exactly actor / state / task / causalLink", () => {
+  const d = sample.research();
+  M.validate(d);
+  assert.equal(M.technologyFor(d, "task", "transmit").length, 2);
+  d.bindings[0].targetType = "transition";
+  assert.throws(() => M.validate(d), /Binding/);
+});
+test("View fields stay separate and invalid references are rejected", () => {
+  invalid((d) => (d.actors[0].collapsed = true), /views/);
+  invalid((d) => d.views.main.actorOrder.push("missing"), /参照/);
+  invalid((d) => (d.views.main.mode = "interaction"), /View/);
+  invalid((d) => (d.views.main.visibleTimeRange.end = 0), /長さ/);
+});
+test("hostile Task analysis finds directed Blue path, reports research gaps and SOME/ALL", () => {
+  const d = sample.research();
+  const a = M.analyzeTask(d, "jam");
+  assert(a.paths.length > 0);
+  assert(a.paths.some((p) => p.structural));
+  assert.equal(a.some, false);
+  assert(a.paths.some((p) => p.gaps.some((g) => g.status === "research")));
+  d.technologies[1].status = "existing";
+  assert(M.analyzeTask(d, "jam").some);
+  assert(M.analyzeTask(d, "jam").all);
+  d.technologies[0].status = "research";
+  const b = M.analyzeTask(d, "jam");
+  assert.equal(b.some, false);
+  assert(b.paths.some((p) => p.gaps.some((g) => g.status === "research")));
+});
+test("analysis does not combine roles from disconnected paths", () => {
+  const d = sample.research();
+  d.causalLinks = d.causalLinks.filter((c) => c.id !== "report");
+  d.bindings = d.bindings.filter((b) => b.targetId !== "report");
+  assert.equal(M.analyzeTask(d, "jam").some, false);
+});
+test("analysis blocks late and proposed interventions and unbound technologies", () => {
+  const d = sample.research();
+  const c = M.get(d, "causalLink", "blue-action");
+  c.target.time = 50;
+  c.proposed = true;
+  assert.equal(M.analyzeTask(d, "jam").some, false);
+  c.target.time = 44;
+  c.proposed = false;
+  d.bindings = [];
+  assert.equal(M.analyzeTask(d, "jam").some, false);
 });

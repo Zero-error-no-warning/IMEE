@@ -1,495 +1,302 @@
-"use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { openApp } = require("./dom-helper.cjs");
-const M = require("../js/model.js");
-const sample = require("../js/sample.js");
-const extra = () => {
-  const d = sample();
-  d.actors.push({
-    id: "test-actor",
-    name: "検証Actor",
-    side: "neutral",
-    notes: "",
+const sample = require("../js/sample");
+async function app(t, d = sample()) {
+  const a = await openApp(d);
+  t.after(() => {
+    assert.deepEqual(a.errors, []);
+    a.close();
   });
-  d.states.push({
-    id: "free",
-    actorId: "test-actor",
-    name: "検証状態",
-    start: 5,
-    end: 10,
-    status: "actual",
-    activity: "active",
-  });
-  return d;
-};
-async function app(t, saved) {
-  const a = await openApp(saved);
-  t.after(() => a.close());
   return a;
 }
-function drag(a, selector, dx, dy = 0, options = {}) {
-  const el = a.$(selector),
-    body = el.closest('[data-type="state"]')?.querySelector(".body") || el;
-  const x =
-      Number(body.getAttribute("x") || 0) +
-      Number(body.getAttribute("width") || 0) / 2,
-    y = Number(body.getAttribute("y") || 0) + 16;
-  a.event(el, "pointerdown", { clientX: x, clientY: y, ...options });
-  a.event(a.w, "pointermove", { clientX: x + dx, clientY: y + dy, ...options });
-  a.event(a.w, "pointerup", { clientX: x + dx, clientY: y + dy, ...options });
-}
-test("starts offline with the sample and proportional SVG geometry", async (t) => {
-  const a = await app(t);
-  assert.equal(a.d.querySelectorAll(".state").length, 15);
-  assert.equal(a.d.querySelectorAll(".actor-label").length, 5);
-  const p = Number(a.$('[data-id="e1"] .body').getAttribute("width")),
-    q = Number(a.$('[data-id="e2"] .body').getAttribute("width"));
-  assert.ok(Math.abs(q / p - 20 / 12) < 1e-10);
-  assert.match(a.$("#inspector").textContent, /予定遷移を阻止/);
-  assert.deepEqual(a.errors, []);
-});
-test("selection preserves the clicked SVG node for a native double-click sequence", async (t) => {
-  const a = await app(t);
-  const body = a.$('[data-id="e1"] .body');
-  a.click(body);
-  assert.equal(a.$('[data-id="e1"] .body'), body);
-  a.event(body, "dblclick");
-  assert.ok(a.$("#editor-dialog[open]"));
-  assert.equal(a.$('[name="name"]').value, "進出");
-});
-test("adds and edits Actor through the form, and undo/redo restores it", async (t) => {
-  const a = await app(t);
-  a.click("#add-actor");
-  a.fill("name", "中継");
-  a.fill("side", "neutral");
-  a.submit();
-  assert.equal(a.savedDoc().actors.length, 6);
-  a.click("#undo");
-  assert.equal(a.savedDoc().actors.length, 5);
-  a.click("#redo");
-  assert.equal(a.savedDoc().actors.at(-1).name, "中継");
-});
-test("empty row double-click adds a State at its time coordinate", async (t) => {
-  const a = await app(t);
-  const scale = Number(a.$('[data-id="e1"] .body').getAttribute("width")) / 12;
-  a.event(a.$('[data-row="sensor"]'), "dblclick", {
-    clientX: 176 + 50 * scale,
-    clientY: 250,
-  });
-  assert.ok(a.$("#editor-dialog[open]"));
-  assert.equal(a.$('[name="start"]').value, "50");
-  a.fill("name", "追加State");
-  a.submit();
-  assert.equal(a.savedDoc().states.at(-1).start, 50);
-});
-test("State drag is one history entry, and Ctrl-drag creates an independent copy", async (t) => {
-  const a = await app(t, extra());
-  const scale = Number(a.$('[data-id="free"] .body').getAttribute("width")) / 5;
-  drag(a, '[data-id="free"] .body', 2 * scale);
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").start, 7);
-  a.click("#undo");
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").start, 5);
-  drag(a, '[data-id="free"] .body', 3 * scale, 0, { ctrlKey: true });
-  assert.equal(a.savedDoc().states.length, 17);
-  assert.equal(a.savedDoc().states.at(-1).start, 8);
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").start, 5);
-});
-test("both resize handles update the interval", async (t) => {
-  const a = await app(t, extra());
-  const scale = Number(a.$('[data-id="free"] .body').getAttribute("width")) / 5;
-  drag(a, '[data-id="free"] [data-handle="end"]', 3 * scale);
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").end, 13);
-  drag(a, '[data-id="free"] [data-handle="start"]', 2 * scale);
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").start, 7);
-});
-test("invalid drag rolls back and explains the failed temporal constraint", async (t) => {
-  const a = await app(t, sample()),
-    scale = Number(a.$('[data-id="e1"] .body').getAttribute("width")) / 12;
-  drag(a, '[data-id="e2"] .body', -10 * scale);
-  assert.equal(a.savedDoc().states.find((s) => s.id === "e2").start, 14);
-  assert.match(a.$("#toast").textContent, /時間を逆行/);
-  assert.equal(a.$("#undo").disabled, true);
-});
-test("cross-row drag changes actor for an unconnected state", async (t) => {
-  const a = await app(t, extra());
-  const s = a.$('[data-id="free"] .body'),
-    target = Number(a.$('[data-row="control"]').getAttribute("y")) + 44,
-    source = Number(s.getAttribute("y")) + 16;
-  drag(a, '[data-id="free"] .body', 0, target - source);
-  assert.equal(
-    a.savedDoc().states.find((s) => s.id === "free").actorId,
-    "control",
+const element = (a, id) => a.$(`[data-id="${id}"]`);
+const context = (a, id, label) => {
+  a.event(element(a, id), "contextmenu", { clientX: 400, clientY: 160 });
+  const b = [...a.d.querySelectorAll("#context-menu button")].find(
+    (b) => b.textContent === label,
   );
+  assert(b, label);
+  b.click();
+};
+test("file-style classic script startup renders points and no resize affordance", async (t) => {
+  const a = await app(t);
+  assert.equal(a.d.querySelectorAll(".state .body").length, 10);
+  assert.equal(a.d.querySelectorAll(".resize,.handle-line").length, 0);
+  assert.equal(a.savedDoc().version, 2);
+  assert.equal(a.$("#inspector").classList.contains("hidden"), true);
 });
-test("keyboard time edits and cancellation use the same validation/history", async (t) => {
-  const a = await app(t, extra());
-  a.click('[data-id="free"] .body');
-  a.key("ArrowRight");
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").start, 6);
-  a.key("ArrowRight", { shiftKey: true });
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").end, 12);
+test("double click State opens point editor with no start/end fields; edit Undo Redo", async (t) => {
+  const a = await app(t);
+  a.event(element(a, "s0"), "dblclick");
+  assert(a.$('[name="time"]'));
+  assert.equal(a.$('[name="start"]'), null);
+  a.fill("time", 3);
+  a.fill("name", "捜索開始");
+  a.submit();
+  assert.equal(a.savedDoc().states[0].time, 3);
   a.key("z", { ctrlKey: true });
-  assert.equal(a.savedDoc().states.find((s) => s.id === "free").end, 11);
+  assert.equal(a.savedDoc().states[0].time, 2);
+  a.key("z", { ctrlKey: true, shiftKey: true });
+  assert.equal(a.savedDoc().states[0].time, 3);
 });
-test("creates a transition via two endpoint clicks", async (t) => {
-  const d = extra();
-  d.states.push({
-    ...d.states.at(-1),
-    id: "free2",
-    name: "次の状態",
-    start: 20,
-    end: 30,
+test("C then same Actor State makes Task, opens editor with derived duration", async (t) => {
+  const a = await app(t);
+  a.click(element(a, "i1"));
+  a.key("c");
+  assert(a.$(".connect-target"));
+  a.click(element(a, "i2"));
+  assert.equal(a.savedDoc().tasks.length, 5);
+  assert.equal(a.$("#dialog-title").textContent, "Task");
+  assert(a.$(".dialog-summary").textContent.includes("所要時間 0"));
+  a.fill("label", "再評価");
+  a.submit();
+  assert.equal(a.savedDoc().tasks.at(-1).label, "再評価");
+});
+test("Alt drag creates causal link to precise Task time and polarity editable in popup", async (t) => {
+  const a = await app(t),
+    L = a.w.MELayout,
+    g = L.layout(a.savedDoc(), 1050);
+  const from = element(a, "s1");
+  a.event(from, "pointerdown", {
+    altKey: true,
+    clientX: g.vp.x(16),
+    clientY: g.states.get("s1").y,
   });
-  const a = await app(t, d);
-  a.click('[data-id="free"] .body');
-  a.key("c");
-  a.click('[data-id="free2"] .body');
-  a.fill("label", "経過");
+  a.event(a.w, "pointermove", {
+    clientX: g.vp.x(24),
+    clientY: g.tasks.get("identify").from.y,
+  });
+  a.event(element(a, "identify"), "pointerup", {
+    clientX: g.vp.x(24),
+    clientY: g.tasks.get("identify").from.y,
+  });
+  assert.equal(a.$("#dialog-title").textContent, "因果リンク");
+  a.fill("polarity", "negative");
+  a.fill("label", "処理を妨害");
   a.submit();
-  assert.equal(a.savedDoc().transitions.at(-1).from, "free");
-  assert.equal(a.savedDoc().transitions.at(-1).to, "free2");
-  assert.equal(a.$("#editor-dialog").open, false);
-});
-test("creates an Interaction with independent source and target times", async (t) => {
-  const a = await app(t, extra());
-  a.click('[data-id="free"] .body');
-  a.key("c");
-  a.click('[data-id="s2"] .body');
-  a.fill("label", "報告");
-  a.fill("sourceTime", 8);
-  a.submit();
-  const i = a.savedDoc().interactions.at(-1);
-  assert.equal(i.sourceTime, 8);
-  assert.equal(i.time, 14);
-  assert.equal(i.targetId, "s2");
-});
-test("creates an explicit block on a planned transition with actual outcome", async (t) => {
-  const a = await app(t, sample());
-  a.click('[data-id="t2"] .body');
-  a.key("c");
-  a.click('[data-id="escape"] .hit');
-  a.fill("label", "追加の阻止");
-  a.fill("outcomeStateId", "e5");
-  a.submit();
-  const i = a.savedDoc().interactions.at(-1);
-  assert.equal(i.effect, "block");
-  assert.equal(i.targetId, "escape");
-  assert.equal(i.outcomeStateId, "e5");
-  assert.ok(a.d.querySelectorAll(".intervention-node").length >= 2);
-});
-test("rejects blocking an actual transition without opening an invalid form", async (t) => {
-  const a = await app(t);
-  a.click('[data-id="t2"] .body');
-  a.key("c");
-  a.click('[data-id="et2"] .hit');
-  assert.equal(a.$("#editor-dialog").open, false);
-  assert.match(a.$("#toast").textContent, /予定/);
-});
-test("Actor reorder buttons preserve causal references", async (t) => {
-  const a = await app(t, sample());
-  a.click('[data-id="enemy"].actor-label');
-  a.click('[data-action="down"]');
-  assert.equal(a.savedDoc().views.main.actorOrder[1], "enemy");
-  M.validate(a.savedDoc());
-});
-test("deleting an actor confirms the cascade and is undoable", async (t) => {
-  const a = await app(t, sample());
-  a.click('[data-id="enemy"].actor-label');
-  a.click('[data-action="delete"]');
-  assert.ok(a.$("#editor-dialog[open]"));
-  a.submit();
-  assert.equal(a.savedDoc().actors.length, 4);
-  assert.equal(
-    a.savedDoc().interactions.some((i) => i.id === "hit"),
-    false,
+  const c = a.savedDoc().causalLinks.at(-1);
+  assert.equal(c.target.type, "task");
+  assert.equal(c.target.time, 24);
+  assert.equal(c.polarity, "negative");
+  assert(
+    a.$(`[data-id="${c.id}"] .line`).getAttribute("d").split("L").length > 10,
   );
-  a.click("#undo");
-  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
 });
-test("failed dialog edits preserve the document and keep the error visible", async (t) => {
-  const a = await app(t, sample());
-  a.event(a.$('[data-id="e1"] .body'), "dblclick");
-  a.fill("end", 16);
-  a.submit();
-  assert.ok(a.$("#editor-dialog[open]"));
-  assert.match(a.$("#dialog-error").textContent, /時間を逆行/);
-  assert.equal(a.savedDoc().states[0].end, 12);
-});
-test("search jumps to a state; causal focus includes the blocked plan", async (t) => {
+test("right-click add result creates shared white junction and new State", async (t) => {
   const a = await app(t);
-  a.$("#search").value = "無力化";
-  a.$("#search").dispatchEvent(new a.w.Event("input", { bubbles: true }));
-  a.click("#search-results button");
-  assert.match(a.$("#inspector").textContent, /無力化/);
-  a.$("#focus-chain").checked = true;
-  a.$("#focus-chain").dispatchEvent(new a.w.Event("change", { bubbles: true }));
-  assert.equal(a.$('[data-id="escape"]').classList.contains("dimmed"), false);
+  context(a, "search", "結果を追加");
+  a.fill("time", 14);
+  a.fill("label", "NG");
+  a.fill("name", "捜索継続");
+  a.fill("stateTime", 18);
+  a.submit();
+  const task = a.savedDoc().tasks[0];
+  assert.equal(task.toStateId, undefined);
+  assert.equal(task.junctions[0].outcomes.length, 2);
+  assert.equal(a.d.querySelectorAll('.junction[data-id="search"]').length, 1);
 });
-test("renders imported names as literal text without injecting SVG or HTML", async (t) => {
-  const d = sample();
-  d.states[0].name = "<img src=x onerror=alert(1)>";
-  d.actors[0].name = "<script>bad()</script>";
-  const a = await app(t, d);
-  a.click('[data-id="e1"] .body');
-  assert.equal(a.d.querySelectorAll("img").length, 0);
-  assert.equal(a.$("#inspector .panel-title").textContent, d.states[0].name);
-  assert.equal(a.d.querySelectorAll("svg script").length, 0);
+test("State drag changes time without resizing; invalid backward movement rolls back", async (t) => {
+  const a = await app(t),
+    g = a.w.MELayout.layout(a.savedDoc(), 1050),
+    s = g.states.get("s0");
+  a.event(element(a, "s0"), "pointerdown", { clientX: s.x, clientY: s.y });
+  a.event(a.w, "pointermove", { clientX: s.x + g.vp.scale * 2, clientY: s.y });
+  a.event(element(a, "s0"), "pointerup", {
+    clientX: s.x + g.vp.scale * 2,
+    clientY: s.y,
+  });
+  assert.equal(a.savedDoc().states[0].time, 4);
+  a.event(element(a, "s0"), "dblclick");
+  a.fill("time", 59);
+  a.submit();
+  assert(a.$("#dialog-error").textContent);
+  assert.equal(a.savedDoc().states[0].time, 4);
 });
-test("JSON export round trips and SVG export is self-contained and scroll-independent", async (t) => {
-  const a = await app(t, sample());
+test("Ctrl click, group, duplicate subtree, copy/cut/paste preserve references", async (t) => {
+  const a = await app(t);
+  a.click(element(a, "sensor"));
+  a.event(element(a, "control"), "click", { ctrlKey: true });
+  a.key("g", { ctrlKey: true });
+  let d = a.savedDoc(),
+    group = d.actors.at(-1);
+  assert.equal(d.actors.find((x) => x.id === "sensor").parentId, group.id);
+  a.key("d", { ctrlKey: true });
+  assert.equal(a.savedDoc().actors.length, 9);
+  a.key("z", { ctrlKey: true });
+  a.click(element(a, group.id));
+  a.key("c", { ctrlKey: true });
+  a.key("x", { ctrlKey: true });
+  assert.equal(a.savedDoc().actors.length, 3);
+  a.key("v", { ctrlKey: true });
+  assert.equal(a.savedDoc().actors.length, 6);
+});
+test("rectangle selection selects nearby State points, Delete and Undo restore", async (t) => {
+  const a = await app(t),
+    g = a.w.MELayout.layout(a.savedDoc(), 1050),
+    s = g.states.get("s0"),
+    e = g.states.get("s1");
+  a.event(a.$("#timeline"), "pointerdown", {
+    clientX: s.x - 10,
+    clientY: s.y - 10,
+  });
+  a.event(a.w, "pointermove", { clientX: e.x + 10, clientY: e.y + 10 });
+  a.event(a.$("#timeline"), "pointerup", {
+    clientX: e.x + 10,
+    clientY: e.y + 10,
+  });
+  assert.equal(a.d.querySelectorAll(".state.selected").length, 2);
+  a.key("Delete");
+  assert.equal(a.savedDoc().states.length, 8);
+  a.key("z", { ctrlKey: true });
+  assert.equal(a.savedDoc().states.length, 10);
+});
+test("zoom and pan keep width fixed; full export restores all Actors and range", async (t) => {
+  const a = await app(t);
+  const width = a.$("#timeline").getAttribute("width");
+  a.click("#zoom-in");
+  assert.equal(a.$("#timeline").getAttribute("width"), width);
+  assert(a.savedDoc().views.main.visibleTimeRange.start > 0);
+  a.click('[data-collapse="group"]');
+  assert.equal(a.d.querySelectorAll(".state").length, 2);
+  const before = a.w.IMEE.getDocument(),
+    out = a.w.IMEE.exportSource();
+  assert(out.svg.includes("未探知"));
+  assert(out.svg.includes("送信失敗"));
+  assert.deepEqual(a.w.IMEE.getDocument(), before);
+});
+test("JSON download/import roundtrip and rejected v1 leaves document intact", async (t) => {
+  const a = await app(t);
   a.click("#save-btn");
-  assert.deepEqual(
-    M.parse(await a.readBlob(a.downloads[0].blob)),
-    M.migrate(sample()),
-  );
-  a.$("#canvas-scroll").scrollLeft = 100;
-  a.$("#canvas-scroll").scrollTop = 120;
-  a.$("#canvas-scroll").dispatchEvent(new a.w.Event("scroll"));
-  a.click("#more-btn");
-  a.click('[data-menu="0"]');
-  const svg = await a.readBlob(a.downloads[1].blob);
-  assert.match(svg, /<style>/);
-  assert.match(svg, /命中・離脱阻止/);
-  assert.doesNotMatch(svg, /<g id="actor-labels" transform=/);
-  assert.doesNotMatch(svg, /class="port"/);
-  const parsed = new a.w.DOMParser().parseFromString(svg, "image/svg+xml");
-  assert.equal(parsed.querySelectorAll("parsererror").length, 0);
+  assert.equal(a.downloads.at(-1).name, "mission-v2.json");
+  const text = await a.readBlob(a.downloads.at(-1).blob);
+  a.w.IMEE.loadJSON(text);
+  assert.equal(a.savedDoc().tasks.length, 4);
+  assert.throws(() => a.w.IMEE.loadJSON('{"version":1}'), /version: 2/);
+  assert.equal(a.savedDoc().tasks.length, 4);
 });
-test("autosaved edits reload through the same document model", async (t) => {
-  const a = await app(t, extra());
-  a.click('[data-id="free"] .body');
-  a.key("ArrowRight");
-  const b = await app(t, a.savedDoc());
-  assert.match(b.$('[data-id="free"] title').textContent, /T\+6/);
-});
-test("Actor drag changes ordering without altering state times", async (t) => {
-  const a = await app(t, sample());
-  const el = a.$('[data-id="enemy"].actor-label'),
-    target =
-      Number(a.$('[data-row="control"]').getAttribute("y")) +
-      Number(a.$('[data-row="control"]').getAttribute("height")) -
-      5;
-  a.event(el, "pointerdown", { clientX: 50, clientY: 100 });
-  a.event(a.w, "pointermove", { clientX: 50, clientY: target });
-  a.event(a.w, "pointerup", { clientX: 50, clientY: target });
-  assert.equal(a.savedDoc().views.main.actorOrder[2], "enemy");
-  assert.deepEqual(a.savedDoc().states, sample().states);
-});
-test("Alt-dragging a State opens a connection dialog for the dropped target", async (t) => {
-  const d = extra();
-  d.states.push({
-    ...d.states.at(-1),
-    id: "free2",
-    name: "接続先",
-    start: 20,
-    end: 30,
-  });
-  const a = await app(t, d);
-  a.event(a.$('[data-id="free"] .body'), "pointerdown", {
-    altKey: true,
-    clientX: 100,
-    clientY: 100,
-  });
-  a.event(a.w, "pointermove", { clientX: 200, clientY: 100 });
-  a.event(a.$('[data-id="free2"] .body'), "pointerup", {
-    clientX: 200,
-    clientY: 100,
-  });
-  assert.ok(a.$("#editor-dialog[open]"));
-  assert.match(a.$("#dialog-title").textContent, /Transition/);
-  a.submit();
-  assert.equal(a.savedDoc().transitions.at(-1).to, "free2");
-});
-test("JSON file import confirms replacement, preserves references, and supports Undo", async (t) => {
-  const a = await app(t, sample()),
-    d = extra();
-  d.title = "読み込みテスト";
-  Object.defineProperty(a.$("#file-input"), "files", {
-    value: [{ size: 100, text: async () => JSON.stringify(d) }],
-    configurable: true,
-  });
-  await a.$("#file-input").onchange({ target: a.$("#file-input") });
-  assert.ok(a.$("#editor-dialog[open]"));
-  a.submit();
-  assert.deepEqual(a.savedDoc(), M.migrate(d));
-  a.click("#undo");
-  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
-});
-test("invalid JSON file never replaces the current document", async (t) => {
-  const a = await app(t, sample());
-  Object.defineProperty(a.$("#file-input"), "files", {
-    value: [{ size: 100, text: async () => "{broken" }],
-  });
-  await a.$("#file-input").onchange({ target: a.$("#file-input") });
-  assert.equal(a.$("#editor-dialog").open, false);
-  assert.deepEqual(a.savedDoc(), M.migrate(sample()));
-  assert.match(a.$("#toast").textContent, /読み込みできません/);
-});
-test("instantaneous transitions have a visible point marker at the exact event time", async (t) => {
+test("SVG export contains full model, real waves and no editor hit targets", async (t) => {
   const a = await app(t);
-  const markers = [...a.d.querySelectorAll('[data-id="tt1"]')];
-  assert.equal(markers.length, 2);
-  assert.match(markers[1].textContent, /即時遷移/);
-  assert.ok(markers[1].querySelector('path[fill="white"]'));
+  a.w.IMEE.exportSVG();
+  const download = a.downloads.at(-1),
+    text = await a.readBlob(download.blob);
+  assert.equal(download.name, "mission.svg");
+  assert(text.includes('data-polarity="negative"'));
+  assert(!text.includes("dasharray"));
+  assert(!text.includes('class="hit"'));
+  assert(text.includes("識別"));
 });
-function nested() {
-  const d = sample();
-  d.actors.find((a) => a.id === "sensor").parentId = "uuv";
-  d.actors.find((a) => a.id === "torpedo").parentId = "uuv";
-  d.actors.find((a) => a.id === "uuv").isGroup = true;
-  return d;
+test("technology binding UI supports Task and detail inspector", async (t) => {
+  const a = await app(t, sample.research());
+  context(a, "search", "技術を関連付け");
+  a.fill("technologyId", "tech-rd");
+  a.submit();
+  assert(
+    a
+      .savedDoc()
+      .bindings.some(
+        (b) =>
+          b.targetId === "search" &&
+          b.targetType === "task" &&
+          b.technologyId === "tech-rd",
+      ),
+  );
+  a.click(element(a, "search"));
+  a.click("#inspector-toggle");
+  assert(a.$("#inspector").textContent.includes("耐妨害通信"));
+});
+test("Causality View and filters use new names and keep negative wavy", async (t) => {
+  const a = await app(t);
+  a.$("#view-mode").value = "causality";
+  a.$("#view-mode").dispatchEvent(new a.w.Event("change"));
+  assert.equal(a.savedDoc().views.main.mode, "causality");
+  assert.equal(
+    a.$('[data-id="negative"] .line').getAttribute("data-polarity"),
+    "negative",
+  );
+  a.click("#view-settings");
+  a.fill("causalLink", "false");
+  a.submit();
+  assert.equal(a.$('[data-id="negative"]'), null);
+  assert.equal(a.d.querySelectorAll(".state").length, 10);
+});
+function mockRaster(a, { loadError = false, emptyBlob = false } = {}) {
+  const calls = { draw: [], revoked: [] };
+  a.w.URL.revokeObjectURL = (u) => calls.revoked.push(u);
+  a.w.Image = class {
+    set src(value) {
+      queueMicrotask(() => (loadError ? this.onerror() : this.onload()));
+    }
+  };
+  a.w.HTMLCanvasElement.prototype.getContext = function () {
+    calls.canvas = this;
+    return {
+      set fillStyle(v) {
+        calls.background = v;
+      },
+      fillRect() {},
+      drawImage(...args) {
+        calls.draw.push(args);
+      },
+    };
+  };
+  a.w.HTMLCanvasElement.prototype.toBlob = function (cb, type) {
+    calls.mime = type;
+    cb(
+      emptyBlob
+        ? null
+        : new a.w.Blob([new Uint8Array([137, 80, 78, 71])], { type }),
+    );
+  };
+  return calls;
 }
-test("toolbar has no connection modes and the inspector is an initially closed overlay", async (t) => {
-  const a = await app(t);
-  assert.equal(a.d.querySelectorAll("[data-mode]").length, 0);
-  assert.equal(a.$("#inspector").classList.contains("hidden"), true);
-  a.click("#inspector-toggle");
-  assert.equal(a.$("#inspector").classList.contains("hidden"), false);
-  a.click('[data-action="close"]');
-  assert.equal(a.$("#inspector").classList.contains("hidden"), true);
-});
-test("zoom, pan, resizing, and inspector toggling never enlarge the SVG beyond the viewport", async (t) => {
+test("PNG export uses full white canvas, bounded dimensions and preserves view (mock encoder)", async (t) => {
   const a = await app(t);
   a.click("#zoom-in");
-  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
-  assert.notEqual(a.$("#time-window").textContent, "T+0 — T+60");
-  a.$("#time-pan").value = 20;
-  a.$("#time-pan").dispatchEvent(new a.w.Event("input", { bubbles: true }));
-  assert.match(a.$("#time-window").textContent, /T\+20/);
-  a.click("#inspector-toggle");
-  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
-  Object.defineProperty(a.$("#canvas-scroll"), "clientWidth", {
-    value: 360,
-    configurable: true,
-  });
-  a.w.dispatchEvent(new a.w.Event("resize"));
-  assert.equal(a.$("#timeline").getAttribute("width"), "360");
-  a.click("#fit");
-  assert.equal(a.$("#time-window").textContent, "T+0 — T+60");
-  assert.equal(a.$("#timeline").getAttribute("width"), "360");
-  assert.equal(a.$("#canvas-scroll").scrollLeft, 0);
+  const before = a.w.IMEE.getDocument(),
+    calls = mockRaster(a);
+  await a.w.IMEE.exportPNG();
+  assert.equal(a.downloads.at(-1).name, "mission.png");
+  assert.equal(calls.background, "white");
+  assert.equal(calls.mime, "image/png");
+  assert.equal(calls.canvas.width, 2100);
+  assert(calls.canvas.width * calls.canvas.height <= 32000000);
+  assert(calls.revoked.length);
+  assert.deepEqual(a.w.IMEE.getDocument(), before);
 });
-test("zoomed empty-space creation converts x back to the visible time range", async (t) => {
+test("PNG encoder and image errors report failure, no false download", async (t) => {
   const a = await app(t);
-  a.click("#time-window");
-  a.fill("start", 20);
-  a.fill("end", 40);
-  a.submit();
-  const row = a.$('[data-row="sensor"]'),
-    left = 176,
-    scale = (1050 - left - 24) / 20;
-  a.event(row, "dblclick", {
-    clientX: left + 5 * scale,
-    clientY: Number(row.getAttribute("y")) + 70,
+  mockRaster(a, { loadError: true });
+  await a.w.IMEE.exportPNG();
+  assert.equal(a.downloads.length, 0);
+  assert(a.$("#toast").textContent.includes("読み込めません"));
+  mockRaster(a, { emptyBlob: true });
+  await a.w.IMEE.exportPNG();
+  assert.equal(a.downloads.length, 0);
+  assert(a.$("#toast").textContent.includes("変換に失敗"));
+});
+test("editing multiple junction times remaps attachments once, without cascading moves", async (t) => {
+  const d = sample();
+  d.tasks[1].junctions.unshift({
+    id: "j-early",
+    time: 24,
+    outcomes: [{ toStateId: "i1", label: "早期" }],
   });
-  assert.equal(a.$('[name="start"]').value, "25");
-});
-test("Actor groups can be nested in the editor and cyclic parent choices are excluded", async (t) => {
-  const a = await app(t);
-  a.click("#add-group");
-  a.fill("name", "潜水艦グループ");
-  a.submit();
-  const group = a.savedDoc().actors.at(-1);
-  a.click("#add-actor");
-  a.fill("name", "ソナー");
-  a.fill("parentId", group.id);
-  a.submit();
-  const child = a.savedDoc().actors.at(-1);
-  assert.equal(child.parentId, group.id);
-  a.event(a.$(`[data-id="${group.id}"].actor-label`), "dblclick");
-  assert.equal(a.$(`[name="parentId"] option[value="${child.id}"]`), null);
-  assert.equal(a.$(`[name="parentId"] option[value="${group.id}"]`), null);
-});
-test("collapse hides descendant states and links with an explicit summary, and expansion restores them", async (t) => {
-  const a = await app(t, nested());
-  a.click('[data-id="uuv"] [data-toggle]');
-  assert.equal(a.$('[data-id="t2"]'), null);
-  assert.ok(a.$('[data-id="hit"].interaction-proxy'));
-  assert.match(a.$("#plot").textContent, /2 Actors \/ 4 States/);
-  assert.match(a.$("#plot").textContent, /束ね表示/);
-  assert.equal(a.savedDoc().states.length, 15);
-  a.click('[data-id="uuv"] [data-toggle]');
-  assert.ok(a.$('[data-id="t2"]'));
-  assert.ok(a.$('[data-id="hit"]'));
-  assert.deepEqual(a.errors, []);
-});
-test("search reveals a State inside collapsed ancestors and brings its time into view", async (t) => {
-  const d = nested();
-  d.actors.find((a) => a.id === "uuv").collapsed = true;
+  d.causalLinks.push({
+    id: "attach-early",
+    source: { type: "state", id: "s1" },
+    target: { type: "task", id: "identify", time: 24 },
+    polarity: "positive",
+    label: "確認",
+  });
   const a = await app(t, d);
-  a.click("#search-btn");
-  a.$("#search").value = "誘導";
-  a.$("#search").dispatchEvent(new a.w.Event("input", { bubbles: true }));
-  a.click("#search-results button");
-  assert.ok(a.$('[data-id="t2"]'));
-  assert.equal(M.isCollapsed(a.savedDoc(), "uuv"), false);
-});
-test("Actor context menus support child creation, reparenting, collapse, ungroup and reorder", async (t) => {
-  const a = await app(t, nested());
-  a.event(a.$('[data-id="uuv"].actor-label'), "contextmenu", {
-    clientX: 60,
-    clientY: 100,
-  });
-  const text = a.$("#context-menu").textContent;
-  for (const label of [
-    "子Actorを追加",
-    "子グループを追加",
-    "階層を変更",
-    "折りたたむ",
-    "子Actorを1階層外へ出す",
-    "上へ移動",
-  ])
-    assert.ok(text.includes(label));
-});
-test("dropping an Actor in the center reparents it; Undo restores the whole group", async (t) => {
-  const a = await app(t, nested());
-  const target = a.$('[data-row="control"]'),
-    y = Number(target.getAttribute("y")) + 45;
-  a.event(a.$('[data-id="uuv"].actor-label'), "pointerdown", {
-    clientX: 60,
-    clientY: 100,
-  });
-  a.event(a.w, "pointermove", { clientX: 60, clientY: y });
-  a.event(a.w, "pointerup", { clientX: 60, clientY: y });
-  assert.equal(
-    a.savedDoc().actors.find((x) => x.id === "uuv").parentId,
-    "control",
-  );
-  assert.equal(
-    a.savedDoc().actors.find((x) => x.id === "torpedo").parentId,
-    "uuv",
-  );
-  a.click("#undo");
-  assert.deepEqual(a.savedDoc(), M.migrate(nested()));
-});
-test("SVG export includes all time and hidden descendants while keeping the editor view intact", async (t) => {
-  const a = await app(t, nested());
-  a.click('[data-id="uuv"] [data-toggle]');
-  a.click("#zoom-in");
-  const before = a.$("#time-window").textContent;
-  a.click("#more-btn");
-  a.click('[data-menu="0"]');
-  const content = await a.readBlob(a.downloads[0].blob);
-  assert.match(content, /data-id="t2"/);
-  assert.match(content, /T\+60/);
-  assert.equal(a.$('[data-id="t2"]'), null);
-  assert.equal(a.$("#time-window").textContent, before);
-  assert.equal(a.$("#timeline").getAttribute("width"), "1050");
-});
-test("Alt-dragging a State onto a planned transition automatically opens interdiction without a mode", async (t) => {
-  const a = await app(t);
-  a.event(a.$('[data-id="t2"] .body'), "pointerdown", {
-    altKey: true,
-    clientX: 100,
-    clientY: 100,
-  });
-  a.event(a.w, "pointermove", { clientX: 200, clientY: 200 });
-  a.event(a.$('[data-id="escape"] .hit'), "pointerup", {
-    clientX: 200,
-    clientY: 200,
-  });
-  assert.match(a.$("#dialog-title").textContent, /予定遷移を阻止/);
+  a.event(element(a, "identify"), "dblclick");
+  a.fill("j0", 29);
+  a.fill("j1", 31);
   a.submit();
-  assert.equal(a.savedDoc().interactions.at(-1).effect, "block");
+  assert.equal(a.$("#dialog-error").textContent, "");
+  assert.equal(
+    a.savedDoc().causalLinks.find((c) => c.id === "attach-early").target.time,
+    29,
+  );
 });

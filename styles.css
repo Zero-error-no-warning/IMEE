@@ -259,26 +259,6 @@ main {
   border-radius: 2px;
   display: inline-block;
 }
-.legend-state {
-  background: #d4e9e7;
-  border: 1px solid #2e8e87;
-}
-.legend-plan {
-  border: 1px dashed #81949a;
-}
-.legend-block {
-  border-top: 2px dashed var(--red) !important;
-  border-radius: 0 !important;
-  position: relative;
-}
-.legend-block:after {
-  content: "×";
-  position: absolute;
-  top: -9px;
-  left: 3px;
-  color: var(--red);
-  font-size: 14px;
-}
 #canvas-scroll {
   overflow: auto;
   flex: 1;
@@ -1044,7 +1024,7 @@ footer {
   stroke-width: 4;
 }
 
-#timeline[data-view="interaction"] .state:not(.selected) .body {
+#timeline[data-view="causality"] .state:not(.selected) .body {
   fill-opacity: 0.25;
 }
 .technology-tag {

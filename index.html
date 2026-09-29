@@ -7,6 +7,8 @@
     <title>IMEE | Mission State Timeline Editor</title>
     <link rel="stylesheet" href="styles.css" />
     <script defer src="js/model.js"></script>
+    <script defer src="js/layout.js"></script>
+    <script defer src="js/render.js"></script>
     <script defer src="js/sample.js"></script>
     <script defer src="js/app.js"></script>
   </head>
@@ -49,7 +51,7 @@
           <option value="mission">Mission View</option>
           <option value="technology">Technology View</option>
           <option value="gap">Gap View</option>
-          <option value="interaction">Interaction View</option></select
+          <option value="causality">Causality View</option></select
         ><button id="view-settings">表示設定</button
         ><button id="group-selected" title="Ctrl / ⌘ + G">まとめる</button>
         <label class="snap-label"
@@ -70,18 +72,16 @@
         <div class="canvas-heading">
           <div>
             <span class="section-number">01</span
-            ><strong>ミッションの状態と因果</strong><span id="counts"></span>
+            ><strong>Taskと因果のタイムライン</strong><span id="counts"></span>
           </div>
           <div class="legend">
-            <span><i class="legend-state"></i>実際</span
-            ><span><i class="legend-plan"></i>予定</span
-            ><span><i class="legend-block"></i>阻止</span>
+            <span>● State</span><span>→ 正の因果</span><span>〜→ 負の因果</span>
           </div>
         </div>
         <div
           id="canvas-scroll"
           tabindex="0"
-          aria-label="タイムライン。Stateはドラッグで移動、両端で伸縮。空白のダブルクリックで追加。"
+          aria-label="タイムライン。Stateはドラッグで時刻を変更。空白のダブルクリックで追加。"
         >
           <svg
             id="timeline"
@@ -108,7 +108,7 @@
         </div>
         <div class="canvas-bottom">
           <span id="mode-hint"
-            >空白をダブルクリックでState追加 · ドラッグで移動 · 両端で伸縮</span
+            >空白をダブルクリックでState追加 · 点をドラッグで時刻移動</span
           ><button id="inspector-toggle" aria-expanded="false">
             詳細パネル ⇤
           </button>
@@ -144,66 +144,52 @@
         <h2>操作ガイド</h2>
         <button id="help-close" aria-label="閉じる">×</button>
       </div>
-      <p class="muted">時間が位置を決め、状態がミッションを語ります。</p>
+      <p class="muted">Stateは到達時点、Taskは時間をかけて行う活動です。</p>
       <dl class="help-list">
-        <dt>Stateの追加・編集</dt>
+        <dt>追加・接続</dt>
         <dd>
-          Actor行の空白をダブルクリックして追加。項目のダブルクリックで編集。右クリックでも操作できます。
+          Actor行の空白をダブルクリックしてStateを追加。Alt /
+          Option＋State・Taskのドラッグ、または選択後にCキーで接続。同じActorのState間はTask、それ以外は因果リンクになります。正・負は作成後のポップアップで選びます。
         </dd>
-        <dt>接続（切り替え不要）</dt>
+        <dt>分岐</dt>
         <dd>
-          Alt（MacはOption）を押しながらState本体から接続先へドラッグ。同じActorのStateなら遷移、別Actorなら作用、予定Transitionなら妨害になります。Stateを選択してCキーを押し、接続先をクリックしても接続できます。
+          Taskの右クリック→「結果を追加」。分岐時刻・結果ラベル・接続先Stateを指定。同じ時刻の結果と外部因果は小さい白丸に集約します。通常Taskには中間ノードはありません。
         </dd>
-        <dt>移動・複製・伸縮</dt>
+        <dt>移動・選択</dt>
         <dd>
-          State本体をドラッグ。Ctrl / ⌘ +
-          ドラッグで複製。両端で期間を伸縮します。
+          Stateの点をドラッグして時刻を変更。左右キーでも移動。Ctrl /
+          ⌘＋クリックで複数選択、空白ドラッグで矩形選択。Ctrl /
+          ⌘＋ドラッグは複製移動。
         </dd>
-        <dt>グループ・入れ子</dt>
+        <dt>Actor階層</dt>
         <dd>
-          「＋
-          グループ」またはActorの右クリックから子Actor・子グループを追加。編集の「親Actor
-          / グループ」で階層を指定。左の三角で折りたたみます。
+          Actorをドラッグし、行の中央で子Actorに、上端・下端で並べ替え。複数Actorを選んで「まとめる」、右クリックでGroup解除。三角で折りたたみます。
         </dd>
-        <dt>Actorのドラッグ</dt>
+        <dt>画面と時刻</dt>
         <dd>
-          移動先のActor名の中央にドロップすると子になります。行の上下端にドロップするとその前後に並べ替えます。子孫は一緒に移動します。
-        </dd>
-        <dt>横幅を固定して拡大</dt>
-        <dd>
-          ＋ / −
-          は表示する時間範囲を拡大・縮小します。下部のスライダー・矢印・時間範囲ボタンで表示時間を移動・指定できます。「全体」で全期間に戻ります。
-        </dd>
-        <dt>画面内の操作</dt>
-        <dd>
-          Space +
-          ドラッグで時間範囲と上下表示を移動。詳細パネルは右下から開閉できます。検索・設定・編集もこの画面内で行います。
+          ＋ /
+          −は表示する時間範囲を変更し、横幅を固定します。スライダーまたはSpace＋ドラッグでパン。詳細パネルは開閉可能。Fで検索。
         </dd>
         <dt>キーボード</dt>
         <dd>
-          C 選択したStateから接続 / F 検索 / Esc 取消 / Delete 削除 / Enter 編集
-          / Ctrl+Z 元に戻す / Ctrl+Shift+Z やり直す。選択したStateは ← →
-          で移動、Shift+← → で終端を伸縮します。
+          Ctrl / ⌘＋ZでUndo、Shift＋ZでRedo、Dで複製、C / X /
+          Vで文書内コピー・切り取り・貼り付け、GでGroup化、Shift＋Gで解除、SでJSON保存。Deleteで削除、Enterで編集、Escで接続取消。
         </dd>
-        <dt>複数選択・コピー</dt>
+        <dt>Technologyと分析</dt>
         <dd>
-          Ctrl / ⌘ +
-          クリックで選択を追加・解除。空白からのドラッグで矩形選択。Ctrl / ⌘ +
-          DでState・Actor・Groupを複製、C / X /
-          Vで文書内コピー・切り取り・貼り付け。Gで選択ActorをGroup化、Shift+Gで解除します。
+          右クリックまたは詳細パネルで技術を関連付け。Technology / Gap
+          Viewで詳細、Causality
+          Viewで因果を強調。敵Taskを選ぶと介入時間窓・方向付き経路・未成熟技術を確認できます。役割は分類とStateの判断欄で明示してください。
         </dd>
-        <dt>技術と経路</dt>
+        <dt>保存・出力</dt>
         <dd>
-          上部でTechnology / Gap / Interaction
-          Viewを選択。詳細パネル・右クリックから技術を関連付けます。敵Transition選択で候補経路と時間窓を確認。判断段階はStateの役割欄で指定します。経路評価は登録した因果・技術・時刻による構造評価です。
-        </dd>
-        <dt>保存</dt>
-        <dd>
-          このブラウザに自動保存。バックアップはJSON保存。右上メニューからSVG・PNG出力（全期間・全階層）できます。
+          ブラウザ内に自動保存。JSONはversion
+          2専用です。右上メニューから全期間・全階層のSVG /
+          PNGを出力。読込・サンプル置換もUndoで戻せます。
         </dd>
       </dl>
       <p class="help-note">
-        重なるStateはActor内で自動的に段を分けます。実際と予定は手動指定です。妨害登録によって後続の予定全体を自動変更することはありません。
+        横位置は常に時刻です。重なるStateは同じActor内で上下に分離します。予定・案は明示タグで表示。線種は正の実線と負の波線だけです。
       </p>
     </dialog>
     <div id="context-menu" role="menu" hidden></div>
