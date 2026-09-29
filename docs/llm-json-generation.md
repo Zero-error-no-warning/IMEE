@@ -99,13 +99,13 @@ views: {main: {
   collapsedActors: [], actorOrder: ["sensor", "control"],
   zoom: 1, visibleTimeRange: {start: 0, end: 60},
   filters: {technology: true, causalLink: true, quiet: true},
-  laneHeight: 64, mode: "mission"
+  laneHeight: 64, collapsedLayout: "compact", mode: "mission"
 }}
 ```
 
-actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actorOrderには全Actorを推奨。modeはmission / technology / gap / causality。laneHeightは52〜160px。zoomは1〜1,000でduration / 表示範囲長に合わせる。表示範囲は0 ≤ start < end ≤ duration。
+actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actorOrderには全Actorを推奨。modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで省略時compact。zoomは1〜1,000でduration / 表示範囲長に合わせる。表示範囲は0 ≤ start < end ≤ duration。
 
-折りたたむと子Actorの行を隠し、State・Taskを親Actorのタイムラインと色へ投影する。重なる状態・分岐のみ上下に分ける。両端が同じ折りたたみグループ内にある因果線だけを隠し、外部との接続は時刻を維持して残す。元データの所属・色・接続は変更しない。旧State / Task.status、CausalLink.proposed、filters.plannedは互換性のため読み込めるが、表示・分析には使わない。Technology.statusは技術成熟度として引き続き使う。
+折りたたむと子Actorの行を隠し、State・Taskを親Actorのタイムラインと色へ投影する。compactでは28px間隔、spacedではlaneHeightの間隔で重なる状態・分岐を上下に分ける。singleは同時刻の状態・重なる活動区間を一本の水平線へまとめる。空白期間と外部因果の時刻は維持する。両端が同じ折りたたみグループ内にある因果線だけを隠し、外部との接続は時刻を維持して残す。元データの所属・色・接続は変更しない。旧State / Task.status、CausalLink.proposed、filters.plannedは互換性のため読み込めるが、表示・分析には使わない。Technology.statusは技術成熟度として引き続き使う。
 
 敵Taskへのnegative因果について、観測→判断→指令→攻撃を方向付き・時系列順に経路単位で評価する。観測はfriendly側のkind:detection / observation、判断はfriendly State.phase:decision、指令はkind:command、攻撃はkind:attack / interference。複数経路の役割を寄せ集めて完結させない。
 
@@ -451,6 +451,7 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
         "quiet": true
       },
       "laneHeight": 64,
+      "collapsedLayout": "compact",
       "mode": "mission"
     }
   }

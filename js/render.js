@@ -40,6 +40,8 @@
       options.export
         ? ""
         : ` data-type="${type}" data-id="${esc(id)}" tabindex="0"`;
+    const summaryData = (actorId) => data("actor",actorId) +
+      (options.export ? "" : ` data-expand-group="${esc(actorId)}"`);
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vp.width}" height="${height}" viewBox="0 0 ${vp.width} ${height}" role="img" aria-label="${esc(doc.title)}" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="11" fill="#243d44" data-view="${v.mode}"><title>${esc(doc.title)}</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><marker id="state-arrow" viewBox="0 0 10 10" refX="19" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><clipPath id="time-clip"><rect x="${vp.left - 14}" y="32" width="${vp.width - vp.left + 14}" height="${height}"/></clipPath></defs><rect width="100%" height="100%" fill="white"/>`;
     for (const row of rows)
       svg += `<rect x="0" y="${row.y}" width="${vp.width}" height="${row.height}" fill="${rows.indexOf(row) % 2 ? "#fafcfc" : "#ffffff"}"/><path d="M0,${row.y + row.height} H${vp.width}" stroke="#e7edef"/>`;
@@ -57,15 +59,15 @@
     }
     svg += `<text x="12" y="21" font-size="10" fill="#77868c">ACTOR / T+ (${esc(doc.time.unit)})</text><g clip-path="url(#time-clip)">`;
     for (const e of edges) {
-      const chosen = selected(e.id),
+      const chosen = selected(e.summaryActorId || e.id),
         actor = M.get(doc,"actor",e.actorId),
         color = M.actorColor(doc,actor),
-        gap = options.gapIds?.has(e.id),
+        gap = options.gapIds?.has(e.id) || e.memberIds?.some(id => options.gapIds?.has(id)),
         muted = v.mode === "causality" && e.type === "task" && !chosen ? 0.4 : 1;
       const centeredEnd = [...states.values()].some(s =>
         Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
       let marker = centeredEnd ? "state-arrow" : "arrow";
-      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}</title>`;
+      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}</title>`;
       if (e.polarity === "negative") {
         const segment = L.routeSegments(e.points).at(-1);
         const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
@@ -79,13 +81,19 @@
         svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="7" opacity=".25" pointer-events="none"/>`;
       svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
     }
+    const summaryJunctions = new Set();
     for (const j of junctions.values()) {
+      const single = rows.find(r => r.actor.id === j.actorId)?.collapseMode === "single";
+      const key = j.actorId+"@"+j.time;
+      if (single && summaryJunctions.has(key)) continue;
+      if (single) summaryJunctions.add(key);
       const color=M.actorColor(doc,M.get(doc,"actor",j.actorId));
-      svg += `<g class="junction"${data("task", j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
+      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
     }
     for (const s of states.values()) {
+      if (s.summaryHidden) continue;
       const a = M.get(doc, "actor", s.displayActorId), color = M.actorColor(doc,a);
-      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${data("state", s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc(s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="7" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
+      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${s.summaryActorId ? summaryData(s.summaryActorId) : data("state",s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc((s.summaryNames && [...new Set(s.summaryNames)].join(" / ")) || s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
       if (options.gapIds?.has(s.id)) svg += `<circle cx="${s.x}" cy="${s.y}" r="12" fill="none" stroke="#d17a30" opacity=".6"/>`;
       if (selected(s.id))
         svg += `<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" stroke="#76b8b5"/>`;
@@ -97,6 +105,7 @@
     }
     for (const e of edges) {
       const b = e.labelInfo;
+      if (!b) continue;
       svg += `<g class="edge-label"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(b.fullText)}</title>`;
       if (b.leader)
         svg += `<path class="label-leader" d="M${b.anchor.x},${b.anchor.y} L${b.x + b.width / 2},${b.y + b.height / 2}" stroke="#9aa8ad" stroke-width="0.7" fill="none"/>`;

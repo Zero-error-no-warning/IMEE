@@ -574,7 +574,8 @@
           "planned": true
         },
         "laneHeight": 64,
-        "mode": "mission"
+        "mode": "mission",
+        "collapsedLayout": "compact"
       }
     }
   },
@@ -1153,7 +1154,8 @@
           "planned": true
         },
         "laneHeight": 64,
-        "mode": "mission"
+        "mode": "mission",
+        "collapsedLayout": "compact"
       }
     }
   },
@@ -2000,7 +2002,8 @@
           "planned": true
         },
         "laneHeight": 64,
-        "mode": "mission"
+        "mode": "mission",
+        "collapsedLayout": "compact"
       }
     }
   }

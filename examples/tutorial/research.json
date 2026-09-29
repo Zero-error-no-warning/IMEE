@@ -275,6 +275,7 @@
         "quiet": true
       },
       "laneHeight": 64,
+      "collapsedLayout": "compact",
       "mode": "gap"
     }
   }

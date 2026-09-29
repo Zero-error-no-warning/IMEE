@@ -47,6 +47,7 @@
       ...v.filters,
     };
     v.laneHeight ??= 64;
+    v.collapsedLayout ??= "compact";
     v.mode ??= "mission";
     return d;
   }
@@ -232,6 +233,7 @@
     if (d.views?.main) {
       const v = d.views.main;
       opt(v.mode, ["mission", "technology", "gap", "causality"], "View");
+      opt(v.collapsedLayout, ["compact", "single", "spaced"], "折りたたみ表示");
       if (v.laneHeight !== undefined) num(v.laneHeight, "レーン高さ", 52, 160);
       if (v.zoom !== undefined) num(v.zoom, "倍率", 1, 1000);
       if (v.visibleTimeRange) {

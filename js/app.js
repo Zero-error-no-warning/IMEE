@@ -944,6 +944,11 @@
     select(s, e.ctrlKey || e.metaKey);
   });
   $("#timeline").addEventListener("dblclick", (e) => {
+    const summary = e.target.closest("[data-expand-group]");
+    if (summary) {
+      change(d => { d.views.main.collapsedActors = d.views.main.collapsedActors.filter(id => id !== summary.dataset.expandGroup); });
+      return;
+    }
     const s = targetInfo(e);
     if (s) edit(s);
     else {
@@ -1069,10 +1074,16 @@
       "表示設定",
       field(
         "laneHeight",
-        "サブレーン間隔（52〜160px）",
+        "通常のサブレーン間隔（52〜160px）",
         v.laneHeight,
         "number",
       ) +
+        choices("collapsedLayout", "折りたたみ表示", [
+          ["compact", "コンパクト（間隔28px）"],
+          ["single", "1本に集約"],
+          ["spaced", "通常間隔"],
+        ], v.collapsedLayout) +
+        '<p class="dialog-summary">コンパクトではState名、1本ではState・Task名をホバーで確認できます。1本の集約表示はダブルクリックで展開して編集できます。</p>' +
         Object.entries({
           technology: "Technology",
           causalLink: "因果リンク",
@@ -1093,6 +1104,7 @@
       (values) =>
         applyEdit((d) => {
           d.views.main.laneHeight = +values.laneHeight;
+          d.views.main.collapsedLayout = values.collapsedLayout;
           for (const key of ["technology", "causalLink", "quiet"])
             d.views.main.filters[key] = values[key] === "true";
         }),

@@ -13,10 +13,13 @@ for (const [name, image, d] of [
 }
 const collapsed = sample.grouped();
 collapsed.views.main.collapsedActors = ['uuv'];
+const single = sample.grouped();
+single.views.main.collapsedActors = ['uuv'];
+single.views.main.collapsedLayout = 'single';
 const technology = sample.research();
 technology.views.main.mode = 'technology';
 technology.views.main.filters.technology = true;
-for (const [name,d] of [['grouped-collapsed',collapsed],['technology',technology]])
+for (const [name,d] of [['grouped-collapsed',collapsed],['grouped-single',single],['technology',technology]])
   fs.writeFileSync(path.join(root,'docs',name+'.svg'), R.render(d,L.layout(d,1200),{export:true})+'\n');
 const tutorial = require('../js/tutorial-sample');
 for (const [name, d] of [['coastal', tutorial()], ['submarine', tutorial.grouped()], ['research', tutorial.research()]])

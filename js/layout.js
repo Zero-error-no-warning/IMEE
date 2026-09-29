@@ -397,6 +397,9 @@
     }) : [];
     for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
       const top = y, aggregated = folded.has(actor.id), lanes = [];
+      const collapseMode = aggregated ? (v.collapsedLayout || "compact") : "spaced";
+      const spacing = collapseMode === "compact" ? 28 : v.laneHeight;
+      const radius = collapseMode === "compact" ? 5 : 7;
       // Project the whole subtree onto ONE parent timeline. Sublanes are only
       // for concurrent states/branches, never one lane per child Actor.
       const ss = doc.states.filter(s => displayActor(s.actorId) === actor.id && visible(s))
@@ -410,23 +413,39 @@
         const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
         let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
           ? preferred : lanes.findIndex(end => end < x - needed / 2);
-        if (lane < 0) lane = lanes.length;
+        if (collapseMode === "single") lane = 0;
+        else if (lane < 0) lane = lanes.length;
         lanes[lane] = x + needed / 2;
-        const cy = top + 24 + lane * v.laneHeight;
-        states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:7,
-          lane, lines:textLines(s.name,112) });
-        nodeBodies.push({x:x-9,y:cy-9,width:18,height:18});
+        const cy = top + 24 + lane * spacing;
+        states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:radius,
+          lane, collapseMode, lines:textLines(s.name,112) });
+        nodeBodies.push({x:x-radius-2,y:cy-radius-2,width:radius*2+4,height:radius*2+4});
+      }
+      if (collapseMode === "single") {
+        const atTime = new Map();
+        for (const source of ss) {
+          const state = states.get(source.id), existing = atTime.get(source.time);
+          if (existing) {
+            existing.summaryNames.push(source.name);
+            if (source.activity !== "quiet") existing.activity = "active";
+            state.summaryHidden = true;
+          }
+          else { state.summaryActorId=actor.id; state.summaryNames=[source.name]; atTime.set(source.time,state); }
+        }
       }
       const count = technologyBindings.filter(b => b.actorId === actor.id).length;
       const baseHeight = actor.isGroup && !lanes.length ? 38 :
-        Math.max(1,lanes.length) * v.laneHeight + 6;
+        collapseMode === "single" ? 48 : collapseMode === "compact"
+          ? 42 + Math.max(0,lanes.length-1)*spacing
+          : Math.max(1,lanes.length)*spacing+6;
       // A separate annotation band keeps bubbles off the timeline and captions.
       // Geometry does not depend on the length of State/Task/causal captions.
-      const technologyTop = top + Math.max(baseHeight, (Math.max(1,lanes.length)-1)*v.laneHeight + 86) + 8;
+      const technologyTop = top + Math.max(baseHeight,
+        (Math.max(1,lanes.length)-1)*spacing + (collapseMode === "spaced" ? 86 : 44)) + 8;
       const columns = Math.max(1, Math.floor((vp.width-vp.left-24)/200));
       const technologyHeight = count ? Math.ceil(count/columns)*28 + 8 + (options.technologySpace?.[actor.id] || 0) : 0;
       const rowHeight = count ? technologyTop-top+technologyHeight : baseHeight;
-      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,
+      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode,
         technologyTop,technologyHeight});
       y += rowHeight;
     }
@@ -456,7 +475,8 @@
         to = t.toStateId ? states.get(t.toStateId) : null;
       if (t.toStateId && !to) continue;
       const end = to || { x: vp.x(w.end), y: from.y, r: 4 };
-      const points = route(from, end, true);
+      const points = from.collapseMode === "single"
+        ? [{x:from.x,y:from.y},{x:end.x,y:end.y}] : route(from,end,true);
       const e = {
         id: t.id,
         type: "task",
@@ -493,7 +513,7 @@
                 part: "outcome",
                 junctionId: j.id,
                 outcomeIndex: i,
-                points: route(p, to, true),
+                points: to.collapseMode === "single" ? [{x:p.x,y:p.y},{x:to.x,y:to.y}] : route(p,to,true),
                 label: o.label,
                 actorId: states.get(t.fromStateId).displayActorId,
               });
@@ -518,6 +538,27 @@
         edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
           label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId)});
       }
+    for (const row of rows.filter(r => r.collapseMode === "single")) {
+      const sourceEdges = edges.filter(e => e.type === "task" && e.actorId === row.actor.id);
+      const intervals = sourceEdges.map(e => ({start:e.points[0].x,end:e.points.at(-1).x,
+        labels:[e.label],members:[e.id]})).sort((a,b) => a.start-b.start || a.end-b.end);
+      const merged=[];
+      for (const interval of intervals) {
+        const last=merged.at(-1);
+        if (last && interval.start<=last.end) {
+          last.end=Math.max(last.end,interval.end);
+          last.labels.push(...interval.labels); last.members.push(...interval.members);
+        } else merged.push(interval);
+      }
+      for (let i=edges.length-1;i>=0;i--)
+        if (edges[i].type === "task" && edges[i].actorId === row.actor.id) edges.splice(i,1);
+      for (const [i,interval] of merged.entries()) edges.push({
+        id:`summary-${row.actor.id}-${i}`,type:"task",part:"task",actorId:row.actor.id,
+        summaryActorId:row.actor.id,memberIds:[...new Set(interval.members)],
+        points:[{x:interval.start,y:row.center},{x:interval.end,y:row.center}],
+        label:[...new Set(interval.labels)].filter(Boolean).join(" / "),hideLabel:true,
+      });
+    }
     const lineSegments = edges.flatMap(e => routeSegments(e.points));
     // Reflow State text after routing. Text collisions never feed back into geometry.
     occupied.length = 0;
@@ -530,7 +571,8 @@
       if (binding.targetType === "state") anchor = states.get(binding.targetId);
       else if (binding.targetType === "actor") anchor = row && {x:vp.left+30,y:row.center};
       else {
-        const edge = edges.find(e => e.id === binding.targetId);
+        const edge = binding.targetType === "task" ? tasks.get(binding.targetId)?.edge
+          : edges.find(e => e.id === binding.targetId);
         if (edge) {
           const start = Math.max(vp.left, Math.min(...edge.points.map(p => p.x)));
           const end = Math.min(vp.right, Math.max(...edge.points.map(p => p.x)));
@@ -586,6 +628,7 @@
       technologyTags.push(tag); occupied.push(tag.box);
     }
     for (const s of states.values()) {
+      if (s.collapseMode !== "spaced") {s.lines=[];continue;}
       const peers = [...states.values()].filter(p => p.displayActorId === s.displayActorId && p.lane === s.lane && p.id !== s.id);
       const gap = Math.min(124, ...peers.map(p => Math.abs(p.x - s.x)));
       const maxWidth = Math.max(28, Math.min(112, gap - 10));
@@ -605,7 +648,7 @@
       occupied.push(choices[0].box);
     }
     for (const e of edges) {
-      e.labelInfo = label(
+      e.labelInfo = e.hideLabel ? null : label(
         e.label,
         e.points,
         occupied,

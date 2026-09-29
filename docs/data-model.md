@@ -115,13 +115,13 @@ views: { main: {
   collapsedActors: [], actorOrder: ["actor-1", "actor-2"],
   zoom: 1, visibleTimeRange: {start: 0, end: 60},
   filters: {technology: true, causalLink: true, quiet: true},
-  laneHeight: 64, mode: "mission"
+  laneHeight: 64, collapsedLayout: "compact", mode: "mission"
 }}
 ```
 
-modeはmission / technology / gap / causality。laneHeightは52〜160px。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
+modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けず、重なるState・分岐だけ上下に分けます。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
+折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
 ## コピー・削除・履歴
 
