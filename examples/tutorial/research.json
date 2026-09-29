@@ -12,25 +12,29 @@
       "id": "sensor",
       "name": "電波監視",
       "parentId": null,
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#a75353"
     },
     {
       "id": "control",
       "name": "指揮所",
       "parentId": null,
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#236d78"
     },
     {
       "id": "effector",
       "name": "介入担当",
       "parentId": null,
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#8061a8"
     },
     {
       "id": "enemy",
       "name": "敵妨害装置",
       "parentId": null,
-      "side": "hostile"
+      "side": "hostile",
+      "color": "#a56c24"
     }
   ],
   "states": [
@@ -39,7 +43,6 @@
       "actorId": "sensor",
       "name": "監視開始",
       "time": 2,
-      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -49,7 +52,6 @@
       "actorId": "sensor",
       "name": "妨害源探知",
       "time": 14,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -59,7 +61,6 @@
       "actorId": "control",
       "name": "報告受領",
       "time": 16,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -69,7 +70,6 @@
       "actorId": "control",
       "name": "介入決定",
       "time": 30,
-      "status": "planned",
       "activity": "active",
       "phase": "decision",
       "notes": ""
@@ -79,7 +79,6 @@
       "actorId": "effector",
       "name": "指令受領",
       "time": 32,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -89,7 +88,6 @@
       "actorId": "effector",
       "name": "介入終了",
       "time": 60,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -99,7 +97,6 @@
       "actorId": "enemy",
       "name": "送信準備済",
       "time": 20,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -109,7 +106,6 @@
       "actorId": "enemy",
       "name": "妨害終了",
       "time": 68,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -122,7 +118,6 @@
       "toStateId": "s1",
       "label": "電波を探知・測位",
       "kind": "detection",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -131,7 +126,6 @@
       "toStateId": "c1",
       "label": "介入可否を判断",
       "kind": "support",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -140,7 +134,6 @@
       "toStateId": "w1",
       "label": "追尾・指向性妨害",
       "kind": "interference",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -149,7 +142,6 @@
       "toStateId": "e1",
       "label": "通信帯域を妨害",
       "kind": "interference",
-      "status": "planned",
       "notes": ""
     }
   ],
@@ -280,7 +272,6 @@
       "filters": {
         "technology": true,
         "causalLink": true,
-        "planned": true,
         "quiet": true
       },
       "laneHeight": 64,

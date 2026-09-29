@@ -11,7 +11,7 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 5. 階層サンプルは潜水艦の子にソナーと魚雷があり、折りたたんでも接続の時刻が変わらないこと。
 6. 技術例の協調音響識別・水中指令通信の不足、54分の遅延案を確認すること。
 7. 「表現デモ（捜索・識別・通信）」を別メニューから開き、通常Task・一致／不一致・通信失敗後の再送を確認すること。Undoで元の比較用サンプルに戻れること。
-8. plannedは「予定」、proposedは「案」。破線・点線による意味表現がないこと。
+8. State・Task・因果編集に「予定・案」がなく、旧JSONでもタグやフィルタ・分析条件として働かないこと。破線・点線による意味表現がないこと。
 
 ## 編集と接続
 
@@ -45,7 +45,7 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 
 1. Actor / 子Actor / 子Groupを作る。ドラッグで上下順序変更・親変更。循環は禁止されること。
 2. Ctrl / ⌘＋Actorクリック→まとめる→Group解除を確認。Stateを持つGroupの解除はActor自身を残すこと。
-3. Groupを折りたたみ、子Actorの因果がProxyへ接続すること。同じ時刻・ラベル・極性の線は件数に集約、異なる時刻は別の接続になること。開くと元に戻ること。
+3. Groupを折りたたみ、子孫のState・Taskが元の時刻・色・所属で親レーンに残ること。親と子孫に接続する因果線だけが消え、展開すると戻ること。折りたたんだ子Stateを時間方向へドラッグしてもActorが変わらないこと。
 4. Ctrl / ⌘＋クリック、矩形選択で複数Stateを選ぶ。一括移動・複製・削除、Undo / Redoで戻せること。
 5. Actor / GroupをCtrl / ⌘＋Dで再帰複製。子Actor、State、Task、junction、BindingのIDが再発行され、内部因果だけがコピーされること。
 6. Ctrl / ⌘＋C / X / Vで文書内貼り付け。元Actorが残るStateコピーと、Actorを含むコピーの両方を確認する。
@@ -57,8 +57,8 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 3. Technologyを登録し、actor / state / task / causalLinkへBinding。背景・枠付き吹き出し、Tooltip、カタログの依存先を確認。
 4. Technology / Gap / Causality Viewへ変更。Task分類を変えても正負以外の線種・種類別色が増えないこと。
 5. 敵Taskを選び、観測→判断→指令→攻撃の経路、時刻窓、技術Gapを確認。経路上の技術をresearch / gap / unknownへ変更して未充足になること。
-6. negative因果をproposedにし、Task終了より遅い到達timeを設定。「到達が遅すぎます」、案タグ、SOME未充足を確認する。
-7. planned / quiet / technology / causalLinkのフィルタが表示だけに作用すること。
+6. negative因果にTask終了より遅い到達timeを設定。「到達が遅すぎます」とSOME未充足を確認する。
+7. quiet / technology / causalLinkのフィルタが表示だけに作用すること。
 
 ## 保存・出力・エラー
 
@@ -69,3 +69,9 @@ Node.js 24で`npm ci && npm test`を実行した後、以下をChrome / Firefox 
 5. SVGを別のブラウザ・画像ビューアで開き、波線・矢印・日本語が表示されること。PNGは白背景で切り捨てがなく、波線と文字が読めること。
 6. 大きな図でPNG寸法が16,384px／辺・3,200万画素以内となり、全体が縮小されること。
 7. 読込・サンプル置換後もUndo可能。失敗した編集・PNG変換はエラーを表示し、成功と誤表示しないこと。
+
+## Actor色と波線の矢じり
+
+1. Actorをダブルクリックして色を変更し、State・Task・結果線と、そのActorを起点とする正負の因果線が同色になること。選択やGap強調でも線の色を保持すること。
+2. 色のUndo / Redo、複製、JSON保存・読込、SVG / PNG出力を確認すること。
+3. 水平・垂直・斜め・折れ曲がる負の因果で、矢じりが波の接線ではなく経路末尾の方向を向くこと。

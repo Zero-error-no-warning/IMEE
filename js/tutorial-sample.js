@@ -16,6 +16,7 @@
   const cause = (id, source, target, label, kind = "information", polarity = "positive") =>
     ({ id, source, target, label, kind, polarity });
   function finish(d) {
+    for (const x of [...d.states, ...d.tasks]) delete x.status;
     M.defaults(d);
     d.views.main.filters.technology = false;
     return M.validate(d);
@@ -24,7 +25,7 @@
     return finish({
       version: 2,
       title: "沿岸監視 — 不明接触の識別と妨害下での通報",
-      notes: "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。16分までを実績、それ以降を予定として示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
+      notes: "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。分岐は代替結果を示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
       time: { unit: "minutes", duration: 90, snap: 1 },
       actors: [
         actor("group", "沿岸監視隊", null, "friendly", true),

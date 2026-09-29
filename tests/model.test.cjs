@@ -73,12 +73,11 @@ test("validation rejects dangling, backward, cross-Actor Task and duplicate IDs"
   invalid((d) => (d.tasks[0].id = "s0"), /ID重複/);
   invalid((d) => (d.causalLinks[0].source.id = "missing"), /端点/);
 });
-test("causal source / target are strictly timed, proposed allows late task attachment", () => {
+test("causal endpoints preserve explicit late time without a proposed mode", () => {
   const d = sample(),
     c = d.causalLinks[2];
   c.target.time = 55;
-  assert.throws(() => M.validate(d), /実行期間内/);
-  c.proposed = true;
+  delete c.proposed;
   M.validate(d);
   assert.equal(M.opportunity(d, c).within, false);
   assert.match(M.opportunity(d, c).message, /遅すぎ/);

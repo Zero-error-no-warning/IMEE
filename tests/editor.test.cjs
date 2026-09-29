@@ -158,7 +158,7 @@ test("zoom and pan keep width fixed; full export restores all Actors and range",
   assert.equal(a.$("#timeline").getAttribute("width"), width);
   assert(a.savedDoc().views.main.visibleTimeRange.start > 0);
   a.click('[data-collapse="group"]');
-  assert.equal(a.d.querySelectorAll(".state").length, 2);
+  assert.equal(a.d.querySelectorAll(".state").length, 10);
   const before = a.w.IMEE.getDocument(),
     out = a.w.IMEE.exportSource();
   assert(out.svg.includes("未探知"));

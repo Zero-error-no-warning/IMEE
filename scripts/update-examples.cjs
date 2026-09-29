@@ -14,7 +14,9 @@ for (const [name, image, d] of [
 const tutorial = require('../js/tutorial-sample');
 for (const [name, d] of [['coastal', tutorial()], ['submarine', tutorial.grouped()], ['research', tutorial.research()]])
   fs.writeFileSync(path.join(root, 'examples/tutorial', name + '.json'), JSON.stringify(d, null, 2) + '\n');
-const example = JSON.stringify(tutorial(), null, 2);
+const llm = tutorial();
+delete llm.views.main.filters.planned;
+const example = JSON.stringify(llm, null, 2);
 fs.writeFileSync(path.join(root, 'examples/llm-example.json'), example + '\n');
 const spec = path.join(root, 'docs/llm-json-generation.md');
 fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8').replace(/```json\n[\s\S]*?\n```/, '```json\n' + example + '\n```'));

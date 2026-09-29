@@ -47,14 +47,14 @@ test('labels use actual diagonal segments rather than the empty area inside thei
   assert.equal(box.x+box.width/2,200);
 });
 
-test('shipped scenarios are distinct, synchronized, time ordered and use planned result alternatives', () => {
+test('shipped scenarios are distinct, synchronized, time ordered and omit mission status distinctions', () => {
   const signatures = new Set();
   for(const [name,create] of cases) {
     const d=create(); M.validate(d);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/tutorial',name+'.json'),'utf8')),d);
     signatures.add(d.tasks.map(t=>t.label).join('|'));
     for(const t of d.tasks) for(const j of t.junctions||[]) for(const o of j.outcomes)
-      assert.equal(M.get(d,'state',o.toStateId).status,'planned');
+      assert.equal(M.get(d,'state',o.toStateId).status,undefined);
     for(const c of d.causalLinks) assert(M.endpoint(d,c.source).time<=M.endpoint(d,c.target).time);
   }
   assert.equal(signatures.size,3);
@@ -69,12 +69,12 @@ test('research example has one specific maturity gap on a complete timed interve
   assert(M.analyzeTask(d,'jam').all);
 });
 
-test('hierarchy sample retains reports and orders when the two-UUV team is collapsed', () => {
+test('hierarchy sample aggregates two-UUV tasks and hides reports and orders', () => {
   const d=sample.grouped(), before=JSON.stringify(d.causalLinks);
   d.views.main.collapsedActors=['team'];
   const g=L.layout(d);
-  assert(!g.states.has('a0')); assert(!g.states.has('b0'));
-  for(const id of ['confirm-report','incomplete-report','recall']) assert(g.edges.find(e=>e.id===id)?.proxy);
+  assert(g.states.has('a0')); assert(g.states.has('b0'));
+  for(const id of ['confirm-report','incomplete-report','recall']) assert(!g.edges.some(e=>e.id===id));
   assert.equal(JSON.stringify(d.causalLinks),before);
 });
 

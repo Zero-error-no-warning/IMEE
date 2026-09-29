@@ -55,21 +55,12 @@ test("positive remains solid; negative is genuinely wavy after routing without d
   const output = R.render(d, g);
   assert(!/dasharray|dashed|dotted/.test(output));
 });
-test("planned / proposed only add explicit text and hollow State, never line semantics", () => {
-  const d = sample();
-  d.tasks[0].status = "planned";
-  d.states[0].status = "proposed";
-  d.causalLinks[0].proposed = true;
-  const g = L.layout(d),
-    output = R.render(d, g);
-  assert(output.includes("予定 · 捜索"));
-  assert(output.includes("案 · 探知情報"));
-  assert.equal(g.edges[0].path, L.path(g.edges[0].points));
-  assert.equal(
-    svg(d).querySelector('[data-id="s0"] .body').getAttribute("fill"),
-    "white",
-  );
-  assert(!output.includes("dasharray"));
+test("legacy planned/proposed fields do not change text, fill, opacity or visibility", () => {
+  const d = sample(), baseline = R.render(d,L.layout(d));
+  d.tasks[0].status = "planned"; d.states[0].status = "proposed";
+  d.causalLinks[0].proposed = true; d.views.main.filters.planned = false;
+  assert.equal(R.render(d,L.layout(d)),baseline);
+  assert.equal(svg(d).querySelector('[data-id="s0"] .body').getAttribute("fill"), M.actorColor(d,d.actors.find(a=>a.id==='sensor')));
 });
 test("multiple causal links share one Task junction at exact time", () => {
   const d = sample();
@@ -250,16 +241,16 @@ test("zoom preserves canvas width and uses visible time range", () => {
   assert.equal(zoom.vp.x(20), zoom.vp.left);
   assert.equal(zoom.vp.x(40), zoom.vp.right);
 });
-test("collapsed proxy preserves original times, polarity and mission data", () => {
-  const d = sample(),
-    before = M.clone(d);
-  d.views.main.collapsedActors = ["group"];
-  const g = L.layout(d);
-  const c = g.edges.find((e) => e.id === "negative");
-  assert(c.proxy);
-  assert.equal(c.polarity, "negative");
-  assert.equal(c.points.at(-1).x, g.vp.x(49));
-  assert.deepEqual(d.causalLinks, before.causalLinks);
+test("collapsed group retains child nodes/tasks and hides associated causal links without mutation", () => {
+  const d=sample(), before=M.clone(d);
+  d.views.main.collapsedActors=["group"];
+  const g=L.layout(d);
+  assert.equal(g.states.size,d.states.length);
+  assert.equal(g.tasks.size,d.tasks.length);
+  assert(!g.edges.some(e=>e.type==='causalLink'));
+  assert.equal(g.states.get('s0').displayActorId,'group');
+  assert.equal(g.states.get('s0').x,g.vp.x(2));
+  assert.deepEqual(d.causalLinks,before.causalLinks);
 });
 test("technology bubbles keep background, outline, title and supported bindings", () => {
   const d = sample.research(),

@@ -24,7 +24,14 @@
   };
   const get = (d, type, id) => d[collections[type]]?.find((x) => x.id === id);
   const snap = (n, step) => Math.round(n / step) * step;
+  const actorPalette = ["#a75353", "#236d78", "#8061a8", "#a56c24", "#397aa0", "#538447", "#a55387", "#596a86"];
+  function actorColor(d, actor) {
+    if (actor?.color) return actor.color;
+    const index = d.actors.indexOf(actor);
+    return actorPalette[(index < 0 ? d.actors.length : index) % actorPalette.length];
+  }
   function defaults(d) {
+    d.actors?.forEach(a => { a.color ??= actorColor(d, a); });
     d.technologies ??= [];
     d.bindings ??= [];
     d.views ??= {};
@@ -36,7 +43,6 @@
     v.filters = {
       technology: true,
       causalLink: true,
-      planned: true,
       quiet: true,
       ...v.filters,
     };
@@ -114,6 +120,7 @@
       str(a.name, "Actor名");
       opt(a.side, ["friendly", "hostile", "neutral"], "所属");
       if (!a.side) fail("所属が必要です。");
+      if (a.color !== undefined && !/^#[0-9a-f]{6}$/i.test(a.color)) fail("Actorの色は#RRGGBBで指定してください。");
       if (a.isGroup !== undefined && typeof a.isGroup !== "boolean")
         fail("isGroupは真偽値です。");
       const seen = new Set([a.id]);
@@ -199,13 +206,8 @@
         if (p.type !== "state") num(p.time, "端点の時刻");
         else if ("time" in p)
           fail("State端点に時刻を重複保存しないでください。");
-        if (p.type === "task") {
-          const w = taskWindow(d, get(d, "task", p.id));
-          if ((p.time < w.start || p.time > w.end) && !c.proposed)
-            fail(
-              "Task端点は実行期間内にしてください。時間窓外の検討にはproposed:trueが必要です。",
-            );
-        }
+        // Out-of-window attachments remain representable; opportunity() reports
+        // the actual timing gap without a planned/proposed mode.
       }
       if (endpoint(d, c.source).time > endpoint(d, c.target).time)
         fail("因果リンクは時間を逆行できません。");
@@ -303,7 +305,6 @@
         fromStateId: source.id,
         toStateId: target.id,
         label: "新しいTask",
-        status: "actual",
         kind: "",
         notes: "",
       };
@@ -318,7 +319,6 @@
       polarity: "positive",
       label: "作用",
       kind: "",
-      proposed: false,
       notes: "",
     };
     d.causalLinks.push(c);
@@ -460,17 +460,8 @@
     );
     for (const k of ["actorOrder", "collapsedActors"])
       d.views.main[k] = d.views.main[k].filter((id) => !set.has(id));
-    // A deleted result can shorten a branch-only Task; discard now-orphaned attachments.
-    d.causalLinks = d.causalLinks.filter(
-      (c) =>
-        c.proposed ||
-        [c.source, c.target].every(
-          (p) =>
-            p.type !== "task" ||
-            (p.time >= taskWindow(d, get(d, "task", p.id)).start &&
-              p.time <= taskWindow(d, get(d, "task", p.id)).end),
-        ),
-    );
+    // Retain surviving timed links even when a result deletion shortens a Task.
+    // Their explicit attachment time is now an analyzable timing gap.
     d.bindings = d.bindings.filter((b) => get(d, b.targetType, b.targetId));
     validate(d);
   }
@@ -644,12 +635,7 @@
         complete:
           structural &&
           !gaps.length &&
-          win.within &&
-          !nodes.some(
-            (n) =>
-              get(d, n.type, n.id).proposed ||
-              get(d, n.type, n.id).status === "proposed",
-          ),
+          win.within,
       });
     };
     const walk = (p, deadline, rev, seen, c, depth = 0) => {
@@ -758,6 +744,7 @@
     get,
     snap,
     defaults,
+    actorColor,
     validate,
     parse,
     taskWindow,

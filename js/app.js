@@ -177,7 +177,7 @@
     }
     panel.insertAdjacentHTML(
       "beforeend",
-      `<h2 class="panel-title">${esc(x.name || x.label)}</h2><p class="panel-subtitle">${esc(s.type)} · ${esc(x.status || "")}</p>`,
+      `<h2 class="panel-title">${esc(x.name || x.label)}</h2><p class="panel-subtitle">${esc(s.type)}${s.type === "technology" ? " · " + esc(x.status) : ""}</p>`,
     );
     let facts = "";
     if (s.type === "state")
@@ -271,17 +271,6 @@
   }
   const notes = (x) =>
     `<label class="field"><span>備考</span><textarea name="notes">${esc(x.notes || "")}</textarea></label>`;
-  const statusField = (x) =>
-    choices(
-      "status",
-      "区分",
-      [
-        ["actual", "実際"],
-        ["planned", "予定"],
-        ["proposed", "案"],
-      ],
-      x.status || "actual",
-    );
   function dialog(title, html, apply) {
     $("#dialog-title").textContent = title;
     $("#dialog-fields").innerHTML = html;
@@ -322,6 +311,7 @@
     dialog(
       isGroup ? "グループ" : "Actor",
       field("name", "名前", x.name) +
+        field("color", "Actorの色", M.actorColor(doc(), x), "color") +
         choices(
           "side",
           "所属",
@@ -364,7 +354,6 @@
           actorId,
           name: "新しいState",
           time,
-          status: "actual",
           activity: "active",
           phase: "other",
         };
@@ -378,7 +367,6 @@
           x.actorId,
         ) +
         field("time", "時刻", x.time, "number") +
-        statusField(x) +
         choices(
           "activity",
           "表示",
@@ -412,7 +400,6 @@
       w = M.taskWindow(doc(), t);
     let html =
       field("label", "Task名", t.label) +
-      statusField(t) +
       field("kind", "分析分類（線種は変わりません）", t.kind || "") +
       `<p class="dialog-summary">開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)}<br>開始の変更は接続元State、終了の変更は接続先Stateまたは分岐点を変更します。</p>` +
       field("start", "接続元Stateの時刻", w.start, "number");
@@ -443,7 +430,6 @@
       applyEdit((d) => {
         const x = M.get(d, "task", tid);
         x.label = v.label;
-        x.status = v.status;
         x.kind = v.kind;
         x.notes = v.notes;
         M.get(d, "state", x.fromStateId).time = +v.start;
@@ -505,7 +491,6 @@
               actorId: s.actorId,
               name: v.name,
               time: +v.stateTime,
-              status: "actual",
               activity: "active",
               phase: "other",
             });
@@ -552,15 +537,6 @@
         endpointFields("source", c.source) +
         endpointFields("target", c.target) +
         field("kind", "分析分類", c.kind || "") +
-        choices(
-          "proposed",
-          "区分",
-          [
-            ["false", "通常"],
-            ["true", "案（時間窓外も許可）"],
-          ],
-          String(!!c.proposed),
-        ) +
         notes(c),
       (v) =>
         applyEdit((d) => {
@@ -579,7 +555,6 @@
             label: v.label,
             polarity: v.polarity,
             kind: v.kind,
-            proposed: v.proposed === "true",
             notes: v.notes,
           });
         }),
@@ -908,7 +883,7 @@
       );
       const row = rowAt(p.y);
       const targetActorId =
-        row?.actor.id !== M.get(doc(), "state", d.source.id).actorId
+        row?.actor.id !== geometry.states.get(d.source.id)?.displayActorId
           ? row?.actor.id
           : null;
       const result = change((next) => {
@@ -1101,7 +1076,6 @@
         Object.entries({
           technology: "Technology",
           causalLink: "因果リンク",
-          planned: "予定・案",
           quiet: "控えめなState",
         })
           .map(([key, label]) =>
@@ -1119,7 +1093,7 @@
       (values) =>
         applyEdit((d) => {
           d.views.main.laneHeight = +values.laneHeight;
-          for (const key of ["technology", "causalLink", "planned", "quiet"])
+          for (const key of ["technology", "causalLink", "quiet"])
             d.views.main.filters[key] = values[key] === "true";
         }),
     );

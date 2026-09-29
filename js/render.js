@@ -21,7 +21,6 @@
           "'": "&#39;",
         })[c],
     );
-  const side = { friendly: "#236d78", hostile: "#a75353", neutral: "#55646d" };
   const techColors = {
     existing: "#35765d",
     research: "#9b6b23",
@@ -59,39 +58,42 @@
     svg += `<text x="12" y="21" font-size="10" fill="#77868c">ACTOR / T+ (${esc(doc.time.unit)})</text><g clip-path="url(#time-clip)">`;
     for (const e of edges) {
       const chosen = selected(e.id),
-        color = chosen ? "#087f80" : "#485e66",
-        gap = options.gapIds?.has(e.id);
-      const opacity =
-        e.status === "planned" || e.status === "proposed" || e.proposed
-          ? 0.76
-          : 1;
-      const muted =
-        v.mode === "causality" && e.type === "task" && !chosen ? 0.4 : opacity;
-      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(e.label)}${e.proxy ? "（折りたたみ表示）" : ""}</title>`;
+        actor = M.get(doc,"actor",e.actorId),
+        color = M.actorColor(doc,actor),
+        gap = options.gapIds?.has(e.id),
+        muted = v.mode === "causality" && e.type === "task" && !chosen ? 0.4 : 1;
+      const centeredEnd = [...states.values()].some(s =>
+        Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
+      let marker = centeredEnd ? "state-arrow" : "arrow";
+      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}</title>`;
+      if (e.polarity === "negative") {
+        const segment = L.routeSegments(e.points).at(-1);
+        const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
+        marker = "negative-arrow-" + edges.indexOf(e);
+        // Orient by the routed centerline, never by the final wave sample.
+        svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${color}"/></marker></defs>`;
+      }
       if (!options.export)
         svg += `<path class="hit" d="${L.path(e.points)}" fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke"/>`;
-      svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${gap ? "#b25040" : color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="round" marker-end="url(#${[...states.values()].some((s) => Math.abs(s.x - e.points.at(-1).x) < 0.01 && Math.abs(s.y - e.points.at(-1).y) < 0.01) ? "state-arrow" : "arrow"})"/></g>`;
+      if (chosen || gap)
+        svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="7" opacity=".25" pointer-events="none"/>`;
+      svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
     }
-    for (const j of junctions.values())
-      svg += `<g class="junction"${data("task", j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="#485e66" stroke-width="1.6"/></g>`;
+    for (const j of junctions.values()) {
+      const task=M.get(doc,"task",j.taskId), owner=M.get(doc,"state",task.fromStateId).actorId;
+      const color=M.actorColor(doc,M.get(doc,"actor",owner));
+      svg += `<g class="junction"${data("task", j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
+    }
     for (const s of states.values()) {
-      const a = M.get(doc, "actor", s.actorId),
-        tag =
-          s.status === "planned" ? "予定" : s.status === "proposed" ? "案" : "",
-        color = selected(s.id)
-          ? "#087f80"
-          : options.gapIds?.has(s.id)
-            ? "#b25040"
-            : side[a.side];
-      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${data("state", s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(s.name)} · T+${s.time}${tag ? " · " + tag : ""}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="7" fill="${tag ? "white" : color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
+      const a = M.get(doc, "actor", s.actorId), color = M.actorColor(doc,a);
+      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${data("state", s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc(s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="7" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
+      if (options.gapIds?.has(s.id)) svg += `<circle cx="${s.x}" cy="${s.y}" r="12" fill="none" stroke="#d17a30" opacity=".6"/>`;
       if (selected(s.id))
         svg += `<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" stroke="#76b8b5"/>`;
       s.lines.forEach(
         (line, i) =>
           (svg += `<text x="${s.labelX}" y="${s.y + 22 + i * 13}" text-anchor="middle" font-size="11">${esc(line)}</text>`),
       );
-      if (tag)
-        svg += `<text x="${s.x + 11}" y="${s.y - 8}" font-size="9" fill="#66777d">${tag}</text>`;
       svg += "</g>";
     }
     for (const e of edges) {
@@ -145,14 +147,20 @@
       const a = row.actor,
         children = doc.actors.some((x) => x.parentId === a.id),
         x = 12 + Math.min(row.depth, 6) * 13;
-      svg += `<g class="actor${selected(a.id) ? " selected" : ""}"${data("actor", a.id)}><rect x="0" y="${row.y + 1}" width="${vp.left - 17}" height="${row.height - 2}" fill="${selected(a.id) ? "#e3f1ef" : "#f6f9f9"}"/><path d="M2,${row.y + 8} V${row.y + row.height - 8}" stroke="${side[a.side]}" stroke-width="3"/>`;
+      svg += `<g class="actor${selected(a.id) ? " selected" : ""}"${data("actor", a.id)}><rect x="0" y="${row.y + 1}" width="${vp.left - 17}" height="${row.height - 2}" fill="${selected(a.id) ? "#e3f1ef" : "#f6f9f9"}"/><path d="M2,${row.y + 8} V${row.y + row.height - 8}" stroke="${M.actorColor(doc,a)}" stroke-width="3"/>`;
       if (children)
         svg += `<text class="collapse-toggle" data-collapse="${esc(a.id)}" x="${x}" y="${row.center + 4}" font-size="13">${v.collapsedActors.includes(a.id) && !options.full ? "▸" : "▾"}</text>`;
       const name =
         a.name.length > 13 - Math.min(row.depth, 4)
           ? a.name.slice(0, 12 - Math.min(row.depth, 4)) + "…"
           : a.name;
-      svg += `<text x="${x + 16}" y="${row.center + 4}" font-weight="600" font-size="11">${esc(name)}</text><title>${esc(a.name)}</title></g>`;
+      svg += `<text x="${x + 16}" y="${row.center + 4}" font-weight="600" font-size="11">${esc(name)}</text><title>${esc(a.name)}</title>`;
+      if (row.aggregated)
+        for (const lane of row.actorLanes) {
+          const child=M.get(doc,"actor",lane.actorId), color=M.actorColor(doc,child);
+          svg += `<circle cx="${x+22}" cy="${lane.y}" r="3" fill="${color}"/><text x="${x+30}" y="${lane.y+4}" font-size="10" fill="${color}">${esc(child.name.slice(0,10))}<title>${esc(child.name)}</title></text>`;
+        }
+      svg += "</g>";
     }
     return svg + "</svg>";
   }

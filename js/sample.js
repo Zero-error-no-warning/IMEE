@@ -16,31 +16,36 @@
         "id": "enemy",
         "name": "敵UUV",
         "side": "hostile",
-        "notes": "監視海域で任務を遂行し、離脱する計画。"
+        "notes": "監視海域で任務を遂行し、離脱する計画。",
+        "color": "#a75353"
       },
       {
         "id": "sensor",
         "name": "海底センサー",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#236d78"
       },
       {
         "id": "control",
         "name": "管制",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#8061a8"
       },
       {
         "id": "uuv",
         "name": "味方UUV",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#a56c24"
       },
       {
         "id": "torpedo",
         "name": "魚雷",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#397aa0"
       }
     ],
     "states": [
@@ -565,8 +570,8 @@
         "filters": {
           "technology": false,
           "causalLink": true,
-          "planned": true,
-          "quiet": true
+          "quiet": true,
+          "planned": true
         },
         "laneHeight": 64,
         "mode": "mission"
@@ -587,34 +592,39 @@
         "id": "enemy",
         "name": "敵UUV",
         "side": "hostile",
-        "notes": "監視海域で任務を遂行し、離脱する計画。"
+        "notes": "監視海域で任務を遂行し、離脱する計画。",
+        "color": "#a75353"
       },
       {
         "id": "sensor",
         "name": "ソナー",
         "side": "friendly",
         "notes": "",
-        "parentId": "uuv"
+        "parentId": "uuv",
+        "color": "#236d78"
       },
       {
         "id": "control",
         "name": "管制",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#8061a8"
       },
       {
         "id": "uuv",
         "name": "潜水艦",
         "side": "friendly",
         "notes": "",
-        "isGroup": true
+        "isGroup": true,
+        "color": "#a56c24"
       },
       {
         "id": "torpedo",
         "name": "魚雷",
         "side": "friendly",
         "notes": "",
-        "parentId": "uuv"
+        "parentId": "uuv",
+        "color": "#397aa0"
       }
     ],
     "states": [
@@ -1139,8 +1149,8 @@
         "filters": {
           "technology": false,
           "causalLink": true,
-          "planned": true,
-          "quiet": true
+          "quiet": true,
+          "planned": true
         },
         "laneHeight": 64,
         "mode": "mission"
@@ -1161,34 +1171,39 @@
         "id": "enemy",
         "name": "敵UUV",
         "side": "hostile",
-        "notes": "監視海域で任務を遂行し、離脱する計画。"
+        "notes": "監視海域で任務を遂行し、離脱する計画。",
+        "color": "#a75353"
       },
       {
         "id": "sensor",
         "name": "ソナー",
         "side": "friendly",
         "notes": "",
-        "parentId": "uuv"
+        "parentId": "uuv",
+        "color": "#236d78"
       },
       {
         "id": "control",
         "name": "管制",
         "side": "friendly",
-        "notes": ""
+        "notes": "",
+        "color": "#8061a8"
       },
       {
         "id": "uuv",
         "name": "潜水艦",
         "side": "friendly",
         "notes": "",
-        "isGroup": true
+        "isGroup": true,
+        "color": "#a56c24"
       },
       {
         "id": "torpedo",
         "name": "魚雷",
         "side": "friendly",
         "notes": "",
-        "parentId": "uuv"
+        "parentId": "uuv",
+        "color": "#397aa0"
       }
     ],
     "states": [
@@ -1981,8 +1996,8 @@
         "filters": {
           "technology": false,
           "causalLink": true,
-          "planned": true,
-          "quiet": true
+          "quiet": true,
+          "planned": true
         },
         "laneHeight": 64,
         "mode": "mission"

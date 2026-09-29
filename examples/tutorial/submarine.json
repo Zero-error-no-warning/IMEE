@@ -13,32 +13,37 @@
       "name": "調査隊",
       "parentId": null,
       "side": "friendly",
-      "isGroup": true
+      "isGroup": true,
+      "color": "#a75353"
     },
     {
       "id": "mother",
       "name": "母船",
       "parentId": "fleet",
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#236d78"
     },
     {
       "id": "team",
       "name": "水中調査班",
       "parentId": "fleet",
       "side": "friendly",
-      "isGroup": true
+      "isGroup": true,
+      "color": "#8061a8"
     },
     {
       "id": "uuv-a",
       "name": "A機・広域捜索",
       "parentId": "team",
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#a56c24"
     },
     {
       "id": "uuv-b",
       "name": "B機・近接確認",
       "parentId": "team",
-      "side": "friendly"
+      "side": "friendly",
+      "color": "#397aa0"
     }
   ],
   "states": [
@@ -47,7 +52,6 @@
       "actorId": "uuv-a",
       "name": "捜索開始",
       "time": 4,
-      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -57,7 +61,6 @@
       "actorId": "uuv-a",
       "name": "候補探知",
       "time": 24,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -67,7 +70,6 @@
       "actorId": "uuv-a",
       "name": "回収点到着",
       "time": 88,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -77,7 +79,6 @@
       "actorId": "uuv-b",
       "name": "座標受領",
       "time": 27,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -87,7 +88,6 @@
       "actorId": "uuv-b",
       "name": "対象確認",
       "time": 48,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -97,7 +97,6 @@
       "actorId": "uuv-b",
       "name": "確認不可",
       "time": 48,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -107,7 +106,6 @@
       "actorId": "uuv-b",
       "name": "再走査終了",
       "time": 68,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -117,7 +115,6 @@
       "actorId": "uuv-b",
       "name": "回収指示受領",
       "time": 76,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -127,7 +124,6 @@
       "actorId": "uuv-b",
       "name": "回収点到着",
       "time": 94,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -137,7 +133,6 @@
       "actorId": "mother",
       "name": "確認報告受領",
       "time": 51,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -147,7 +142,6 @@
       "actorId": "mother",
       "name": "記録確定",
       "time": 66,
-      "status": "planned",
       "activity": "active",
       "phase": "decision",
       "notes": ""
@@ -157,7 +151,6 @@
       "actorId": "mother",
       "name": "再調査を計画",
       "time": 80,
-      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -170,7 +163,6 @@
       "toStateId": "a1",
       "label": "広域を走査",
       "kind": "detection",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -179,7 +171,6 @@
       "toStateId": "a2",
       "label": "地形を記録し帰投",
       "kind": "support",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -187,7 +178,6 @@
       "fromStateId": "b0",
       "label": "接近・撮像",
       "kind": "observation",
-      "status": "planned",
       "junctions": [
         {
           "id": "j-inspect",
@@ -211,7 +201,6 @@
       "toStateId": "b3",
       "label": "別角度で再走査",
       "kind": "observation",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -220,7 +209,6 @@
       "toStateId": "b5",
       "label": "回収点へ帰投",
       "kind": "support",
-      "status": "planned",
       "notes": ""
     },
     {
@@ -229,7 +217,6 @@
       "toStateId": "m1",
       "label": "画像と座標を照合",
       "kind": "support",
-      "status": "planned",
       "notes": ""
     }
   ],
@@ -311,7 +298,6 @@
       "filters": {
         "technology": false,
         "causalLink": true,
-        "planned": true,
         "quiet": true
       },
       "laneHeight": 64,

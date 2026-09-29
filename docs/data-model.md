@@ -24,18 +24,18 @@ version 1、`transitions` / `interactions`、Stateの`start` / `end`は拒否し
 ## Actor
 
 ```js
-{ id, name, side: "friendly" | "hostile" | "neutral", parentId: null, isGroup: false, notes: "" }
+{ id, name, side: "friendly" | "hostile" | "neutral", parentId: null, isGroup: false, color: "#236d78", notes: "" }
 ```
 
-parentIdとisGroupは任意。任意Actorを親にできます。不存在参照・自己参照・階層循環は拒否。Groupも通常Actorで、必要ならStateを持てます。並び順・折りたたみはActor自身に保存しません。
+parentIdとisGroupは任意。colorも任意で、指定する場合は#RRGGBB形式。省略時はパレットから補完します。Actor編集で変更でき、State・Task・結果線は所属Actor、因果線は起点端点のActorの色を使います。任意Actorを親にできます。不存在参照・自己参照・階層循環は拒否。Groupも通常Actorで、必要ならStateを持てます。並び順・折りたたみはActor自身に保存しません。
 
 ## State
 
 ```js
-{ id, actorId, name, time, status: "actual", activity: "active", phase: "other", notes: "" }
+{ id, actorId, name, time, activity: "active", phase: "other", notes: "" }
 ```
 
-id / actorId / name / timeが必須。statusはactual / planned / proposed（省略時の表示はactual）、activityはactive / quiet（省略時は通常）、phaseはother / decision。判断の役割はphaseで明示し、名称から推測しません。
+id / actorId / name / timeが必須。activityはactive / quiet（省略時は通常）、phaseはother / decision。判断の役割はphaseで明示し、名称から推測しません。
 
 StateはActorがその時刻に到達した一点です。円形ノードのX座標はtime、半径は時間と無関係。状態の継続は暗黙的で、行為として示したい待機はTaskにします。重なるStateはActor内のサブレーンへ上下に分離し、X座標は維持します。
 
@@ -44,7 +44,7 @@ StateはActorがその時刻に到達した一点です。円形ノードのX座
 通常形：
 
 ```js
-{ id, fromStateId, toStateId, label, status: "actual", kind: "detection", notes: "" }
+{ id, fromStateId, toStateId, label, kind: "detection", notes: "" }
 ```
 
 分岐形：
@@ -79,7 +79,7 @@ UIの「結果を追加」は、通常toStateIdを「継続」結果に変換し
   id, source: {type: "state", id: "sensor-detected"},
   target: {type: "task", id: "transmit", time: 49},
   polarity: "positive" | "negative",
-  label: "作用の説明", kind: "interference", proposed: false, notes: ""
+  label: "作用の説明", kind: "interference", notes: ""
 }
 ```
 
@@ -91,11 +91,11 @@ source / targetの形式：
 | task  | type, id, time | 指定time / 接続元StateのActor            |
 | actor | type, id, time | 指定time / Actorレーン（環境等に利用可） |
 
-State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。通常のTask端点はTask実行期間内に限ります。`proposed:true` の検討案だけは期間外のTask端点も許可し、全期間内の指定X座標へ「案」として表示します。期間外端点はTaskの実線上にはなく、時間窓外の仮の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
+State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。Task端点はTask実行期間外でも全期間内の指定時刻に保存できます。期間外端点はTaskの実線上にはなく、時間窓外の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
 
 polarityが唯一の因果線種です。positiveは実線、negativeは経路に沿った波線で、いずれも矢印headを持ちます。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
 
-予定はState / Taskのstatus、因果案はCausalLink.proposedを使用します。予定・案のタグが必ずあり、弱いopacityやState中抜きは補助表現です。ラベル補助線も細いニュートラルな実線です。
+State / Taskの旧status（actual / planned / proposed）とCausalLink.proposedは読込・保存の互換性のため受け付けますが、表示・フィルタ・分析には使いません。新規作成では付けません。シナリオの仮定はnotesで説明します。ラベル補助線も細いニュートラルな実線です。
 
 ## Technology Binding
 
@@ -112,20 +112,20 @@ statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、
 views: { main: {
   collapsedActors: [], actorOrder: ["actor-1", "actor-2"],
   zoom: 1, visibleTimeRange: {start: 0, end: 60},
-  filters: {technology: true, causalLink: true, planned: true, quiet: true},
+  filters: {technology: true, causalLink: true, quiet: true},
   laneHeight: 64, mode: "mission"
 }}
 ```
 
 modeはmission / technology / gap / causality。laneHeightは52〜160px。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-折りたたみ時の因果線は描画だけProxy化。可視Actorペア、極性、ラベル、案区分、**発生・到達時刻が一致する線だけ**を×件数にまとめます。異なる時刻を平均位置へ集約しません。子Taskは隠れますが、Groupに到達する因果は残ります。元データは不変です。
+折りたたみ時は親と子孫のState・Taskを親レーン内へ集約し、元のActorごとにサブレーンを分けます。時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。親または子孫に接続する因果線は非表示にし、無関係の因果線は残します。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
 ## コピー・削除・履歴
 
 Actor / Group複製は子孫Actor、State、内部Task、内部因果、Bindingをコピー。全ID（junctionを含む）を再発行して内部参照を再マップします。外部Actorとの因果はコピーしません。Stateだけのコピーは選択内で完結するTask・因果を含みます。Task単体をクリップボード複製する仕様はありません。文書内クリップボードです。
 
-削除は従属参照とBindingを整理します。結果State削除でTaskが短くなり、通常因果の端点が期間外になった場合はその孤立した因果も削除します。技術カタログはActor削除で消しません。
+削除は従属参照とBindingを整理します。結果State削除でTaskが短くなっても、存続するTaskへの時刻付き因果は残し、期間外なら時間窓Gapとして扱います。技術カタログはActor削除で消しません。
 
 変更は文書単位で検証し、失敗した編集は適用しません。Undo / Redoは100履歴まで文書全体を保持。JSON読込・サンプル置換もUndo可能です。Viewのボタン操作も履歴に入ります。連続パンはViewの範囲を更新して保存します。
 
@@ -140,12 +140,12 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 3. friendly ActorのTask / 因果元によるkind: command。
 4. friendly ActorのTask / 因果元によるkind: attackまたはinterference。
 
-構造完結に加え、到達が時間窓内、経路にproposedがない、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。plannedは予定経路の分析対象になり、actualの実施証明とは区別します。
+構造完結に加え、到達が時間窓内、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。旧status / proposedは条件判定に使わず、条件充足を実施証明とは扱いません。
 
 最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。
 
 ## 描画の制約
 
-State / junction / Task作用端点のXは時刻から求め、変更しません。共有始点・共有終点・共通区間は有限のオフセット候補で分離。上下Actor間は向かい合う円周へ接続します。負の因果は調整後の折れ線をサンプリングし、各区間の法線方向へ周期オフセットを加えます。端点・角は波幅を減衰させ、アンカーを保持します。
+State / junction / Task作用端点のXは時刻から求め、変更しません。共有始点・共有終点・共通区間は有限のオフセット候補で分離。上下Actor間は向かい合う円周へ接続します。負の因果は調整後の折れ線をサンプリングし、各区間の法線方向へ周期オフセットを加えます。端点・角は波幅を減衰させ、アンカーを保持します。矢じり直前は直線にし、矢じりの向きは波の接線ではなく経路の最後の基準線分に合わせます。
 
 線ラベルは元経路の中央付近から横±36px、縦−40〜＋24pxの候補だけを探索。文字は最大幅で省略し全文はTooltip / Inspectorへ。遠方の空き領域へ配置しません。State名も局所改行・省略し、円の大きさや時刻を変えません。

@@ -208,7 +208,7 @@
         for (let i = 0; i <= count; i++) {
           const t = lo + ((hi - lo) * i) / count,
             s = len * t,
-            fade = Math.min(1, s / 5, (len - s) / 5),
+            fade = Math.min(1, s / 5, Math.max(0, (len - s - 7) / 5)),
             offset =
               Math.sin(((distance + s) * 2 * Math.PI) / wavelength) *
               amplitude *
@@ -313,11 +313,9 @@
         : v.visibleTimeRange,
       vp = viewport(doc.time.duration, widthValue, range.start, range.end),
       filters = options.full
-        ? { planned: true, quiet: true, causalLink: true, technology: true }
+        ? { quiet: true, causalLink: true, technology: true }
         : v.filters;
-    const visible = (s) =>
-      (filters.planned || !["planned", "proposed"].includes(s.status)) &&
-      (filters.quiet || s.activity !== "quiet");
+    const visible = (s) => filters.quiet || s.activity !== "quiet";
     const rows = [],
       states = new Map(),
       tasks = new Map(),
@@ -326,54 +324,41 @@
       occupied = [],
       nodeBodies = [];
     let y = 54;
+    const allActors = M.hierarchy(doc, true).map(r => r.actor);
+    const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
+    const folded = new Set(options.full ? [] : v.collapsedActors);
     for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
-      const ss = doc.states
-          .filter((s) => s.actorId === actor.id && visible(s))
-          .sort((a, b) => a.time - b.time),
-        lanes = [];
-      const top = y;
-      for (const s of ss) {
-        const x = vp.x(s.time),
-          lines = textLines(s.name, 112),
-          labelWidth = Math.min(112, width(s.name)),
-          needed = 30; // Node spacing is independent of text length.
-        // Keep a continuation on its predecessor's lane when it is available.
-        // Branch siblings at the same time still get distinct lanes.
-        const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
-          doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
-        const previousLane = incoming && states.get(incoming.fromStateId)?.lane;
-        const sideBranch = incoming?.toStateId && incoming.toStateId !== s.id;
-        const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
-        let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
-          ? preferred : lanes.findIndex((end) => end < x - needed / 2);
-        if (lane < 0) lane = lanes.length;
-        lanes[lane] = x + needed / 2;
-        const cy = top + 24 + lane * v.laneHeight;
-        const labelX =
-          x >= vp.left && x <= vp.right
-            ? Math.max(
-                vp.left + labelWidth / 2 - 10,
-                Math.min(vp.width - labelWidth / 2 - 8, x),
-              )
-            : x;
-        const p = { ...s, x, labelX, y: cy, r: 7, lane, lines };
-        states.set(s.id, p);
-        nodeBodies.push({ x: x - 9, y: cy - 9, width: 18, height: 18 });
-        occupied.push(
-          { x: x - 9, y: cy - 9, width: 18, height: 18 },
-          {
-            x: labelX - labelWidth / 2,
-            y: cy + 11,
-            width: labelWidth,
-            height: lines.length * 13,
-          },
-        );
+      const top = y, aggregated = folded.has(actor.id), actorLanes = [];
+      const owners = allActors.filter(a => displayActor(a.id) === actor.id);
+      let laneCount = 0;
+      for (const owner of owners) {
+        const ss = doc.states.filter(s => s.actorId === owner.id && visible(s))
+          .sort((a,b) => a.time - b.time);
+        if (!ss.length) continue;
+        const lanes = [], baseLane = laneCount;
+        for (const s of ss) {
+          const x = vp.x(s.time), needed = 30;
+          const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
+            doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
+          const predecessor = incoming && states.get(incoming.fromStateId);
+          const previousLane = predecessor ? predecessor.lane - baseLane : undefined;
+          const sideBranch = incoming?.toStateId && incoming.toStateId !== s.id;
+          const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
+          let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
+            ? preferred : lanes.findIndex(end => end < x - needed / 2);
+          if (lane < 0) lane = lanes.length;
+          lanes[lane] = x + needed / 2;
+          const cy = top + (aggregated ? 30 : 0) + 24 + (baseLane + lane) * v.laneHeight;
+          states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:7,
+            lane:baseLane + lane, lines:textLines(s.name,112) });
+          nodeBodies.push({x:x-9,y:cy-9,width:18,height:18});
+        }
+        actorLanes.push({actorId:owner.id, y:top + (aggregated ? 30 : 0) + 24 + baseLane*v.laneHeight});
+        laneCount += lanes.length;
       }
-      const height =
-        actor.isGroup && !ss.length
-          ? 38
-          : Math.max(1, lanes.length) * v.laneHeight + 6;
-      rows.push({ actor, depth, y: top, height, center: top + 24 });
+      const height = actor.isGroup && !laneCount ? 38 :
+        (aggregated ? 30 : 0) + Math.max(1,laneCount)*v.laneHeight + 6;
+      rows.push({actor,depth,y:top,height,center:top+24,aggregated,actorLanes});
       y += height;
     }
     const height = y + 24,
@@ -409,7 +394,7 @@
         part: "task",
         points,
         label: t.label,
-        status: t.status,
+        actorId: from.actorId,
         task: t,
       };
       edges.push(e);
@@ -441,75 +426,30 @@
                 outcomeIndex: i,
                 points: route(p, to, true),
                 label: o.label,
-                status: t.status,
+                actorId: states.get(t.fromStateId).actorId,
               });
           }
         }
-    const proxyGroups = new Map();
     function anchor(p) {
-      const ep = M.endpoint(doc, p),
-        aid = options.full ? ep.actorId : M.visibleActor(doc, ep.actorId);
-      if (aid !== ep.actorId || p.type === "actor") {
-        const row = rows.find((r) => r.actor.id === aid);
-        return (
-          row && {
-            x: vp.x(ep.time),
-            y: row.center,
-            r: 0,
-            proxy: aid !== ep.actorId,
-            actorId: aid,
-          }
-        );
+      const ep = M.endpoint(doc, p);
+      if (p.type === "actor") {
+        const row = rows.find(r => r.actor.id === displayActor(ep.actorId));
+        return row && {x:vp.x(ep.time),y:row.center,r:0};
       }
       if (p.type === "state") return states.get(p.id);
-      if (p.type === "task") return ensure(p.id, p.time);
+      if (p.type === "task") return ensure(p.id,p.time);
     }
     if (filters.causalLink)
       for (const c of doc.causalLinks) {
-        if (!filters.planned && c.proposed) continue;
-        const a = anchor(c.source),
-          b = anchor(c.target);
+        const sourceActorId = M.endpoint(doc,c.source).actorId;
+        const targetActorId = M.endpoint(doc,c.target).actorId;
+        // Aggregated groups show their own/descendant State and Task timelines,
+        // not causal proxy lines. Unrelated expanded actors retain their links.
+        if (folded.has(displayActor(sourceActorId)) || folded.has(displayActor(targetActorId))) continue;
+        const a=anchor(c.source), b=anchor(c.target);
         if (!a || !b) continue;
-        if (a.proxy && b.proxy && a.actorId === b.actorId) continue;
-        if (a.proxy || b.proxy) {
-          const key = [
-            a.actorId || M.endpoint(doc, c.source).actorId,
-            b.actorId || M.endpoint(doc, c.target).actorId,
-            c.polarity,
-            c.label,
-            M.endpoint(doc, c.source).time,
-            M.endpoint(doc, c.target).time,
-            c.proposed,
-          ].join("|");
-          const existing = proxyGroups.get(key);
-          if (existing) {
-            existing.ids.push(c.id);
-            existing.label = c.label + " ×" + existing.ids.length;
-            continue;
-          }
-          const e = {
-            id: c.id,
-            ids: [c.id],
-            type: "causalLink",
-            part: "causal",
-            points: route(a, b),
-            label: c.label,
-            polarity: c.polarity,
-            proposed: c.proposed,
-            proxy: true,
-          };
-          proxyGroups.set(key, e);
-          edges.push(e);
-        } else
-          edges.push({
-            id: c.id,
-            type: "causalLink",
-            part: "causal",
-            points: route(a, b),
-            label: c.label,
-            polarity: c.polarity,
-            proposed: c.proposed,
-          });
+        edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
+          label:c.label,polarity:c.polarity,actorId:sourceActorId});
       }
     const lineSegments = edges.flatMap(e => routeSegments(e.points));
     // Reflow State text after routing. Text collisions never feed back into geometry.
@@ -536,14 +476,8 @@
       occupied.push(choices[0].box);
     }
     for (const e of edges) {
-      const tag =
-        e.part === "outcome" ? "" : e.proposed || e.status === "proposed"
-          ? "案"
-          : e.status === "planned"
-            ? "予定"
-            : "";
       e.labelInfo = label(
-        (tag ? tag + " · " : "") + e.label,
+        e.label,
         e.points,
         occupied,
         150,

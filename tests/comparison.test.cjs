@@ -9,7 +9,7 @@ const read=(name)=>JSON.parse(fs.readFileSync(path.join(root,'examples/compariso
 for(const [name,create] of cases) {
   test(name+': same Actors, hierarchy, clock, all action intervals and terminal arrival times as v1',()=>{
     const old=read(name),d=create(),mapping=maps[name]; M.validate(d);
-    assert.deepEqual(d.actors,old.actors); assert.deepEqual(d.time,old.time);
+    assert.deepEqual(d.actors.map(({color,...a})=>a),old.actors); assert.deepEqual(d.time,old.time);
     assert.equal(d.title,old.title);
     assert.deepEqual(d.views.main.actorOrder,old.views.main.actorOrder);
     for(const s of old.states) {
@@ -72,11 +72,12 @@ test('intervention preserves the full 44..52 escape window and separates the act
   assert.equal(g.states.get('e4').x,g.vp.x(52));
   assert.equal(M.get(d,'state','e4').status,'planned');assert.equal(M.get(d,'state','e5').status,'actual');
 });
-test('submarine collapse preserves the original sonar/torpedo hierarchy and timed intervention',()=>{
+test('submarine collapse retains original sonar/torpedo nodes and tasks while hiding interference',()=>{
   const d=sample.grouped();d.views.main.collapsedActors=['uuv'];
   const g=L.layout(d),hit=g.edges.find(e=>e.id==='hit');
-  assert(!g.states.has('s1'));assert(!g.states.has('t1'));assert(g.states.has('u1'));
-  assert(hit.proxy);assert.equal(hit.points[0].x,g.vp.x(46));assert.equal(hit.points.at(-1).x,g.vp.x(46));
+  assert(g.states.has('s1'));assert(g.states.has('t1'));assert(g.states.has('u1'));
+  assert.equal(hit,undefined);assert.equal(g.states.get('s1').displayActorId,'uuv');
+  assert.equal(g.states.get('end-t2').x,g.vp.x(46));
 });
 test('restored comparison samples and separate tutorial menu load without replacing each other',async()=>{
   for(const [,create] of cases) {
