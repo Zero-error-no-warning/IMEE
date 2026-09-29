@@ -748,7 +748,19 @@
     edit(result);
   }
   function point(e) {
-    const b = $("#timeline").getBoundingClientRect();
+    const svg = $("#timeline"),
+      screen = svg.getScreenCTM?.();
+    if (screen) {
+      // Pointer events are in viewport CSS pixels; paths and hit geometry use
+      // SVG user units. Include viewBox alignment, CSS scaling and scrolling.
+      const inverse = screen.inverse();
+      return {
+        x: inverse.a * e.clientX + inverse.c * e.clientY + inverse.e,
+        y: inverse.b * e.clientX + inverse.d * e.clientY + inverse.f,
+      };
+    }
+    // Non-rendering DOM hosts (including jsdom) have no SVG screen matrix.
+    const b = svg.getBoundingClientRect();
     return { x: e.clientX - b.left, y: e.clientY - b.top };
   }
   function targetInfo(e) {
