@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Use the editor's importer, including its legacy migration. Never rewrite input.
+// Use the editor's version 2 importer. Never rewrite input.
 const fs = require("node:fs");
 const M = require("../js/model.js");
 const args = process.argv.slice(2);
@@ -22,7 +22,7 @@ if (
       throw new Error("JSONファイルは8MiB以下にしてください。");
     const doc = M.parse(bytes.toString("utf8"));
     console.log(
-      `VALID: ${doc.title}\nActor ${doc.actors.length} / State ${doc.states.length} / Transition ${doc.transitions.length} / Interaction ${doc.interactions.length} / Technology ${doc.technologies.length} / Binding ${doc.bindings.length}`,
+      `VALID: ${doc.title}\nActor ${doc.actors.length} / State ${doc.states.length} / Task ${doc.tasks.length} / CausalLink ${doc.causalLinks.length} / Technology ${doc.technologies.length} / Binding ${doc.bindings.length}`,
     );
     console.log(
       "形式・参照・時刻の検証に通過しました。シナリオの妥当性や経路の条件充足は別途確認してください。",

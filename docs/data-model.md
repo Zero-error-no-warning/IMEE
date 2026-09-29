@@ -1,177 +1,151 @@
-# Document schema v1 — Technology / View extension
+# Mission JSON version 2
 
-LLMからJSONを直接生成する場合は、完成例を含む単体の [JSON生成仕様書](llm-json-generation.md) と [生成SKILL](../skills/imee-json-generator/SKILL.md) を利用してください。`node scripts/validate-mission.cjs mission.json` で実装と共通の検証を実行できます。
+`js/model.js` の `validate` / `parse` がインポートとCLIで共通の検証を行います。ES moduleではなく、ブラウザのclassic scriptとNodeのCommonJSで共有しています。
 
-`version: 1` を拡張しています。旧JSONの読込時は `technologies: []`、`bindings: []`、`views.main` を補います。旧 `actor.collapsed` は `views.main.collapsedActors` へ移し、Actorから削除します。旧Actor配列順は `actorOrder` の初期値にします。時刻・接続・IDは変更しません。
+## 文書
 
-## MissionとView
-
-| フィールド                                   | 内容                                              |
-| -------------------------------------------- | ------------------------------------------------- |
-| version / title                              | `1`、ミッション名                                 |
-| time                                         | `{ unit: seconds/minutes/hours, duration, snap }` |
-| actors / states / transitions / interactions | ミッションの主体・状態・因果                      |
-| technologies / bindings                      | 技術カタログと依存関係                            |
-| views.main                                   | 表示専用情報。Missionとは別のオブジェクト         |
-
-```json
+```js
 {
-  "collapsedActors": ["submarine"],
-  "actorOrder": ["enemy", "control", "submarine", "sonar"],
-  "zoom": 1.5,
-  "visibleTimeRange": { "start": 10, "end": 50 },
-  "filters": {
-    "technology": true,
-    "interaction": true,
-    "planned": true,
-    "quiet": true
-  },
-  "laneHeight": 44,
-  "mode": "mission"
+  version: 2,
+  title: "ミッション名",
+  time: { unit: "minutes", duration: 60, snap: 1 },
+  actors: [], states: [], tasks: [], causalLinks: [],
+  technologies: [], bindings: [],
+  views: { main: { /* 表示情報 */ } }
 }
 ```
 
-`mode`: `mission / technology / gap / interaction`。表示プロファイルは現在 `main` を使用し、その中のmodeで切り替えます。独立したプロファイルごとの編集UIはありません。表示設定はJSON・自動保存に含まれます。ズーム操作はUndoの1操作を消費しません。折りたたみ・並べ替え・親変更はUndo可能です。文書編集の履歴にはViewのスナップショットも含みます。
+必須はversion、title、time、actors、states、tasks、causalLinks。technologies / bindingsは省略時に空配列、viewsは省略時に標準Viewを補います。時間単位はseconds / minutes / hours。0 < duration ≤ 1,000,000、0.01 ≤ snap ≤ duration。時刻は有限数で0〜duration。スナップは操作時の丸め単位で、JSON時刻を強制的に丸めません。
 
-Actor配列の物理順を変えず、兄弟間の順序を `actorOrder` で決めます。親子関係は意味上の構造なので `actor.parentId` に残します。追加ActorはViewの順序にも追加します。`laneHeight` は40〜160、既定44。
+トップレベルの各コレクションは10,000件以下。すべてのオブジェクトIDとTask内junction IDは文書全体で一意。IDは文字列、名前・ラベルは空白だけでない文字列。notesは任意文字列です。インポートは8MiB以下を受け付けます。
 
-時刻は共通の相対時間です。`0 < duration <= 1,000,000`、`0.01 <= snap <= duration`。数値は有限値のみ。6コレクションの各上限は10,000件、ファイル読込は8MiB。上限は入力防御用で、大規模文書の描画性能を保証しません。
+version 1、`transitions` / `interactions`、Stateの`start` / `end`は拒否します。曖昧な自動移行は行いません。
 
-すべてのIDは文書全体で一意な文字列。名称は1〜300文字、備考は10,000文字以下。画面座標をMissionに保存しません。
+## Actor
 
-## Actor / State
+```js
+{ id, name, side: "friendly" | "hostile" | "neutral", parentId: null, isGroup: false, notes: "" }
+```
 
-Actor: `{id, name, side, parentId?, isGroup?, notes?}`。`side` は `friendly / hostile / neutral`。通常のActorも親になれます。親の不在・自己参照・循環は拒否します。
+parentIdとisGroupは任意。任意Actorを親にできます。不存在参照・自己参照・階層循環は拒否。Groupも通常Actorで、必要ならStateを持てます。並び順・折りたたみはActor自身に保存しません。
 
-State: `{id, actorId, name, start, end, status, activity, phase?, notes?}`。
+## State
 
-- `0 <= start < end <= duration`。
-- `status`: `actual / planned`、`activity`: `active / quiet`。
-- `phase`: `other / decision`。判断段階は利用者が明示指定します。状態名から推測しません。
-- 同じActorの重複Stateは自動的に別レーンへ配置します。
+```js
+{ id, actorId, name, time, status: "actual", activity: "active", phase: "other", notes: "" }
+```
 
-`x = plotLeft + (start - viewStart) * scale`、`width = (end - start) * scale`。横幅を文字幅のために伸ばしません。文字は11〜9pxで折り返し、高さとレーン間隔を自動調整します。極端に狭い幅や8行を超える場合は省略し、titleとInspectorに全文を保持します。SVGは可視幅に固定。ズームは表示する時間範囲を変え、範囲外をクリップします。SVG・PNG出力は全期間・全階層・全要素です。PNGは同じ自己完結SVGをブラウザで画像化し、白背景で保存します。通常は2倍解像度、16,384px／辺・3,200万画素を超えない倍率へ必要に応じて下げます。
+id / actorId / name / timeが必須。statusはactual / planned / proposed（省略時の表示はactual）、activityはactive / quiet（省略時は通常）、phaseはother / decision。判断の役割はphaseで明示し、名称から推測しません。
 
-## Transition
+StateはActorがその時刻に到達した一点です。円形ノードのX座標はtime、半径は時間と無関係。状態の継続は暗黙的で、行為として示したい待機はTaskにします。重なるStateはActor内のサブレーンへ上下に分離し、X座標は維持します。
 
-`{id, from, to, status, label?}`。同じActorの異なるStateを接続し、`from.end <= to.start` が必要です。
+## Task
 
-開始 = `from.end`、終了 = `to.start`、所要時間 = 差分。JSONに期間を重複保存しません。0なら即時遷移として菱形を表示。期間のある遷移は空き時間を占め、ラベル・所要時間を中央に表示します。編集フォームの時間変更は前後Stateの境界変更です。共有する他の接続が不正になれば編集全体を拒否します。
+通常形：
 
-## Interaction
+```js
+{ id, fromStateId, toStateId, label, status: "actual", kind: "detection", notes: "" }
+```
 
-```json
+分岐形：
+
+```js
 {
-  "id": "hit",
-  "fromStateId": "guidance",
-  "targetType": "transition",
-  "targetId": "escape",
-  "label": "離脱阻止",
-  "kind": "attack",
-  "effect": "block",
-  "sourceTime": 46,
-  "time": 46,
-  "outcomeStateId": "disabled",
-  "proposed": false
+  id: "identify", fromStateId: "unidentified", label: "識別",
+  junctions: [{
+    id: "identify-result", time: 29,
+    outcomes: [
+      { toStateId: "identified", label: "OK" },
+      { toStateId: "still-unidentified", label: "NG" }
+    ]
+  }]
 }
 ```
 
-| フィールド            | 制約                                                                                |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| fromStateId           | 作用元State                                                                         |
-| targetType / targetId | `state` または `transition` と、そのID                                              |
-| kind                  | `detection / observation / information / command / support / attack / interference` |
-| effect                | `cause / block`                                                                     |
-| sourceTime            | 作用元State内（両端含む）                                                           |
-| time                  | sourceTime以降の到達時刻                                                            |
-| proposed              | 省略時false。trueは検討案で、阻止成立表示から除外                                   |
-| outcomeStateId        | 任意。対象Actorのactual State、開始は到達以降                                       |
+開始はfromStateIdのState.time。通常の終了はtoStateIdのState.time。toStateIdがないTaskの終了はjunctionsの最大time。Taskにstart / endを重複保存しません。結果Stateは接続元とは別の、同一ActorのStateでなければなりません。終了・結果は開始以降、各結果はそのjunction.time以降です。瞬間Taskも許容します。
 
-作用元と作用先のActorは異なります。State宛の到達はそのStateの開始に一致します。Transition宛の成立済み作用は `[from.end, to.start]` 内への到達が必要です。`proposed: true` なら時間窓外への到達を許し、早すぎる／遅すぎると評価できます。検討案でも時間逆行・不存在の参照は許可しません。
+TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ場合は、通常の到達先へ向かうTask途中から結果が分岐します。toStateIdがある場合、junctionはその終了時刻以内。junctionsの順序は意味を持たず、同一Taskの同一時刻は1つにまとめます。junctionは1,000件以下、各outcomesも1〜1,000件です。
 
-`block` は予定Transitionのみを対象にできます。妨害ノードは `block && !proposed` の登録から描画時に導出します。これは編集者の登録内容であり、成功を自動推論した結果ではありません。成功側の結果Stateへの接続だけでは実際のTransitionを生成しません。
+outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
 
-### 妨害点の分岐表示
+通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身のlineは正の因果として実線です。
 
-`block && !proposed` の作用は、対象Transition上の到達時刻に白背景・赤枠の丸ノードを描きます。作用線が丸へ入り、「妨害成功」は `outcomeStateId` のStateへ実線・矢印で接続、「妨害失敗」は元の予定Transitionの接続先を示します。失敗側は灰色の予定経路として残します。丸をクリックすると、そのInteractionを選択・編集できます。
+UIの「結果を追加」は、通常toStateIdを「継続」結果に変換し、新結果と一緒に指定時刻へまとめます。Task編集で分岐時刻を変えた場合、同じ旧時刻へ接続していた因果端点も追従します。複数junctionの既存情報も編集できます。
 
-成功先が未設定なら「妨害成功（結果未設定）」を表示し、StateやTransitionを生成しません。表示フィルタで結果Stateが隠れていれば「結果非表示」とします。検討案には成立済みの丸ノードを付けず、既存の結果参照は「検討案の結果」として破線表示します。
+## CausalLink
 
-失敗側は比較のために残す予定経路であり、成功と失敗が両方発生したことや、その確率を表しません。既存JSONの `effect / proposed / targetId / outcomeStateId` から描画し、データ形式は変更しません。元のactual Transitionもデータ・表示とも保持します。SVG・PNGにも同じ分岐を出力します。
-
-### 表示とProxy
-
-- detection / observation: 紫破線。
-- information: 濃灰破線。
-- command: 青緑実線。support: 青緑点線。
-- attack / interference: 赤太線。検討案は破線。
-- ラベルはState・接続線・技術吹き出し・他のラベルを避けて自動配置し、長い場合は改行します。配置候補は元の位置と障害物の境界から作り、移動距離が小さい空き位置を優先します。左上から最初の空きを選ぶ走査は行いません。遠い配置には矢印なしの細い破線の補助線を付けます。図内に空きがなければ下部へ配置して高さを拡張します。titleとInspectorにも全文を保持します。ミッションの接続線同士の交差最適化はしません。
-
-接続線は描画時に重なる平行区間を検出し、横・縦8px単位の候補へ分散します（最大64pxの横ずれ／縦ずれ候補。経路の向きと空間に応じて制限）。始点だけ共通、終点だけ共通、両端共通、途中区間だけ共通を対象とします。接続点の時刻を維持し、端点付近には短い斜めの分岐・合流部分を許します。Stateとの干渉・経路長・他線との重なりを評価し、改善する候補がなければ元の経路を保持します。同一入力では同じ経路を選び、描画用座標をJSONへ書き戻しません。
-
-Transitionの経路を動かした場合、作用の到達点、妨害ノード、技術タグをその時刻の新しい線上へ追従させます。瞬間Transitionは時刻位置を保持します。共有接続点・過密な領域の重なりや、直交する線同士の交差を完全に除去するものではありません。ラベル配置は調整後の線を使い、SVG・PNG出力にも適用します。
-
-折りたたまれた子Actorの接続は、可視祖先を代理端点にします。同じ可視Actorペア・kind・effect・label・proposedの作用だけを束ね、`指令 ×3` のように表示します。異なる時刻を含む束の端点は最早発生〜最遅到達の包絡です。個別時刻はTooltip・Inspectorに列挙します。同じ折りたたみ内部で完結する線は描きません。元のID・参照・時刻・件数は不変です。
-
-## Technology / Binding
-
-```json
+```js
 {
-  "technologies": [
-    {
-      "id": "tech-link",
-      "name": "水中指令通信",
-      "trl": 4,
-      "status": "research",
-      "notes": "研究中"
-    }
-  ],
-  "bindings": [
-    {
-      "id": "binding-order",
-      "technologyId": "tech-link",
-      "targetType": "interaction",
-      "targetId": "order"
-    }
-  ]
+  id, source: {type: "state", id: "sensor-detected"},
+  target: {type: "task", id: "transmit", time: 49},
+  polarity: "positive" | "negative",
+  label: "作用の説明", kind: "interference", proposed: false, notes: ""
 }
 ```
 
-`trl`: 整数1〜9またはnull（未評価）。`status`: `existing / research / planned / gap / unknown`。TRLの値からstatusを自動変換しません。
+source / targetの形式：
 
-Binding対象は `actor / state / transition / interaction`。技術カタログの編集は、その技術の全Bindingに反映します。通常画面は背景・枠線付きの小さな吹き出し、Technology Viewでは名称・状態タグと詳細パネル、Gap Viewでは未成熟技術の依存先一覧を表示します。
+| type  | フィールド     | 時刻・レーン                             |
+| ----- | -------------- | ---------------------------------------- |
+| state | type, id       | State.time / StateのActor                |
+| task  | type, id, time | 指定time / 接続元StateのActor            |
+| actor | type, id, time | 指定time / Actorレーン（環境等に利用可） |
 
-## 選択・複製・削除
+State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。通常のTask端点はTask実行期間内に限ります。`proposed:true` の検討案だけは期間外のTask端点も許可し、全期間内の指定X座標へ「案」として表示します。期間外端点はTaskの実線上にはなく、時間窓外の仮の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
 
-Ctrl/⌘+Clickで選択を追加・解除。空白からの矩形選択はActor列とState領域の両方に対応します。
+polarityが唯一の因果線種です。positiveは実線、negativeは経路に沿った波線で、いずれも矢印headを持ちます。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
 
-Actor複製は部分木のActor・State・内部Transition・内部Interaction・対象Bindingをコピーします。選択した親と子が重複していても1回だけ複製します。外部ActorとのInteractionはコピーしません。対象外の結果Stateへの参照も除きます。
+予定はState / Taskのstatus、因果案はCausalLink.proposedを使用します。予定・案のタグが必ずあり、弱いopacityやState中抜きは補助表現です。ラベル補助線も細いニュートラルな実線です。
 
-複数Stateだけを選択した場合も、両端が含まれるTransition・Interactionをコピーします。コピーされた要素とBindingのIDはすべて新規発行し、内部参照を再マッピングします。Technologyカタログは共用で、Technology IDは保持します。
+## Technology Binding
 
-Copy/Cut/Pasteはメモリ上の文書内fragmentです。OSクリップボードや他文書との交換は未実装。文書の置き換えでクリップボードを消します。Cut後の外部接続は削除され、Pasteで復活しません（Undoでは復旧可能）。
+```js
+{ id, name, status: "research", trl: 4, notes: "" } // technologies[]
+{ id, technologyId, targetType: "task", targetId, notes: "" } // bindings[]
+```
 
-Group化は選択Actorの最上位部分木を新Groupの子へ移します。Ungroupは直接の子を1階層外に移し、空Groupを削除します。StateやBindingを持つ親はデータを失わないよう通常Actorとして保持します。
+statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、nullまたは省略で未評価。Binding対象はactor / state / task / causalLinkのみです。StateとTaskの分析には直接Bindingに加え、その直接のActorのBindingを適用します。祖先Groupの技術は自動継承しません。Technologyカタログは複製間で共有し、Binding自身のIDは複製時に再発行します。
 
-Actor削除は子孫とStateを連鎖削除し、失われる要素へのTransition・Interaction・Bindingも削除します。Technology本体は保持します。結果Stateのみが失われた場合はoutcome参照をnullにします。
+## Views
 
-編集はコピー上で行い、検証後に原子的に確定。失敗時は全体を戻します。ドラッグ1回は履歴1件、履歴上限100件。単独Stateの移動・伸縮は作用の発生をState内にクランプし、State宛の到達を開始に追従させます。複数Stateをまとめて動かすと、内部接続の両時刻も同じ差分だけ移します。外部接続と時間制約が両立しなければ全体を拒否します。
+```js
+views: { main: {
+  collapsedActors: [], actorOrder: ["actor-1", "actor-2"],
+  zoom: 1, visibleTimeRange: {start: 0, end: 60},
+  filters: {technology: true, causalLink: true, planned: true, quiet: true},
+  laneHeight: 64, mode: "mission"
+}}
+```
 
-## 経路・Gap・介入可能時間窓
+modeはmission / technology / gap / causality。laneHeightは52〜160px。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-敵Transition選択時は、そこへのblock作用から有向グラフを逆に辿ります。Stateへの流入Interactionと前段Transitionを辿り、敵の状態を観測する作用に到達したらBlue側経路の起点とします。無関係な下流分岐は取り込みません。
+折りたたみ時の因果線は描画だけProxy化。可視Actorペア、極性、ラベル、案区分、**発生・到達時刻が一致する線だけ**を×件数にまとめます。異なる時刻を平均位置へ集約しません。子Taskは隠れますが、Groupに到達する因果は残ります。元データは不変です。
 
-各候補経路を独立評価し、別経路の役割を合成しません。
+## コピー・削除・履歴
 
-1. 観測：detection / observation。味方が作用元または観測先。
-2. 判断：味方Stateに `phase: decision` を指定。
-3. 指令：味方を作用元とするcommand。
-4. 攻撃：味方を作用元とするattack / interference。
+Actor / Group複製は子孫Actor、State、内部Task、内部因果、Bindingをコピー。全ID（junctionを含む）を再発行して内部参照を再マップします。外部Actorとの因果はコピーしません。Stateだけのコピーは選択内で完結するTask・因果を含みます。Task単体をクリップボード複製する仕様はありません。文書内クリップボードです。
 
-この順序で接続され、各作用が次の段階に間に合うと「構造完結」です。さらに時間窓内に到達し、経路の全要素を支える技術がexistingなら「条件充足」とします。Actor BindingはそのActorのStateを支えるものとしても評価し、要素自身のBindingと併せて確認します。未Bindingは未評価、research/planned/gap/unknownは未成熟として区別します。敵自身の技術情報はBlueの充足判定に必須ではありません。
+削除は従属参照とBindingを整理します。結果State削除でTaskが短くなり、通常因果の端点が期間外になった場合はその孤立した因果も削除します。技術カタログはActor削除で消しません。
 
-選択経路は技術状態を色分けし、gap位置より上流のタイムライン強調を切ります。全候補はInspectorで選択できます。`SOME`は条件充足の候補が1つ以上、`ALL`は列挙候補のすべてが条件充足という意味です。敵全体の全ミッション妨害や全シナリオの保証ではありません。最大256経路・深さ512で打ち切り、打ち切り時はALLを未確認にします。
+変更は文書単位で検証し、失敗した編集は適用しません。Undo / Redoは100履歴まで文書全体を保持。JSON読込・サンプル置換もUndo可能です。Viewのボタン操作も履歴に入ります。連続パンはViewの範囲を更新して保存します。
 
-介入窓は `[敵Transitionの開始, 終了]`。到達が開始前ならearly、終了後ならlate、境界を含めてwithin。余裕は終了−到達です。瞬間Transitionなら同時刻だけwithin。
+## 介入時間窓と経路評価
 
-これは入力された因果・時刻・技術状態の構造評価です。運動、通信遅延、探知性能、交戦成功率はシミュレートせず、実世界の実行可能性や軍事的有効性を保証しません。
+敵Taskへのnegative causal linkを候補とし、Taskの開始〜終了を時間窓にします。分岐後の結果Stateまでの線は結果経路であり、介入時間窓はTask本体の終了までです。
+
+作用元から、Stateへ至るTaskと正の因果を逆向きにたどります。Task上の作用時点より後に入る因果はさかのぼり対象から除きます。同じ経路内で以下の順序がそろうことを構造完結とします。
+
+1. friendly ActorのTask / 因果元によるkind: detectionまたはobservation。
+2. friendly ActorのState.phase: decision。
+3. friendly ActorのTask / 因果元によるkind: command。
+4. friendly ActorのTask / 因果元によるkind: attackまたはinterference。
+
+構造完結に加え、到達が時間窓内、経路にproposedがない、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。plannedは予定経路の分析対象になり、actualの実施証明とは区別します。
+
+最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。
+
+## 描画の制約
+
+State / junction / Task作用端点のXは時刻から求め、変更しません。共有始点・共有終点・共通区間は有限のオフセット候補で分離。上下Actor間は向かい合う円周へ接続します。負の因果は調整後の折れ線をサンプリングし、各区間の法線方向へ周期オフセットを加えます。端点・角は波幅を減衰させ、アンカーを保持します。
+
+線ラベルは元経路の中央付近から横±36px、縦−40〜＋24pxの候補だけを探索。文字は最大幅で省略し全文はTooltip / Inspectorへ。遠方の空き領域へ配置しません。State名も局所改行・省略し、円の大きさや時刻を変えません。
