@@ -1,0 +1,321 @@
+{
+  "version": 2,
+  "title": "海底調査 — 2機のUUVと母船による確認・回収",
+  "notes": "架空の検討例。A機が候補を探知し、B機が近接確認、母船が報告を照合して回収を指示する。水中調査班を折りたたむと母船との報告・指令が残る。確認不可の枝では再走査して、未確定であることを報告する。時刻・能力は説明用の仮定。",
+  "time": {
+    "unit": "minutes",
+    "duration": 100,
+    "snap": 1
+  },
+  "actors": [
+    {
+      "id": "fleet",
+      "name": "調査隊",
+      "parentId": null,
+      "side": "friendly",
+      "isGroup": true
+    },
+    {
+      "id": "mother",
+      "name": "母船",
+      "parentId": "fleet",
+      "side": "friendly"
+    },
+    {
+      "id": "team",
+      "name": "水中調査班",
+      "parentId": "fleet",
+      "side": "friendly",
+      "isGroup": true
+    },
+    {
+      "id": "uuv-a",
+      "name": "A機・広域捜索",
+      "parentId": "team",
+      "side": "friendly"
+    },
+    {
+      "id": "uuv-b",
+      "name": "B機・近接確認",
+      "parentId": "team",
+      "side": "friendly"
+    }
+  ],
+  "states": [
+    {
+      "id": "a0",
+      "actorId": "uuv-a",
+      "name": "捜索開始",
+      "time": 4,
+      "status": "actual",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "a1",
+      "actorId": "uuv-a",
+      "name": "候補探知",
+      "time": 24,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "a2",
+      "actorId": "uuv-a",
+      "name": "回収点到着",
+      "time": 88,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b0",
+      "actorId": "uuv-b",
+      "name": "座標受領",
+      "time": 27,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b1",
+      "actorId": "uuv-b",
+      "name": "対象確認",
+      "time": 48,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b2",
+      "actorId": "uuv-b",
+      "name": "確認不可",
+      "time": 48,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b3",
+      "actorId": "uuv-b",
+      "name": "再走査終了",
+      "time": 68,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b4",
+      "actorId": "uuv-b",
+      "name": "回収指示受領",
+      "time": 76,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b5",
+      "actorId": "uuv-b",
+      "name": "回収点到着",
+      "time": 94,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "m0",
+      "actorId": "mother",
+      "name": "確認報告受領",
+      "time": 51,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "m1",
+      "actorId": "mother",
+      "name": "記録確定",
+      "time": 66,
+      "status": "planned",
+      "activity": "active",
+      "phase": "decision",
+      "notes": ""
+    },
+    {
+      "id": "m2",
+      "actorId": "mother",
+      "name": "再調査を計画",
+      "time": 80,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    }
+  ],
+  "tasks": [
+    {
+      "id": "survey",
+      "fromStateId": "a0",
+      "toStateId": "a1",
+      "label": "広域を走査",
+      "kind": "detection",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "a-return",
+      "fromStateId": "a1",
+      "toStateId": "a2",
+      "label": "地形を記録し帰投",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "inspect",
+      "fromStateId": "b0",
+      "label": "接近・撮像",
+      "kind": "observation",
+      "status": "planned",
+      "junctions": [
+        {
+          "id": "j-inspect",
+          "time": 40,
+          "outcomes": [
+            {
+              "toStateId": "b1",
+              "label": "確認"
+            },
+            {
+              "toStateId": "b2",
+              "label": "不鮮明"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rescan",
+      "fromStateId": "b2",
+      "toStateId": "b3",
+      "label": "別角度で再走査",
+      "kind": "observation",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "b-return",
+      "fromStateId": "b4",
+      "toStateId": "b5",
+      "label": "回収点へ帰投",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "compile",
+      "fromStateId": "m0",
+      "toStateId": "m1",
+      "label": "画像と座標を照合",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    }
+  ],
+  "causalLinks": [
+    {
+      "id": "cue",
+      "source": {
+        "type": "state",
+        "id": "a1"
+      },
+      "target": {
+        "type": "state",
+        "id": "b0"
+      },
+      "label": "候補座標",
+      "kind": "information",
+      "polarity": "positive"
+    },
+    {
+      "id": "confirm-report",
+      "source": {
+        "type": "state",
+        "id": "b1"
+      },
+      "target": {
+        "type": "state",
+        "id": "m0"
+      },
+      "label": "確認画像",
+      "kind": "information",
+      "polarity": "positive"
+    },
+    {
+      "id": "incomplete-report",
+      "source": {
+        "type": "state",
+        "id": "b3"
+      },
+      "target": {
+        "type": "state",
+        "id": "m2"
+      },
+      "label": "未確定を報告",
+      "kind": "information",
+      "polarity": "positive"
+    },
+    {
+      "id": "recall",
+      "source": {
+        "type": "state",
+        "id": "m1"
+      },
+      "target": {
+        "type": "state",
+        "id": "b4"
+      },
+      "label": "回収指示",
+      "kind": "command",
+      "polarity": "positive"
+    }
+  ],
+  "technologies": [],
+  "bindings": [],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "fleet",
+        "mother",
+        "team",
+        "uuv-a",
+        "uuv-b"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 100
+      },
+      "filters": {
+        "technology": false,
+        "causalLink": true,
+        "planned": true,
+        "quiet": true
+      },
+      "laneHeight": 64,
+      "mode": "mission"
+    }
+  }
+}

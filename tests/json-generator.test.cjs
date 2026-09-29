@@ -41,7 +41,8 @@ test("CLI validates file and stdin using editor importer", () => {
       input,
     });
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /Task 7 \/ CausalLink 3/);
+    const model = M.parse(fs.readFileSync(example, 'utf8'));
+    assert(r.stdout.includes(`Task ${model.tasks.length} / CausalLink ${model.causalLinks.length}`));
   }
 });
 test("CLI rejects legacy / malformed input and invalid usage with meaningful exit status", () => {

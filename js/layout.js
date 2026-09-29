@@ -341,8 +341,10 @@
         // Branch siblings at the same time still get distinct lanes.
         const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
           doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
-        const preferred = incoming && states.get(incoming.fromStateId)?.lane;
-        let lane = preferred !== undefined && lanes[preferred] < x - needed / 2
+        const previousLane = incoming && states.get(incoming.fromStateId)?.lane;
+        const sideBranch = incoming?.toStateId && incoming.toStateId !== s.id;
+        const preferred = previousLane === undefined ? undefined : previousLane + (sideBranch ? 1 : 0);
+        let lane = preferred !== undefined && (lanes[preferred] === undefined || lanes[preferred] < x - needed / 2)
           ? preferred : lanes.findIndex((end) => end < x - needed / 2);
         if (lane < 0) lane = lanes.length;
         lanes[lane] = x + needed / 2;

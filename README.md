@@ -14,7 +14,7 @@
 
 **横位置は常に時刻です。** 重なるStateは同じActor内で上下に分かれます。経路を避ける場合も、StateやTask上の作用時点のX座標は変わりません。
 
-![沿岸監視・識別・妨害下の通報](docs/example.svg)
+![敵UUVの任務阻止・旧シナリオを新モデルで表示](docs/example.svg)
 
 ## 起動
 
@@ -64,15 +64,19 @@ node scripts/validate-mission.cjs mission.json
 cat mission.json | node scripts/validate-mission.cjs -
 ```
 
-配布例：
+配布例（旧版と同じシナリオ）：
 
-- [沿岸監視](examples/coastal.json)：接触の捜索→識別→通報。識別保留なら再観測、通報に失敗した場合は代替回線へ切り替えて再送します。
-- [海底調査](examples/submarine.json)：A機が広域捜索、B機が近接確認、母船が記録を照合し回収を指示します。「水中調査班」を折りたたむと、母船との報告・指令だけを追えます。
-- [技術Gap](examples/research.json)：電波監視→介入判断→指令→敵の妨害Taskへの介入。時間窓には間に合うものの、「妨害源追尾制御」が研究段階のため技術条件は未充足です。
+- [基本サンプル](examples/coastal.json)：敵UUVの進出・任務遂行・離脱に対し、海底センサー→管制→味方UUV→魚雷が連携して離脱を阻止。
+- [階層サンプル](examples/submarine.json)：同じミッションを潜水艦・ソナー・魚雷のActor階層で表示。
+- [技術・Gapサンプル](examples/research.json)：同じ介入経路に、協調音響識別・水中指令通信の技術不足と54分の遅延案を表示。
 
-いずれも架空の検討例です。時刻・技術成熟度は説明用の仮定で、将来の分岐先は予定として扱います。基本・階層例は技術タグを初期非表示にしています。Gap Viewでは未成熟・未登録区分の技術注記を表示し、既存技術の注記はTechnology Viewで確認できます。
+Actor・行動期間・因果時刻・技術評価は、v2再設計直前の旧サンプルから保持しています。[新旧の図・変換対応表](docs/sample-migration.md)で直接比較できます。旧JSONとSVGも比較専用として保存しています。
 
-サンプルの流れ・判断基準は[サンプル解説](docs/examples.md)を参照してください。ブラウザ内のサンプル、JSON、README用SVGは同じ生成元を使い、`node scripts/update-examples.cjs`で同期します。
+操作説明用の小さな例は、別メニュー「表現デモ（捜索・識別・通信）」と `examples/tutorial/` に分離しています。[サンプル解説](docs/examples.md)も参照してください。
+
+初期表示では技術注記を隠しています。技術表示を有効にすると、Gap Viewでは未成熟な技術、Technology Viewでは既存技術も含む注記を確認できます。旧例の技術評価・時間は説明用の仮定です。
+
+比較用サンプルは `node scripts/restore-comparison-samples.cjs`、JSON・SVG・LLM完成例の同期は `node scripts/update-examples.cjs` で再生成します。
 
 ## 構成と検証
 

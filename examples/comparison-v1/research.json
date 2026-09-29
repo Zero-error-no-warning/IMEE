@@ -1,0 +1,624 @@
+{
+  "version": 1,
+  "title": "Technology / Gap — 介入経路の検討",
+  "time": {
+    "unit": "minutes",
+    "duration": 60,
+    "snap": 1
+  },
+  "actors": [
+    {
+      "id": "enemy",
+      "name": "敵UUV",
+      "side": "hostile",
+      "notes": "監視海域で任務を遂行し、離脱する計画。"
+    },
+    {
+      "id": "sensor",
+      "name": "ソナー",
+      "side": "friendly",
+      "notes": "",
+      "parentId": "uuv"
+    },
+    {
+      "id": "control",
+      "name": "管制",
+      "side": "friendly",
+      "notes": ""
+    },
+    {
+      "id": "uuv",
+      "name": "潜水艦",
+      "side": "friendly",
+      "notes": "",
+      "isGroup": true
+    },
+    {
+      "id": "torpedo",
+      "name": "魚雷",
+      "side": "friendly",
+      "notes": "",
+      "parentId": "uuv"
+    }
+  ],
+  "states": [
+    {
+      "id": "e1",
+      "actorId": "enemy",
+      "name": "進出",
+      "start": 0,
+      "end": 12,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "e2",
+      "actorId": "enemy",
+      "name": "任務遂行",
+      "start": 14,
+      "end": 34,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "e3",
+      "actorId": "enemy",
+      "name": "離脱",
+      "start": 36,
+      "end": 44,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "e4",
+      "actorId": "enemy",
+      "name": "離脱完了",
+      "start": 52,
+      "end": 60,
+      "activity": "active",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "e5",
+      "actorId": "enemy",
+      "name": "無力化",
+      "start": 46,
+      "end": 60,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "s1",
+      "actorId": "sensor",
+      "name": "監視",
+      "start": 0,
+      "end": 14,
+      "activity": "quiet",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "s2",
+      "actorId": "sensor",
+      "name": "探知・追尾",
+      "start": 14,
+      "end": 48,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "c1",
+      "actorId": "control",
+      "name": "待機",
+      "start": 0,
+      "end": 18,
+      "activity": "quiet",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "c2",
+      "actorId": "control",
+      "name": "識別",
+      "start": 18,
+      "end": 25,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "c3",
+      "actorId": "control",
+      "name": "交戦判断",
+      "start": 27,
+      "end": 33,
+      "activity": "active",
+      "status": "actual",
+      "notes": "",
+      "phase": "decision"
+    },
+    {
+      "id": "u1",
+      "actorId": "uuv",
+      "name": "哨戒",
+      "start": 0,
+      "end": 29,
+      "activity": "quiet",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "u2",
+      "actorId": "uuv",
+      "name": "接敵",
+      "start": 31,
+      "end": 38,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "u3",
+      "actorId": "uuv",
+      "name": "攻撃",
+      "start": 40,
+      "end": 46,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "t1",
+      "actorId": "torpedo",
+      "name": "待機",
+      "start": 0,
+      "end": 40,
+      "activity": "quiet",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "t2",
+      "actorId": "torpedo",
+      "name": "誘導",
+      "start": 40,
+      "end": 46,
+      "activity": "active",
+      "status": "actual",
+      "notes": ""
+    }
+  ],
+  "transitions": [
+    {
+      "id": "et1",
+      "from": "e1",
+      "to": "e2",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "et2",
+      "from": "e2",
+      "to": "e3",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "escape",
+      "from": "e3",
+      "to": "e4",
+      "status": "planned",
+      "label": "離脱成立"
+    },
+    {
+      "id": "disabled",
+      "from": "e3",
+      "to": "e5",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "st1",
+      "from": "s1",
+      "to": "s2",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "ct1",
+      "from": "c1",
+      "to": "c2",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "ct2",
+      "from": "c2",
+      "to": "c3",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "ut1",
+      "from": "u1",
+      "to": "u2",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "ut2",
+      "from": "u2",
+      "to": "u3",
+      "status": "actual",
+      "label": ""
+    },
+    {
+      "id": "tt1",
+      "from": "t1",
+      "to": "t2",
+      "status": "actual",
+      "label": ""
+    }
+  ],
+  "interactions": [
+    {
+      "id": "detect",
+      "fromStateId": "e2",
+      "targetId": "s2",
+      "label": "発見",
+      "kind": "detection",
+      "sourceTime": 14,
+      "time": 14,
+      "targetType": "state",
+      "effect": "cause",
+      "outcomeStateId": null
+    },
+    {
+      "id": "report",
+      "fromStateId": "s2",
+      "targetId": "c2",
+      "label": "探知情報",
+      "kind": "information",
+      "sourceTime": 17,
+      "time": 18,
+      "targetType": "state",
+      "effect": "cause",
+      "outcomeStateId": null
+    },
+    {
+      "id": "order",
+      "fromStateId": "c3",
+      "targetId": "u2",
+      "label": "接敵指示",
+      "kind": "command",
+      "sourceTime": 30,
+      "time": 31,
+      "targetType": "state",
+      "effect": "cause",
+      "outcomeStateId": null
+    },
+    {
+      "id": "launch",
+      "fromStateId": "u3",
+      "targetId": "t2",
+      "label": "発射",
+      "kind": "attack",
+      "sourceTime": 40,
+      "time": 40,
+      "targetType": "state",
+      "effect": "cause",
+      "outcomeStateId": null
+    },
+    {
+      "id": "hit",
+      "fromStateId": "t2",
+      "targetType": "transition",
+      "targetId": "escape",
+      "label": "命中・離脱阻止",
+      "kind": "attack",
+      "sourceTime": 46,
+      "time": 46,
+      "effect": "block",
+      "outcomeStateId": "e5",
+      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。"
+    },
+    {
+      "id": "late-hit",
+      "fromStateId": "t2",
+      "targetType": "transition",
+      "targetId": "escape",
+      "label": "遅延する介入案",
+      "kind": "attack",
+      "sourceTime": 46,
+      "time": 54,
+      "effect": "block",
+      "outcomeStateId": null,
+      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。",
+      "proposed": true
+    }
+  ],
+  "technologies": [
+    {
+      "id": "tech-existing",
+      "name": "既存システム基盤",
+      "status": "existing",
+      "trl": 9,
+      "notes": "操作説明用の架空の技術評価"
+    },
+    {
+      "id": "tech-sonar",
+      "name": "協調音響識別",
+      "status": "research",
+      "trl": 4,
+      "notes": "研究中の識別能力"
+    },
+    {
+      "id": "tech-link",
+      "name": "水中指令通信",
+      "status": "gap",
+      "trl": null,
+      "notes": "必要な通信能力が未確保"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "binding-enemy",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "enemy"
+    },
+    {
+      "id": "binding-sensor",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "sensor"
+    },
+    {
+      "id": "binding-control",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "control"
+    },
+    {
+      "id": "binding-uuv",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "uuv"
+    },
+    {
+      "id": "binding-torpedo",
+      "technologyId": "tech-existing",
+      "targetType": "actor",
+      "targetId": "torpedo"
+    },
+    {
+      "id": "binding-e1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e1"
+    },
+    {
+      "id": "binding-e2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e2"
+    },
+    {
+      "id": "binding-e3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e3"
+    },
+    {
+      "id": "binding-e4",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e4"
+    },
+    {
+      "id": "binding-e5",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "e5"
+    },
+    {
+      "id": "binding-s1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "s1"
+    },
+    {
+      "id": "binding-s2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "s2"
+    },
+    {
+      "id": "binding-c1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c1"
+    },
+    {
+      "id": "binding-c2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c2"
+    },
+    {
+      "id": "binding-c3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "c3"
+    },
+    {
+      "id": "binding-u1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u1"
+    },
+    {
+      "id": "binding-u2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u2"
+    },
+    {
+      "id": "binding-u3",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "u3"
+    },
+    {
+      "id": "binding-t1",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "t1"
+    },
+    {
+      "id": "binding-t2",
+      "technologyId": "tech-existing",
+      "targetType": "state",
+      "targetId": "t2"
+    },
+    {
+      "id": "binding-et1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "et1"
+    },
+    {
+      "id": "binding-et2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "et2"
+    },
+    {
+      "id": "binding-escape",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "escape"
+    },
+    {
+      "id": "binding-disabled",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "disabled"
+    },
+    {
+      "id": "binding-st1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "st1"
+    },
+    {
+      "id": "binding-ct1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ct1"
+    },
+    {
+      "id": "binding-ct2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ct2"
+    },
+    {
+      "id": "binding-ut1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ut1"
+    },
+    {
+      "id": "binding-ut2",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "ut2"
+    },
+    {
+      "id": "binding-tt1",
+      "technologyId": "tech-existing",
+      "targetType": "transition",
+      "targetId": "tt1"
+    },
+    {
+      "id": "binding-detect",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "detect"
+    },
+    {
+      "id": "binding-report",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "report"
+    },
+    {
+      "id": "binding-order",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "order"
+    },
+    {
+      "id": "binding-launch",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "launch"
+    },
+    {
+      "id": "binding-hit",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "hit"
+    },
+    {
+      "id": "binding-research",
+      "technologyId": "tech-sonar",
+      "targetType": "state",
+      "targetId": "s2"
+    },
+    {
+      "id": "binding-gap",
+      "technologyId": "tech-link",
+      "targetType": "interaction",
+      "targetId": "order"
+    },
+    {
+      "id": "binding-late",
+      "technologyId": "tech-existing",
+      "targetType": "interaction",
+      "targetId": "late-hit"
+    }
+  ],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "enemy",
+        "sensor",
+        "control",
+        "uuv",
+        "torpedo"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 60
+      },
+      "filters": {
+        "technology": true,
+        "interaction": true,
+        "planned": true,
+        "quiet": true
+      },
+      "laneHeight": 44,
+      "mode": "mission"
+    }
+  }
+}

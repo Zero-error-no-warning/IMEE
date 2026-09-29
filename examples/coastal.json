@@ -1,51 +1,117 @@
 {
   "version": 2,
-  "title": "沿岸監視 — 不明接触の識別と妨害下での通報",
-  "notes": "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。16分までを実績、それ以降を予定として示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
+  "title": "海域監視 — 敵UUVの任務阻止",
+  "notes": "旧サンプル（commit 618818426ac7e8e2a4f4ea14af6f0e482c9f8b04）と同じシナリオ。Actor・行動期間・因果時刻・技術評価は比較用に保持。旧期間Stateの行動はTaskへ、到達結果は時点Stateへ変換。変換対応はdocs/sample-migration.mdを参照。",
   "time": {
     "unit": "minutes",
-    "duration": 90,
+    "duration": 60,
     "snap": 1
   },
   "actors": [
     {
-      "id": "group",
-      "name": "沿岸監視隊",
-      "parentId": null,
-      "side": "friendly",
-      "isGroup": true
+      "id": "enemy",
+      "name": "敵UUV",
+      "side": "hostile",
+      "notes": "監視海域で任務を遂行し、離脱する計画。"
     },
     {
       "id": "sensor",
-      "name": "監視UUV",
-      "parentId": "group",
-      "side": "friendly"
+      "name": "海底センサー",
+      "side": "friendly",
+      "notes": ""
     },
     {
       "id": "control",
-      "name": "識別担当",
-      "parentId": "group",
-      "side": "friendly"
+      "name": "管制",
+      "side": "friendly",
+      "notes": ""
     },
     {
-      "id": "radio",
-      "name": "通信担当",
-      "parentId": "group",
-      "side": "friendly"
+      "id": "uuv",
+      "name": "味方UUV",
+      "side": "friendly",
+      "notes": ""
     },
     {
-      "id": "enemy",
-      "name": "妨害装置",
-      "parentId": null,
-      "side": "hostile"
+      "id": "torpedo",
+      "name": "魚雷",
+      "side": "friendly",
+      "notes": ""
     }
   ],
   "states": [
     {
-      "id": "s0",
-      "actorId": "sensor",
-      "name": "未探知",
-      "time": 2,
+      "id": "e1",
+      "actorId": "enemy",
+      "name": "進出開始",
+      "time": 0,
+      "status": "actual",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "end-e1",
+      "actorId": "enemy",
+      "name": "進出終了",
+      "time": 12,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "e2",
+      "actorId": "enemy",
+      "name": "任務開始",
+      "time": 14,
+      "status": "actual",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "end-e2",
+      "actorId": "enemy",
+      "name": "任務終了",
+      "time": 34,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "e3",
+      "actorId": "enemy",
+      "name": "離脱開始",
+      "time": 36,
+      "status": "actual",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "end-e3",
+      "actorId": "enemy",
+      "name": "離脱中",
+      "time": 44,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "e4",
+      "actorId": "enemy",
+      "name": "離脱完了",
+      "time": 52,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "e5",
+      "actorId": "enemy",
+      "name": "無力化",
+      "time": 46,
       "status": "actual",
       "activity": "active",
       "phase": "other",
@@ -54,261 +120,425 @@
     {
       "id": "s1",
       "actorId": "sensor",
-      "name": "接触探知",
-      "time": 16,
+      "name": "監視開始",
+      "time": 0,
+      "status": "actual",
+      "activity": "quiet",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "s2",
+      "actorId": "sensor",
+      "name": "探知済",
+      "time": 14,
       "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "i0",
+      "id": "end-s2",
+      "actorId": "sensor",
+      "name": "追尾終了",
+      "time": 48,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "c1",
       "actorId": "control",
-      "name": "識別待ち",
+      "name": "待機開始",
+      "time": 0,
+      "status": "actual",
+      "activity": "quiet",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "c2",
+      "actorId": "control",
+      "name": "識別開始",
       "time": 18,
-      "status": "planned",
+      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "i1",
+      "id": "end-c2",
       "actorId": "control",
-      "name": "識別済",
-      "time": 35,
-      "status": "planned",
+      "name": "識別終了",
+      "time": 25,
+      "status": "actual",
       "activity": "active",
-      "phase": "decision",
       "notes": ""
     },
     {
-      "id": "i2",
+      "id": "c3",
       "actorId": "control",
-      "name": "識別保留",
-      "time": 35,
-      "status": "planned",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "i3",
-      "actorId": "control",
-      "name": "追加情報取得",
-      "time": 58,
-      "status": "planned",
+      "name": "判断開始",
+      "time": 27,
+      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r0",
-      "actorId": "radio",
-      "name": "通報準備済",
+      "id": "end-c3",
+      "actorId": "control",
+      "name": "判断終了",
+      "time": 33,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "u1",
+      "actorId": "uuv",
+      "name": "哨戒開始",
+      "time": 0,
+      "status": "actual",
+      "activity": "quiet",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "end-u1",
+      "actorId": "uuv",
+      "name": "哨戒終了",
+      "time": 29,
+      "status": "actual",
+      "activity": "quiet",
+      "notes": ""
+    },
+    {
+      "id": "u2",
+      "actorId": "uuv",
+      "name": "接敵開始",
+      "time": 31,
+      "status": "actual",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "end-u2",
+      "actorId": "uuv",
+      "name": "接敵完了",
       "time": 38,
-      "status": "planned",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "u3",
+      "actorId": "uuv",
+      "name": "攻撃開始",
+      "time": 40,
+      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r1",
-      "actorId": "radio",
-      "name": "通報完了",
-      "time": 56,
-      "status": "planned",
+      "id": "end-u3",
+      "actorId": "uuv",
+      "name": "攻撃終了",
+      "time": 46,
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "t1",
+      "actorId": "torpedo",
+      "name": "待機開始",
+      "time": 0,
+      "status": "actual",
+      "activity": "quiet",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "t2",
+      "actorId": "torpedo",
+      "name": "誘導開始",
+      "time": 40,
+      "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r2",
-      "actorId": "radio",
-      "name": "未達確認",
-      "time": 56,
-      "status": "planned",
+      "id": "end-t2",
+      "actorId": "torpedo",
+      "name": "誘導終了",
+      "time": 46,
+      "status": "actual",
       "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "r3",
-      "actorId": "radio",
-      "name": "代替回線確立",
-      "time": 70,
-      "status": "planned",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "r4",
-      "actorId": "radio",
-      "name": "再送完了",
-      "time": 84,
-      "status": "planned",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "e0",
-      "actorId": "enemy",
-      "name": "妨害準備済",
-      "time": 38,
-      "status": "planned",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "e1",
-      "actorId": "enemy",
-      "name": "妨害終了",
-      "time": 68,
-      "status": "planned",
-      "activity": "active",
-      "phase": "other",
       "notes": ""
     }
   ],
   "tasks": [
     {
-      "id": "search",
-      "fromStateId": "s0",
-      "toStateId": "s1",
-      "label": "海域を捜索",
-      "kind": "detection",
+      "id": "activity-e1",
+      "fromStateId": "e1",
+      "toStateId": "end-e1",
+      "label": "進出",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-e2",
+      "fromStateId": "e2",
+      "toStateId": "end-e2",
+      "label": "任務遂行",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-e3",
+      "fromStateId": "e3",
+      "toStateId": "end-e3",
+      "label": "離脱",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-s1",
+      "fromStateId": "s1",
+      "toStateId": "s2",
+      "label": "監視",
+      "status": "actual",
+      "activity": "quiet",
+      "notes": ""
+    },
+    {
+      "id": "activity-s2",
+      "fromStateId": "s2",
+      "toStateId": "end-s2",
+      "label": "探知・追尾",
+      "status": "actual",
+      "activity": "active",
+      "notes": "",
+      "kind": "observation"
+    },
+    {
+      "id": "activity-c1",
+      "fromStateId": "c1",
+      "toStateId": "c2",
+      "label": "待機",
+      "status": "actual",
+      "activity": "quiet",
+      "notes": ""
+    },
+    {
+      "id": "activity-c2",
+      "fromStateId": "c2",
+      "toStateId": "end-c2",
+      "label": "識別",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-c3",
+      "fromStateId": "c3",
+      "toStateId": "end-c3",
+      "label": "交戦判断",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-u1",
+      "fromStateId": "u1",
+      "toStateId": "end-u1",
+      "label": "哨戒",
+      "status": "actual",
+      "activity": "quiet",
+      "notes": ""
+    },
+    {
+      "id": "activity-u2",
+      "fromStateId": "u2",
+      "toStateId": "end-u2",
+      "label": "接敵",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-u3",
+      "fromStateId": "u3",
+      "toStateId": "end-u3",
+      "label": "攻撃",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "activity-t1",
+      "fromStateId": "t1",
+      "toStateId": "t2",
+      "label": "待機",
+      "status": "actual",
+      "activity": "quiet",
+      "notes": ""
+    },
+    {
+      "id": "activity-t2",
+      "fromStateId": "t2",
+      "toStateId": "end-t2",
+      "label": "誘導",
+      "status": "actual",
+      "activity": "active",
+      "notes": ""
+    },
+    {
+      "id": "et1",
+      "fromStateId": "end-e1",
+      "toStateId": "e2",
+      "label": "移行",
       "status": "actual",
       "notes": ""
     },
     {
-      "id": "identify",
-      "fromStateId": "i0",
-      "label": "特徴を照合",
-      "kind": "support",
+      "id": "et2",
+      "fromStateId": "end-e2",
+      "toStateId": "e3",
+      "label": "移行",
+      "status": "actual",
+      "notes": ""
+    },
+    {
+      "id": "escape",
+      "fromStateId": "end-e3",
+      "toStateId": "e4",
+      "label": "離脱成立",
       "status": "planned",
+      "notes": "旧escapeの44〜52分を保持。46分の命中で無力化へ分岐。元の離脱完了への実線は阻止失敗時の予定経路。旧disabledをこの成功枝へ統合。",
       "junctions": [
         {
-          "id": "j-identify",
-          "time": 29,
+          "id": "j-escape-hit",
+          "time": 46,
           "outcomes": [
             {
-              "toStateId": "i1",
-              "label": "一致"
-            },
-            {
-              "toStateId": "i2",
-              "label": "不一致"
+              "toStateId": "e5",
+              "label": "阻止成功"
             }
           ]
         }
       ]
     },
     {
-      "id": "reobserve",
-      "fromStateId": "i2",
-      "toStateId": "i3",
-      "label": "追尾・再観測",
-      "kind": "observation",
-      "status": "planned",
+      "id": "ct2",
+      "fromStateId": "end-c2",
+      "toStateId": "c3",
+      "label": "移行",
+      "status": "actual",
       "notes": ""
     },
     {
-      "id": "transmit",
-      "fromStateId": "r0",
-      "label": "識別結果を送信",
-      "kind": "support",
-      "status": "planned",
-      "junctions": [
-        {
-          "id": "j-transmit",
-          "time": 49,
-          "outcomes": [
-            {
-              "toStateId": "r1",
-              "label": "ACK受信"
-            },
-            {
-              "toStateId": "r2",
-              "label": "応答なし"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "switch",
-      "fromStateId": "r2",
-      "toStateId": "r3",
-      "label": "通信方式を切替",
-      "kind": "support",
-      "status": "planned",
+      "id": "ut1",
+      "fromStateId": "end-u1",
+      "toStateId": "u2",
+      "label": "移行",
+      "status": "actual",
       "notes": ""
     },
     {
-      "id": "retry",
-      "fromStateId": "r3",
-      "toStateId": "r4",
-      "label": "再送・ACK確認",
-      "kind": "information",
-      "status": "planned",
-      "notes": ""
-    },
-    {
-      "id": "jam",
-      "fromStateId": "e0",
-      "toStateId": "e1",
-      "label": "通信帯域を妨害",
-      "kind": "interference",
-      "status": "planned",
+      "id": "ut2",
+      "fromStateId": "end-u2",
+      "toStateId": "u3",
+      "label": "移行",
+      "status": "actual",
       "notes": ""
     }
   ],
   "causalLinks": [
     {
-      "id": "report",
+      "id": "detect",
       "source": {
         "type": "state",
-        "id": "s1"
+        "id": "e2"
       },
       "target": {
         "type": "state",
-        "id": "i0"
+        "id": "s2"
       },
-      "label": "接触情報",
+      "polarity": "positive",
+      "label": "発見",
+      "kind": "detection",
+      "notes": ""
+    },
+    {
+      "id": "report",
+      "source": {
+        "type": "task",
+        "id": "activity-s2",
+        "time": 17
+      },
+      "target": {
+        "type": "state",
+        "id": "c2"
+      },
+      "polarity": "positive",
+      "label": "探知情報",
       "kind": "information",
-      "polarity": "positive"
+      "notes": ""
     },
     {
       "id": "order",
       "source": {
-        "type": "state",
-        "id": "i1"
+        "type": "task",
+        "id": "activity-c3",
+        "time": 30
       },
       "target": {
         "type": "state",
-        "id": "r0"
+        "id": "u2"
       },
-      "label": "通報指示",
+      "polarity": "positive",
+      "label": "接敵指示",
       "kind": "command",
-      "polarity": "positive"
+      "notes": ""
     },
     {
-      "id": "negative",
+      "id": "launch",
       "source": {
-        "type": "task",
-        "id": "jam",
-        "time": 49
+        "type": "state",
+        "id": "u3"
+      },
+      "target": {
+        "type": "state",
+        "id": "t2"
+      },
+      "polarity": "positive",
+      "label": "発射",
+      "kind": "attack",
+      "notes": ""
+    },
+    {
+      "id": "hit",
+      "source": {
+        "type": "state",
+        "id": "end-t2"
       },
       "target": {
         "type": "task",
-        "id": "transmit",
-        "time": 49
+        "id": "escape",
+        "time": 46
       },
-      "label": "受信を阻害",
-      "kind": "interference",
-      "polarity": "negative"
+      "polarity": "negative",
+      "label": "命中・離脱阻止",
+      "kind": "attack",
+      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。"
     }
   ],
   "technologies": [],
@@ -317,16 +547,16 @@
     "main": {
       "collapsedActors": [],
       "actorOrder": [
-        "group",
+        "enemy",
         "sensor",
         "control",
-        "radio",
-        "enemy"
+        "uuv",
+        "torpedo"
       ],
       "zoom": 1,
       "visibleTimeRange": {
         "start": 0,
-        "end": 90
+        "end": 60
       },
       "filters": {
         "technology": false,

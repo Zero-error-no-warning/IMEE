@@ -1,0 +1,570 @@
+{
+  "sourceCommit": "618818426ac7e8e2a4f4ea14af6f0e482c9f8b04",
+  "coastal": {
+    "stateMap": {
+      "e1": {
+        "type": "task",
+        "id": "activity-e1",
+        "startStateId": "e1",
+        "endStateId": "end-e1",
+        "start": 0,
+        "end": 12,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e2": {
+        "type": "task",
+        "id": "activity-e2",
+        "startStateId": "e2",
+        "endStateId": "end-e2",
+        "start": 14,
+        "end": 34,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e3": {
+        "type": "task",
+        "id": "activity-e3",
+        "startStateId": "e3",
+        "endStateId": "end-e3",
+        "start": 36,
+        "end": 44,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e4": {
+        "type": "state",
+        "id": "e4",
+        "start": 52,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "e5": {
+        "type": "state",
+        "id": "e5",
+        "start": 46,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "s1": {
+        "type": "task",
+        "id": "activity-s1",
+        "startStateId": "s1",
+        "endStateId": "s2",
+        "start": 0,
+        "end": 14,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "s2": {
+        "type": "task",
+        "id": "activity-s2",
+        "startStateId": "s2",
+        "endStateId": "end-s2",
+        "start": 14,
+        "end": 48,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c1": {
+        "type": "task",
+        "id": "activity-c1",
+        "startStateId": "c1",
+        "endStateId": "c2",
+        "start": 0,
+        "end": 18,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "c2": {
+        "type": "task",
+        "id": "activity-c2",
+        "startStateId": "c2",
+        "endStateId": "end-c2",
+        "start": 18,
+        "end": 25,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c3": {
+        "type": "task",
+        "id": "activity-c3",
+        "startStateId": "c3",
+        "endStateId": "end-c3",
+        "start": 27,
+        "end": 33,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u1": {
+        "type": "task",
+        "id": "activity-u1",
+        "startStateId": "u1",
+        "endStateId": "end-u1",
+        "start": 0,
+        "end": 29,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u2": {
+        "type": "task",
+        "id": "activity-u2",
+        "startStateId": "u2",
+        "endStateId": "end-u2",
+        "start": 31,
+        "end": 38,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u3": {
+        "type": "task",
+        "id": "activity-u3",
+        "startStateId": "u3",
+        "endStateId": "end-u3",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "t1": {
+        "type": "task",
+        "id": "activity-t1",
+        "startStateId": "t1",
+        "endStateId": "t2",
+        "start": 0,
+        "end": 40,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "t2": {
+        "type": "task",
+        "id": "activity-t2",
+        "startStateId": "t2",
+        "endStateId": "end-t2",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      }
+    },
+    "transitionMap": {
+      "et1": {
+        "type": "task",
+        "id": "et1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "et2": {
+        "type": "task",
+        "id": "et2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "escape": {
+        "type": "task",
+        "id": "escape",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "disabled": {
+        "type": "task",
+        "id": "escape",
+        "junctionId": "j-escape-hit",
+        "toStateId": "e5",
+        "rule": "離脱阻止の成功枝へ統合。重複する直接遷移は描かない。"
+      },
+      "st1": {
+        "type": "state",
+        "id": "s2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct1": {
+        "type": "state",
+        "id": "c2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct2": {
+        "type": "task",
+        "id": "ct2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut1": {
+        "type": "task",
+        "id": "ut1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut2": {
+        "type": "task",
+        "id": "ut2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "tt1": {
+        "type": "state",
+        "id": "t2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      }
+    }
+  },
+  "submarine": {
+    "stateMap": {
+      "e1": {
+        "type": "task",
+        "id": "activity-e1",
+        "startStateId": "e1",
+        "endStateId": "end-e1",
+        "start": 0,
+        "end": 12,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e2": {
+        "type": "task",
+        "id": "activity-e2",
+        "startStateId": "e2",
+        "endStateId": "end-e2",
+        "start": 14,
+        "end": 34,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e3": {
+        "type": "task",
+        "id": "activity-e3",
+        "startStateId": "e3",
+        "endStateId": "end-e3",
+        "start": 36,
+        "end": 44,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e4": {
+        "type": "state",
+        "id": "e4",
+        "start": 52,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "e5": {
+        "type": "state",
+        "id": "e5",
+        "start": 46,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "s1": {
+        "type": "task",
+        "id": "activity-s1",
+        "startStateId": "s1",
+        "endStateId": "s2",
+        "start": 0,
+        "end": 14,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "s2": {
+        "type": "task",
+        "id": "activity-s2",
+        "startStateId": "s2",
+        "endStateId": "end-s2",
+        "start": 14,
+        "end": 48,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c1": {
+        "type": "task",
+        "id": "activity-c1",
+        "startStateId": "c1",
+        "endStateId": "c2",
+        "start": 0,
+        "end": 18,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "c2": {
+        "type": "task",
+        "id": "activity-c2",
+        "startStateId": "c2",
+        "endStateId": "end-c2",
+        "start": 18,
+        "end": 25,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c3": {
+        "type": "task",
+        "id": "activity-c3",
+        "startStateId": "c3",
+        "endStateId": "end-c3",
+        "start": 27,
+        "end": 33,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u1": {
+        "type": "task",
+        "id": "activity-u1",
+        "startStateId": "u1",
+        "endStateId": "end-u1",
+        "start": 0,
+        "end": 29,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u2": {
+        "type": "task",
+        "id": "activity-u2",
+        "startStateId": "u2",
+        "endStateId": "end-u2",
+        "start": 31,
+        "end": 38,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u3": {
+        "type": "task",
+        "id": "activity-u3",
+        "startStateId": "u3",
+        "endStateId": "end-u3",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "t1": {
+        "type": "task",
+        "id": "activity-t1",
+        "startStateId": "t1",
+        "endStateId": "t2",
+        "start": 0,
+        "end": 40,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "t2": {
+        "type": "task",
+        "id": "activity-t2",
+        "startStateId": "t2",
+        "endStateId": "end-t2",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      }
+    },
+    "transitionMap": {
+      "et1": {
+        "type": "task",
+        "id": "et1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "et2": {
+        "type": "task",
+        "id": "et2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "escape": {
+        "type": "task",
+        "id": "escape",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "disabled": {
+        "type": "task",
+        "id": "escape",
+        "junctionId": "j-escape-hit",
+        "toStateId": "e5",
+        "rule": "離脱阻止の成功枝へ統合。重複する直接遷移は描かない。"
+      },
+      "st1": {
+        "type": "state",
+        "id": "s2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct1": {
+        "type": "state",
+        "id": "c2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct2": {
+        "type": "task",
+        "id": "ct2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut1": {
+        "type": "task",
+        "id": "ut1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut2": {
+        "type": "task",
+        "id": "ut2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "tt1": {
+        "type": "state",
+        "id": "t2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      }
+    }
+  },
+  "research": {
+    "stateMap": {
+      "e1": {
+        "type": "task",
+        "id": "activity-e1",
+        "startStateId": "e1",
+        "endStateId": "end-e1",
+        "start": 0,
+        "end": 12,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e2": {
+        "type": "task",
+        "id": "activity-e2",
+        "startStateId": "e2",
+        "endStateId": "end-e2",
+        "start": 14,
+        "end": 34,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e3": {
+        "type": "task",
+        "id": "activity-e3",
+        "startStateId": "e3",
+        "endStateId": "end-e3",
+        "start": 36,
+        "end": 44,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "e4": {
+        "type": "state",
+        "id": "e4",
+        "start": 52,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "e5": {
+        "type": "state",
+        "id": "e5",
+        "start": 46,
+        "end": 60,
+        "rule": "到達結果。旧endまでの保持は暗黙とし、終端を比較台帳に保存。"
+      },
+      "s1": {
+        "type": "task",
+        "id": "activity-s1",
+        "startStateId": "s1",
+        "endStateId": "s2",
+        "start": 0,
+        "end": 14,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "s2": {
+        "type": "task",
+        "id": "activity-s2",
+        "startStateId": "s2",
+        "endStateId": "end-s2",
+        "start": 14,
+        "end": 48,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c1": {
+        "type": "task",
+        "id": "activity-c1",
+        "startStateId": "c1",
+        "endStateId": "c2",
+        "start": 0,
+        "end": 18,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "c2": {
+        "type": "task",
+        "id": "activity-c2",
+        "startStateId": "c2",
+        "endStateId": "end-c2",
+        "start": 18,
+        "end": 25,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "c3": {
+        "type": "task",
+        "id": "activity-c3",
+        "startStateId": "c3",
+        "endStateId": "end-c3",
+        "start": 27,
+        "end": 33,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u1": {
+        "type": "task",
+        "id": "activity-u1",
+        "startStateId": "u1",
+        "endStateId": "end-u1",
+        "start": 0,
+        "end": 29,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u2": {
+        "type": "task",
+        "id": "activity-u2",
+        "startStateId": "u2",
+        "endStateId": "end-u2",
+        "start": 31,
+        "end": 38,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "u3": {
+        "type": "task",
+        "id": "activity-u3",
+        "startStateId": "u3",
+        "endStateId": "end-u3",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      },
+      "t1": {
+        "type": "task",
+        "id": "activity-t1",
+        "startStateId": "t1",
+        "endStateId": "t2",
+        "start": 0,
+        "end": 40,
+        "rule": "行動期間をTask化。終了点と次の開始点を共有。"
+      },
+      "t2": {
+        "type": "task",
+        "id": "activity-t2",
+        "startStateId": "t2",
+        "endStateId": "end-t2",
+        "start": 40,
+        "end": 46,
+        "rule": "行動期間をTask化。両端の時刻を保持。"
+      }
+    },
+    "transitionMap": {
+      "et1": {
+        "type": "task",
+        "id": "et1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "et2": {
+        "type": "task",
+        "id": "et2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "escape": {
+        "type": "task",
+        "id": "escape",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "disabled": {
+        "type": "task",
+        "id": "escape",
+        "junctionId": "j-escape-hit",
+        "toStateId": "e5",
+        "rule": "離脱阻止の成功枝へ統合。重複する直接遷移は描かない。"
+      },
+      "st1": {
+        "type": "state",
+        "id": "s2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct1": {
+        "type": "state",
+        "id": "c2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      },
+      "ct2": {
+        "type": "task",
+        "id": "ct2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut1": {
+        "type": "task",
+        "id": "ut1",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "ut2": {
+        "type": "task",
+        "id": "ut2",
+        "rule": "旧Transitionの終了・開始境界を同時刻のTaskで接続。"
+      },
+      "tt1": {
+        "type": "state",
+        "id": "t2",
+        "rule": "同時刻の接続を共有Stateへ統合。"
+      }
+    }
+  }
+}

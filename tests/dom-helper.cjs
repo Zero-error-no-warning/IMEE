@@ -58,6 +58,7 @@ async function openApp(saved) {
     "layout.js",
     "render.js",
     "sample.js",
+    "tutorial-sample.js",
     "app.js",
   ])
     w.eval(fs.readFileSync(path.join(root, "js", file), "utf8"));

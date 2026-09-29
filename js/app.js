@@ -1344,6 +1344,9 @@
       ["SVG出力", exportSVG],
       ["PNG出力", exportPNG],
       ["Technologyカタログ", catalog],
+      ["表現デモ（捜索・識別・通信）", () =>
+        confirmReplace("表現デモへ置き換え", () =>
+          loadJSON(JSON.stringify(createTutorialSample())))],
       [
         "基本サンプル",
         () =>

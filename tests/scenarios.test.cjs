@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const M = require('../js/model'), L = require('../js/layout'), R = require('../js/render');
-const sample = require('../js/sample');
+const sample = require('../js/tutorial-sample');
 const { openApp } = require('./dom-helper.cjs');
 const cases = [['coastal', sample], ['submarine', sample.grouped], ['research', sample.research]];
 
@@ -51,7 +51,7 @@ test('shipped scenarios are distinct, synchronized, time ordered and use planned
   const signatures = new Set();
   for(const [name,create] of cases) {
     const d=create(); M.validate(d);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(__dirname,'../examples',name+'.json'),'utf8')),d);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/tutorial',name+'.json'),'utf8')),d);
     signatures.add(d.tasks.map(t=>t.label).join('|'));
     for(const t of d.tasks) for(const j of t.junctions||[]) for(const o of j.outcomes)
       assert.equal(M.get(d,'state',o.toStateId).status,'planned');

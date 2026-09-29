@@ -11,7 +11,10 @@ for (const [name, image, d] of [
   fs.writeFileSync(path.join(root, 'examples', name + '.json'), JSON.stringify(d, null, 2) + '\n');
   fs.writeFileSync(path.join(root, 'docs', image + '.svg'), R.render(d, L.layout(d, 1200), { export: true }) + '\n');
 }
-const example = JSON.stringify(sample(), null, 2);
+const tutorial = require('../js/tutorial-sample');
+for (const [name, d] of [['coastal', tutorial()], ['submarine', tutorial.grouped()], ['research', tutorial.research()]])
+  fs.writeFileSync(path.join(root, 'examples/tutorial', name + '.json'), JSON.stringify(d, null, 2) + '\n');
+const example = JSON.stringify(tutorial(), null, 2);
 fs.writeFileSync(path.join(root, 'examples/llm-example.json'), example + '\n');
 const spec = path.join(root, 'docs/llm-json-generation.md');
 fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8').replace(/```json\n[\s\S]*?\n```/, '```json\n' + example + '\n```'));
