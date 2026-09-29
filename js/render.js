@@ -105,11 +105,12 @@
       const occupied = [...layout.occupied];
       for (const b of doc.bindings) {
         const tech = M.get(doc, "technology", b.technologyId);
-        let p;
+        if (v.mode === "gap" && tech.status === "existing") continue;
+        let p, tagPoints;
         if (b.targetType === "state") p = states.get(b.targetId);
         if (b.targetType === "task" || b.targetType === "causalLink") {
           const e = edges.find((e) => e.id === b.targetId);
-          if (e) p = { x: e.labelInfo.anchor.x, y: e.labelInfo.anchor.y - 25 };
+          if (e) { p = e.labelInfo.anchor; tagPoints = e.points; }
         }
         if (b.targetType === "actor") {
           const row = rows.find((r) => r.actor.id === b.targetId);
@@ -119,15 +120,17 @@
         const text =
           v.mode === "mission"
             ? tech.name
+            : v.mode === "gap" ? `${tech.name} · TRL ${tech.trl ?? "?"}`
             : `${tech.name} · ${tech.status} · TRL ${tech.trl ?? "?"}`;
         const box = L.label(
           text,
-          [
+          tagPoints || [
             { x: p.x, y: p.y - 25 },
             { x: p.x, y: p.y - 25 },
           ],
           occupied,
           180,
+          edges.flatMap(e => L.routeSegments(e.points)),
         );
         box.y = Math.max(34, Math.min(height - box.height - 6, box.y));
         box.x = Math.max(

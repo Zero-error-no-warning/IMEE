@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { openApp } = require("./dom-helper.cjs");
-const sample = require("../js/sample");
+const sample = require("./fixtures/mission.cjs");
 async function app(t, d = sample()) {
   const a = await openApp(d);
   t.after(() => {

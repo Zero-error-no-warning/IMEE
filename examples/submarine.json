@@ -1,141 +1,163 @@
 {
   "version": 2,
-  "title": "階層と共有ジャンクション",
+  "title": "海底調査 — 2機のUUVと母船による確認・回収",
+  "notes": "架空の検討例。A機が候補を探知し、B機が近接確認、母船が報告を照合して回収を指示する。水中調査班を折りたたむと母船との報告・指令が残る。確認不可の枝では再走査して、未確定であることを報告する。時刻・能力は説明用の仮定。",
   "time": {
     "unit": "minutes",
-    "duration": 60,
+    "duration": 100,
     "snap": 1
   },
   "actors": [
     {
-      "id": "group",
-      "name": "水中戦力",
+      "id": "fleet",
+      "name": "調査隊",
+      "parentId": null,
       "side": "friendly",
-      "isGroup": true,
-      "parentId": null
+      "isGroup": true
     },
     {
-      "id": "sensor",
-      "name": "ソナー",
-      "side": "friendly",
-      "parentId": "group"
+      "id": "mother",
+      "name": "母船",
+      "parentId": "fleet",
+      "side": "friendly"
     },
     {
-      "id": "control",
-      "name": "管制",
+      "id": "team",
+      "name": "水中調査班",
+      "parentId": "fleet",
       "side": "friendly",
-      "parentId": "group"
+      "isGroup": true
     },
     {
-      "id": "enemy",
-      "name": "敵妨害",
-      "side": "hostile",
-      "parentId": null
+      "id": "uuv-a",
+      "name": "A機・広域捜索",
+      "parentId": "team",
+      "side": "friendly"
     },
     {
-      "id": "radio",
-      "name": "通信",
-      "side": "friendly",
-      "parentId": "group"
+      "id": "uuv-b",
+      "name": "B機・近接確認",
+      "parentId": "team",
+      "side": "friendly"
     }
   ],
   "states": [
     {
-      "id": "s0",
-      "actorId": "sensor",
-      "name": "未探知",
-      "time": 2,
+      "id": "a0",
+      "actorId": "uuv-a",
+      "name": "捜索開始",
+      "time": 4,
       "status": "actual",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "s1",
-      "actorId": "sensor",
-      "name": "探知",
-      "time": 16,
-      "status": "actual",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "i0",
-      "actorId": "control",
-      "name": "未識別",
-      "time": 18,
-      "status": "actual",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "i1",
-      "actorId": "control",
-      "name": "識別済",
-      "time": 35,
-      "phase": "decision",
-      "status": "actual",
-      "activity": "active",
-      "notes": ""
-    },
-    {
-      "id": "i2",
-      "actorId": "control",
-      "name": "未識別",
-      "time": 35,
-      "status": "actual",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "e0",
-      "actorId": "enemy",
-      "name": "妨害準備",
+      "id": "a1",
+      "actorId": "uuv-a",
+      "name": "候補探知",
       "time": 24,
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "e1",
-      "actorId": "enemy",
-      "name": "妨害中",
-      "time": 45,
-      "status": "actual",
+      "id": "a2",
+      "actorId": "uuv-a",
+      "name": "回収点到着",
+      "time": 88,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r0",
-      "actorId": "radio",
-      "name": "通信可能",
-      "time": 38,
-      "status": "actual",
+      "id": "b0",
+      "actorId": "uuv-b",
+      "name": "座標受領",
+      "time": 27,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r1",
-      "actorId": "radio",
-      "name": "送信完了",
-      "time": 56,
-      "status": "actual",
+      "id": "b1",
+      "actorId": "uuv-b",
+      "name": "対象確認",
+      "time": 48,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "r2",
-      "actorId": "radio",
-      "name": "送信失敗",
-      "time": 56,
-      "status": "actual",
+      "id": "b2",
+      "actorId": "uuv-b",
+      "name": "確認不可",
+      "time": 48,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b3",
+      "actorId": "uuv-b",
+      "name": "再走査終了",
+      "time": 68,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b4",
+      "actorId": "uuv-b",
+      "name": "回収指示受領",
+      "time": 76,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "b5",
+      "actorId": "uuv-b",
+      "name": "回収点到着",
+      "time": 94,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "m0",
+      "actorId": "mother",
+      "name": "確認報告受領",
+      "time": 51,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "m1",
+      "actorId": "mother",
+      "name": "記録確定",
+      "time": 66,
+      "status": "planned",
+      "activity": "active",
+      "phase": "decision",
+      "notes": ""
+    },
+    {
+      "id": "m2",
+      "actorId": "mother",
+      "name": "再調査を計画",
+      "time": 80,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -143,137 +165,151 @@
   ],
   "tasks": [
     {
-      "id": "search",
-      "fromStateId": "s0",
-      "toStateId": "s1",
-      "label": "捜索",
+      "id": "survey",
+      "fromStateId": "a0",
+      "toStateId": "a1",
+      "label": "広域を走査",
       "kind": "detection",
-      "status": "actual",
-      "notes": ""
-    },
-    {
-      "id": "identify",
-      "fromStateId": "i0",
-      "label": "識別",
-      "junctions": [
-        {
-          "id": "j-identify",
-          "time": 29,
-          "outcomes": [
-            {
-              "toStateId": "i1",
-              "label": "OK"
-            },
-            {
-              "toStateId": "i2",
-              "label": "NG"
-            }
-          ]
-        }
-      ],
-      "status": "actual",
-      "notes": ""
-    },
-    {
-      "id": "jam",
-      "fromStateId": "e0",
-      "toStateId": "e1",
-      "label": "通信妨害",
-      "kind": "interference",
       "status": "planned",
       "notes": ""
     },
     {
-      "id": "transmit",
-      "fromStateId": "r0",
-      "label": "送信",
+      "id": "a-return",
+      "fromStateId": "a1",
+      "toStateId": "a2",
+      "label": "地形を記録し帰投",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "inspect",
+      "fromStateId": "b0",
+      "label": "接近・撮像",
+      "kind": "observation",
+      "status": "planned",
       "junctions": [
         {
-          "id": "j-transmit",
-          "time": 49,
+          "id": "j-inspect",
+          "time": 40,
           "outcomes": [
             {
-              "toStateId": "r1",
-              "label": "OK"
+              "toStateId": "b1",
+              "label": "確認"
             },
             {
-              "toStateId": "r2",
-              "label": "NG"
+              "toStateId": "b2",
+              "label": "不鮮明"
             }
           ]
         }
-      ],
-      "status": "actual",
+      ]
+    },
+    {
+      "id": "rescan",
+      "fromStateId": "b2",
+      "toStateId": "b3",
+      "label": "別角度で再走査",
+      "kind": "observation",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "b-return",
+      "fromStateId": "b4",
+      "toStateId": "b5",
+      "label": "回収点へ帰投",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "compile",
+      "fromStateId": "m0",
+      "toStateId": "m1",
+      "label": "画像と座標を照合",
+      "kind": "support",
+      "status": "planned",
       "notes": ""
     }
   ],
   "causalLinks": [
     {
-      "id": "report",
+      "id": "cue",
       "source": {
         "type": "state",
-        "id": "s1"
+        "id": "a1"
       },
       "target": {
         "type": "state",
-        "id": "i0"
+        "id": "b0"
       },
-      "label": "探知情報",
-      "polarity": "positive",
-      "kind": "information"
+      "label": "候補座標",
+      "kind": "information",
+      "polarity": "positive"
     },
     {
-      "id": "order",
+      "id": "confirm-report",
       "source": {
         "type": "state",
-        "id": "i1"
+        "id": "b1"
       },
       "target": {
         "type": "state",
-        "id": "r0"
+        "id": "m0"
       },
-      "label": "送信指令",
-      "polarity": "positive",
-      "kind": "command"
+      "label": "確認画像",
+      "kind": "information",
+      "polarity": "positive"
     },
     {
-      "id": "negative",
+      "id": "incomplete-report",
       "source": {
-        "type": "task",
-        "id": "jam",
-        "time": 42
+        "type": "state",
+        "id": "b3"
       },
       "target": {
-        "type": "task",
-        "id": "transmit",
-        "time": 49
+        "type": "state",
+        "id": "m2"
       },
-      "label": "通信を妨害",
-      "polarity": "negative",
-      "kind": "interference"
+      "label": "未確定を報告",
+      "kind": "information",
+      "polarity": "positive"
+    },
+    {
+      "id": "recall",
+      "source": {
+        "type": "state",
+        "id": "m1"
+      },
+      "target": {
+        "type": "state",
+        "id": "b4"
+      },
+      "label": "回収指示",
+      "kind": "command",
+      "polarity": "positive"
     }
   ],
   "technologies": [],
   "bindings": [],
   "views": {
     "main": {
-      "collapsedActors": [
-        "group"
-      ],
+      "collapsedActors": [],
       "actorOrder": [
-        "group",
-        "sensor",
-        "control",
-        "enemy",
-        "radio"
+        "fleet",
+        "mother",
+        "team",
+        "uuv-a",
+        "uuv-b"
       ],
       "zoom": 1,
       "visibleTimeRange": {
         "start": 0,
-        "end": 60
+        "end": 100
       },
       "filters": {
-        "technology": true,
+        "technology": false,
         "causalLink": true,
         "planned": true,
         "quiet": true

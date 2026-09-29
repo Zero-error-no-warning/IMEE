@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const M = require("../js/model.js"),
-  sample = require("../js/sample.js");
+  sample = require("./fixtures/mission.cjs");
 function invalid(change, pattern) {
   const d = sample();
   change(d);

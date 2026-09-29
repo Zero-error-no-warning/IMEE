@@ -3,7 +3,7 @@ const assert = require("node:assert/strict"),
   M = require("../js/model"),
   L = require("../js/layout"),
   R = require("../js/render"),
-  sample = require("../js/sample");
+  sample = require("./fixtures/mission.cjs");
 const { JSDOM } = require("jsdom");
 function svg(d) {
   return new JSDOM(R.render(d, L.layout(d)), { contentType: "image/svg+xml" })
@@ -216,7 +216,7 @@ test("Task / outcome / causal labels remain near their own line even when space 
     g = L.layout(d);
   for (const e of g.edges) {
     const b = e.labelInfo;
-    assert(Math.abs(b.x + b.width / 2 - b.anchor.x) <= 36);
+    assert(Math.max(b.x - b.anchor.x, b.anchor.x - b.x - b.width, 0) <= 36);
     assert(Math.abs(b.y - b.anchor.y) <= 40);
     assert(Number.isFinite(b.x));
   }

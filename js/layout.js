@@ -59,12 +59,17 @@
   }
   function createEdgeRouter(obstacles = [], bounds = {}) {
     const used = [];
-    const compact = (points) =>
-      points
-        .filter(
-          (p, n) => !n || p.x !== points[n - 1].x || p.y !== points[n - 1].y,
-        )
-        .map((p) => ({ ...p }));
+    const compact = (points) => {
+      const result = [];
+      for (const p of points) {
+        const b = result.at(-1), a = result.at(-2);
+        if (b && p.x === b.x && p.y === b.y) continue;
+        if (a && Math.abs((b.x-a.x)*(p.y-b.y)-(b.y-a.y)*(p.x-b.x)) < 1e-7 &&
+            (b.x-a.x)*(p.x-b.x)+(b.y-a.y)*(p.y-b.y) >= 0) result.pop();
+        result.push({ ...p });
+      }
+      return result;
+    };
     return (input, { axis = "vertical", timeAxis = false } = {}) => {
       const original = compact(input),
         start = original[0],
@@ -108,65 +113,35 @@
               obstaclesHere.reduce((n, b) => n + segmentInsideBox(s, b), 0),
             0,
           );
-          return overlap(parts) * 50 + penetration * 8 + length(parts) * 0.08;
+          // Short, low-bend paths win. Only node bodies and shared line segments
+          // are obstacles; text is placed later and cannot deform a route.
+          return overlap(parts) * 8 + penetration * 8 + length(parts) * 0.15 +
+            Math.max(0, parts.length - 1) * 12;
         };
         let best = score(original);
-        const offsets = [0, 8, -8, 16, -16, 24, -24, 32, -32, 48, -48, 64, -64];
-        const lowX = Math.min(bounds.left ?? -Infinity, start.x, end.x),
-          highX = Math.max(bounds.right ?? Infinity, start.x, end.x);
-        const lowY = Math.min(bounds.top ?? -Infinity, start.y, end.y),
-          highY = Math.max(bounds.bottom ?? Infinity, start.y, end.y);
-        for (const side of offsets)
-          for (const bend of [0, 8, -8, 16, -16, 24, -24, 32, -32]) {
-            let candidate;
-            if (axis === "horizontal") {
-              const direction = Math.sign(end.x - start.x) || 1;
-              const stub = Math.min(8, Math.abs(end.x - start.x) / 4);
-              const mid =
-                (start.x + end.x) / 2 + Math.max(-stub, Math.min(stub, bend));
-              candidate = [
-                start,
-                { x: start.x + direction * stub, y: start.y + side },
-                { x: mid, y: start.y + side },
-                { x: mid, y: end.y + side },
-                { x: end.x - direction * stub, y: end.y + side },
-                end,
-              ];
-            } else {
-              const direction = Math.sign(end.y - start.y) || 1;
-              const stub = Math.min(8, Math.abs(end.y - start.y) / 4);
-              const mid =
-                (start.y + end.y) / 2 +
-                Math.max(
-                  -Math.abs(end.y - start.y) / 4,
-                  Math.min(Math.abs(end.y - start.y) / 4, bend),
-                );
-              const limit = (end.x - start.x) / 3;
-              const sx = timeAxis ? Math.max(0, Math.min(limit, side)) : side;
-              const ex = timeAxis ? Math.min(0, Math.max(-limit, -side)) : side;
-              candidate = [
-                start,
-                { x: start.x + sx, y: start.y + direction * stub },
-                { x: start.x + sx, y: mid },
-                { x: end.x + ex, y: mid },
-                { x: end.x + ex, y: end.y - direction * stub },
-                end,
-              ];
-            }
-            candidate = compact(candidate);
-            if (
-              candidate.some(
-                (p) => p.x < lowX || p.x > highX || p.y < lowY || p.y > highY,
-              )
-            )
-              continue;
-            const value =
-              score(candidate) + (Math.abs(side) + Math.abs(bend)) * 0.05;
-            if (value < best - 0.01) {
-              best = value;
-              result = candidate;
-            }
-          }
+        const dx = end.x - start.x, dy = end.y - start.y;
+        const lengthValue = Math.hypot(dx, dy);
+        for (const offset of [8, -8, 16, -16, 24, -24]) {
+          // One parallel middle section, with short fan-out at either end.
+          const fraction = Math.min(0.2, 12 / Math.max(1, lengthValue));
+          let ox = -dy / Math.max(1, lengthValue) * offset;
+          let oy = dx / Math.max(1, lengthValue) * offset;
+          if (timeAxis) { ox = 0; oy = offset; }
+          const candidate = compact([
+            start,
+            { x: start.x + dx * fraction + ox, y: start.y + dy * fraction + oy },
+            { x: end.x - dx * fraction + ox, y: end.y - dy * fraction + oy },
+            end,
+          ]);
+          if (candidate.some(p =>
+            p.x < Math.min(bounds.left ?? -Infinity, start.x, end.x) ||
+            p.x > Math.max(bounds.right ?? Infinity, start.x, end.x) ||
+            p.y < Math.min(bounds.top ?? -Infinity, start.y, end.y) ||
+            p.y > Math.max(bounds.bottom ?? Infinity, start.y, end.y))) continue;
+          if (timeAxis && candidate.some((p, i) => i && p.x < candidate[i-1].x)) continue;
+          const value = score(candidate) + Math.abs(offset) * 0.1;
+          if (value < best - 0.01) { best = value; result = candidate; }
+        }
       }
       used.push(...routeSegments(result));
       return result;
@@ -271,7 +246,7 @@
     }
     return lines;
   }
-  function label(text, points, occupied, maxWidth = 150) {
+  function label(text, points, occupied, maxWidth = 150, lineSegments = []) {
     const a = points[0],
       b = points.at(-1);
     const anchor = pointOnRoute(points, (a.x + b.x) / 2, (a.y + b.y) / 2);
@@ -283,8 +258,12 @@
       h = 18;
     // Finite, local candidates only. Crowded labels may overlap rather than escape.
     const choices = [];
+    const offsets = [];
+    if (Math.abs(b.y - a.y) > Math.abs(b.x - a.x))
+      for (const dx of [w / 2 + 8, -w / 2 - 8]) offsets.push({ dx, dy: -h / 2 });
     for (const dy of [-22, 6, -40, 24])
-      for (const dx of [0, -18, 18, -36, 36]) {
+      for (const dx of [0, -18, 18, -36, 36]) offsets.push({ dx, dy });
+    for (const { dx, dy } of offsets) {
         const box = {
           x: anchor.x - w / 2 + dx,
           y: anchor.y + dy,
@@ -293,6 +272,7 @@
         };
         const score =
           occupied.reduce((s, o) => s + (overlaps(box, o) ? 1 : 0), 0) * 100 +
+          lineSegments.reduce((n, segment) => n + segmentInsideBox(segment, box), 0) * 12 +
           Math.abs(dx) +
           Math.abs(dy + 22);
         choices.push({ ...box, score });
@@ -305,9 +285,10 @@
       anchor,
       text: display,
       fullText: text,
-      leader:
-        Math.abs(box.y - anchor.y) > 28 ||
-        Math.abs(box.x + box.width / 2 - anchor.x) > 20,
+      leader: Math.hypot(
+        Math.max(box.x - anchor.x, 0, anchor.x - box.x - box.width),
+        Math.max(box.y - anchor.y, 0, anchor.y - box.y - box.height),
+      ) > 18,
     };
   }
   function viewport(duration, width, start = 0, end = duration) {
@@ -342,8 +323,9 @@
       tasks = new Map(),
       junctions = new Map(),
       edges = [],
-      occupied = [];
-    let y = 42;
+      occupied = [],
+      nodeBodies = [];
+    let y = 54;
     for (const { actor, depth } of M.hierarchy(doc, !!options.full)) {
       const ss = doc.states
           .filter((s) => s.actorId === actor.id && visible(s))
@@ -354,8 +336,14 @@
         const x = vp.x(s.time),
           lines = textLines(s.name, 112),
           labelWidth = Math.min(112, width(s.name)),
-          needed = Math.max(36, labelWidth + 12);
-        let lane = lanes.findIndex((end) => end < x - needed / 2);
+          needed = 30; // Node spacing is independent of text length.
+        // Keep a continuation on its predecessor's lane when it is available.
+        // Branch siblings at the same time still get distinct lanes.
+        const incoming = doc.tasks.find(t => t.toStateId === s.id) ||
+          doc.tasks.find(t => t.junctions?.some(j => j.outcomes.some(o => o.toStateId === s.id)));
+        const preferred = incoming && states.get(incoming.fromStateId)?.lane;
+        let lane = preferred !== undefined && lanes[preferred] < x - needed / 2
+          ? preferred : lanes.findIndex((end) => end < x - needed / 2);
         if (lane < 0) lane = lanes.length;
         lanes[lane] = x + needed / 2;
         const cy = top + 24 + lane * v.laneHeight;
@@ -368,6 +356,7 @@
             : x;
         const p = { ...s, x, labelX, y: cy, r: 7, lane, lines };
         states.set(s.id, p);
+        nodeBodies.push({ x: x - 9, y: cy - 9, width: 18, height: 18 });
         occupied.push(
           { x: x - 9, y: cy - 9, width: 18, height: 18 },
           {
@@ -387,7 +376,7 @@
     }
     const height = y + 24,
       router = createEdgeRouter(
-        occupied.map((box) => ({ ...box })),
+        nodeBodies,
         { left: vp.left, right: vp.right, top: 36, bottom: height - 12 },
       );
     function facing(a, b) {
@@ -399,23 +388,7 @@
     }
     function route(a, b, timeAxis = false) {
       const [s, e] = facing(a, b);
-      let pts;
-      if (Math.abs(s.y - e.y) < 0.1) pts = [s, e];
-      else if (timeAxis)
-        pts = [
-          s,
-          { x: (s.x + e.x) / 2, y: s.y },
-          { x: (s.x + e.x) / 2, y: e.y },
-          e,
-        ];
-      else
-        pts = [
-          s,
-          { x: s.x, y: (s.y + e.y) / 2 },
-          { x: e.x, y: (s.y + e.y) / 2 },
-          e,
-        ];
-      return router(pts, {
+      return router([s, e], {
         axis: Math.abs(a.y - b.y) < 1 ? "horizontal" : "vertical",
         timeAxis,
       });
@@ -536,17 +509,33 @@
             proposed: c.proposed,
           });
       }
-    for (const edge of edges)
-      for (const { a, b } of routeSegments(edge.points))
-        occupied.push({
-          x: Math.min(a.x, b.x) - 2,
-          y: Math.min(a.y, b.y) - 2,
-          width: Math.abs(b.x - a.x) + 4,
-          height: Math.abs(b.y - a.y) + 4,
-        });
+    const lineSegments = edges.flatMap(e => routeSegments(e.points));
+    // Reflow State text after routing. Text collisions never feed back into geometry.
+    occupied.length = 0;
+    occupied.push(...nodeBodies);
+    for (const j of junctions.values()) occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
+    for (const s of states.values()) {
+      const peers = [...states.values()].filter(p => p.actorId === s.actorId && p.lane === s.lane && p.id !== s.id);
+      const gap = Math.min(124, ...peers.map(p => Math.abs(p.x - s.x)));
+      const maxWidth = Math.max(28, Math.min(112, gap - 10));
+      s.lines = textLines(s.name, maxWidth);
+      const labelWidth = Math.max(...s.lines.map(line => width(line)));
+      const choices = [0, -18, 18, -30, 30].map(dx => {
+        const cx = s.x >= vp.left && s.x <= vp.right
+          ? Math.max(vp.left + labelWidth / 2 - 10, Math.min(vp.width - labelWidth / 2 - 8, s.x + dx))
+          : s.x + dx;
+        const box = { x: cx - labelWidth / 2, y: s.y + 11, width: labelWidth, height: s.lines.length * 13 };
+        const score = occupied.reduce((n, o) => n + (overlaps(box, o) ? 100 : 0), 0) +
+          lineSegments.reduce((n, line) => n + segmentInsideBox(line, box) * 12, 0) + Math.abs(dx);
+        return { cx, box, score };
+      });
+      choices.sort((a,b) => a.score - b.score);
+      s.labelX = choices[0].cx;
+      occupied.push(choices[0].box);
+    }
     for (const e of edges) {
       const tag =
-        e.proposed || e.status === "proposed"
+        e.part === "outcome" ? "" : e.proposed || e.status === "proposed"
           ? "案"
           : e.status === "planned"
             ? "予定"
@@ -555,6 +544,8 @@
         (tag ? tag + " · " : "") + e.label,
         e.points,
         occupied,
+        150,
+        lineSegments,
       );
       e.path =
         e.polarity === "negative"

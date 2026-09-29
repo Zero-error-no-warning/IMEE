@@ -41,7 +41,7 @@ test("CLI validates file and stdin using editor importer", () => {
       input,
     });
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /Task 4 \/ CausalLink 3/);
+    assert.match(r.stdout, /Task 7 \/ CausalLink 3/);
   }
 });
 test("CLI rejects legacy / malformed input and invalid usage with meaningful exit status", () => {

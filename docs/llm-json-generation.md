@@ -130,43 +130,44 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
 ```json
 {
   "version": 2,
-  "title": "捜索・識別・通信 — Taskと因果",
+  "title": "沿岸監視 — 不明接触の識別と妨害下での通報",
+  "notes": "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。16分までを実績、それ以降を予定として示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
   "time": {
     "unit": "minutes",
-    "duration": 60,
+    "duration": 90,
     "snap": 1
   },
   "actors": [
     {
       "id": "group",
-      "name": "水中戦力",
+      "name": "沿岸監視隊",
+      "parentId": null,
       "side": "friendly",
-      "isGroup": true,
-      "parentId": null
+      "isGroup": true
     },
     {
       "id": "sensor",
-      "name": "ソナー",
-      "side": "friendly",
-      "parentId": "group"
+      "name": "監視UUV",
+      "parentId": "group",
+      "side": "friendly"
     },
     {
       "id": "control",
-      "name": "管制",
-      "side": "friendly",
-      "parentId": "group"
-    },
-    {
-      "id": "enemy",
-      "name": "敵妨害",
-      "side": "hostile",
-      "parentId": null
+      "name": "識別担当",
+      "parentId": "group",
+      "side": "friendly"
     },
     {
       "id": "radio",
-      "name": "通信",
-      "side": "friendly",
-      "parentId": "group"
+      "name": "通信担当",
+      "parentId": "group",
+      "side": "friendly"
+    },
+    {
+      "id": "enemy",
+      "name": "妨害装置",
+      "parentId": null,
+      "side": "hostile"
     }
   ],
   "states": [
@@ -183,7 +184,7 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "s1",
       "actorId": "sensor",
-      "name": "探知",
+      "name": "接触探知",
       "time": 16,
       "status": "actual",
       "activity": "active",
@@ -193,9 +194,9 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "i0",
       "actorId": "control",
-      "name": "未識別",
+      "name": "識別待ち",
       "time": 18,
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -205,37 +206,27 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
       "actorId": "control",
       "name": "識別済",
       "time": 35,
-      "phase": "decision",
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
+      "phase": "decision",
       "notes": ""
     },
     {
       "id": "i2",
       "actorId": "control",
-      "name": "未識別",
+      "name": "識別保留",
       "time": 35,
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
     },
     {
-      "id": "e0",
-      "actorId": "enemy",
-      "name": "妨害準備",
-      "time": 24,
-      "status": "actual",
-      "activity": "active",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "e1",
-      "actorId": "enemy",
-      "name": "妨害中",
-      "time": 45,
-      "status": "actual",
+      "id": "i3",
+      "actorId": "control",
+      "name": "追加情報取得",
+      "time": 58,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -243,9 +234,9 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "r0",
       "actorId": "radio",
-      "name": "通信可能",
+      "name": "通報準備済",
       "time": 38,
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -253,9 +244,9 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "r1",
       "actorId": "radio",
-      "name": "送信完了",
+      "name": "通報完了",
       "time": 56,
-      "status": "actual",
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -263,9 +254,49 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "r2",
       "actorId": "radio",
-      "name": "送信失敗",
+      "name": "未達確認",
       "time": 56,
-      "status": "actual",
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "r3",
+      "actorId": "radio",
+      "name": "代替回線確立",
+      "time": 70,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "r4",
+      "actorId": "radio",
+      "name": "再送完了",
+      "time": 84,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "e0",
+      "actorId": "enemy",
+      "name": "妨害準備済",
+      "time": 38,
+      "status": "planned",
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "e1",
+      "actorId": "enemy",
+      "name": "妨害終了",
+      "time": 68,
+      "status": "planned",
       "activity": "active",
       "phase": "other",
       "notes": ""
@@ -276,7 +307,7 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
       "id": "search",
       "fromStateId": "s0",
       "toStateId": "s1",
-      "label": "捜索",
+      "label": "海域を捜索",
       "kind": "detection",
       "status": "actual",
       "notes": ""
@@ -284,7 +315,9 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
     {
       "id": "identify",
       "fromStateId": "i0",
-      "label": "識別",
+      "label": "特徴を照合",
+      "kind": "support",
+      "status": "planned",
       "junctions": [
         {
           "id": "j-identify",
@@ -292,31 +325,31 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
           "outcomes": [
             {
               "toStateId": "i1",
-              "label": "OK"
+              "label": "一致"
             },
             {
               "toStateId": "i2",
-              "label": "NG"
+              "label": "不一致"
             }
           ]
         }
-      ],
-      "status": "actual",
-      "notes": ""
+      ]
     },
     {
-      "id": "jam",
-      "fromStateId": "e0",
-      "toStateId": "e1",
-      "label": "通信妨害",
-      "kind": "interference",
+      "id": "reobserve",
+      "fromStateId": "i2",
+      "toStateId": "i3",
+      "label": "追尾・再観測",
+      "kind": "observation",
       "status": "planned",
       "notes": ""
     },
     {
       "id": "transmit",
       "fromStateId": "r0",
-      "label": "送信",
+      "label": "識別結果を送信",
+      "kind": "support",
+      "status": "planned",
       "junctions": [
         {
           "id": "j-transmit",
@@ -324,16 +357,41 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
           "outcomes": [
             {
               "toStateId": "r1",
-              "label": "OK"
+              "label": "ACK受信"
             },
             {
               "toStateId": "r2",
-              "label": "NG"
+              "label": "応答なし"
             }
           ]
         }
-      ],
-      "status": "actual",
+      ]
+    },
+    {
+      "id": "switch",
+      "fromStateId": "r2",
+      "toStateId": "r3",
+      "label": "通信方式を切替",
+      "kind": "support",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "retry",
+      "fromStateId": "r3",
+      "toStateId": "r4",
+      "label": "再送・ACK確認",
+      "kind": "information",
+      "status": "planned",
+      "notes": ""
+    },
+    {
+      "id": "jam",
+      "fromStateId": "e0",
+      "toStateId": "e1",
+      "label": "通信帯域を妨害",
+      "kind": "interference",
+      "status": "planned",
       "notes": ""
     }
   ],
@@ -348,9 +406,9 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
         "type": "state",
         "id": "i0"
       },
-      "label": "探知情報",
-      "polarity": "positive",
-      "kind": "information"
+      "label": "接触情報",
+      "kind": "information",
+      "polarity": "positive"
     },
     {
       "id": "order",
@@ -362,25 +420,25 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
         "type": "state",
         "id": "r0"
       },
-      "label": "送信指令",
-      "polarity": "positive",
-      "kind": "command"
+      "label": "通報指示",
+      "kind": "command",
+      "polarity": "positive"
     },
     {
       "id": "negative",
       "source": {
         "type": "task",
         "id": "jam",
-        "time": 42
+        "time": 49
       },
       "target": {
         "type": "task",
         "id": "transmit",
         "time": 49
       },
-      "label": "通信を妨害",
-      "polarity": "negative",
-      "kind": "interference"
+      "label": "受信を阻害",
+      "kind": "interference",
+      "polarity": "negative"
     }
   ],
   "technologies": [],
@@ -388,14 +446,20 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
   "views": {
     "main": {
       "collapsedActors": [],
-      "actorOrder": ["group", "sensor", "control", "enemy", "radio"],
+      "actorOrder": [
+        "group",
+        "sensor",
+        "control",
+        "radio",
+        "enemy"
+      ],
       "zoom": 1,
       "visibleTimeRange": {
         "start": 0,
-        "end": 60
+        "end": 90
       },
       "filters": {
-        "technology": true,
+        "technology": false,
         "causalLink": true,
         "planned": true,
         "quiet": true
