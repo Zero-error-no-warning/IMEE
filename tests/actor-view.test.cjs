@@ -32,6 +32,28 @@ test('Actor color edit supports save, undo, redo and recursive copy',async t=>{
 test('invalid color data is rejected before reaching SVG attributes',()=>{
   const d=sample();for(const bad of ['red','url(javascript:bad)','" onload="bad','#12345']){d.actors[0].color=bad;assert.throws(()=>M.validate(d),/色/);}
 });
+test('Actor color control shows the saved color and previews input without changing data on cancel',async t=>{
+  const d=sample();d.actors.find(x=>x.id==='sensor').color='#1286cd';
+  const a=await openApp(d);t.after(()=>a.close());
+  const shown=(color)=>{
+    assert.equal(a.$('[name="color"]').value,color);
+    assert.equal(a.$('.color-value').textContent,color.toUpperCase());
+    const rgb=color.slice(1).match(/../g).map(n=>parseInt(n,16));
+    assert.equal(a.$('.color-swatch').style.backgroundColor,`rgb(${rgb.join(', ')})`);
+    assert.equal(a.$('[name="color"]').getAttribute('aria-label'),'Actorの色');
+  };
+  a.event(a.$('.actor[data-id="sensor"]'),'dblclick');shown('#1286cd');
+  a.fill('color','#ed6723');a.$('[name="color"]').dispatchEvent(new a.w.Event('input'));shown('#ed6723');
+  a.fill('color','#43a871');a.$('[name="color"]').dispatchEvent(new a.w.Event('change'));shown('#43a871');
+  assert.equal(a.savedDoc().actors.find(x=>x.id==='sensor').color,'#1286cd');
+  a.$('#dialog-cancel').click();
+  a.event(a.$('.actor[data-id="enemy"]'),'dblclick');shown(a.savedDoc().actors.find(x=>x.id==='enemy').color);
+  a.$('#dialog-cancel').click();
+  a.event(a.$('.actor[data-id="sensor"]'),'dblclick');shown('#1286cd');
+  a.fill('color','#43a871');a.$('[name="color"]').dispatchEvent(new a.w.Event('input'));a.submit();
+  a.event(a.$('.actor[data-id="sensor"]'),'dblclick');shown('#43a871');
+  assert.deepEqual(a.errors,[]);
+});
 test('positive and negative arrowheads follow the routed centerline in every direction and after a bend',()=>{
   for(const polarity of ['positive','negative']) for(const points of [
     [{x:300,y:100},{x:500,y:100}], [{x:500,y:100},{x:300,y:100}],

@@ -261,6 +261,8 @@
       panel.append(button("Technologyカタログ", catalog));
   }
   function field(name, label, value = "", type = "text") {
+    if (type === "color")
+      return `<label class="field"><span>${esc(label)}</span><span class="color-control"><span class="color-swatch" aria-hidden="true"></span><span class="color-value" aria-hidden="true"></span><input name="${name}" type="color" value="${esc(value)}" aria-label="${esc(label)}"></span></label>`;
     return `<label class="field"><span>${esc(label)}</span><input name="${name}" type="${type}" value="${esc(value)}" ${type === "number" ? 'step="any"' : ""}></label>`;
   }
   function choices(name, label, values, value) {
@@ -276,6 +278,16 @@
   function dialog(title, html, apply) {
     $("#dialog-title").textContent = title;
     $("#dialog-fields").innerHTML = html;
+    document.querySelectorAll("#dialog-fields .color-control").forEach(control => {
+      const input = control.querySelector('input[type="color"]');
+      const sync = () => {
+        control.querySelector('.color-swatch').style.backgroundColor = input.value;
+        control.querySelector('.color-value').textContent = input.value.toUpperCase();
+      };
+      input.addEventListener("input", sync);
+      input.addEventListener("change", sync);
+      sync();
+    });
     $("#dialog-error").textContent = "";
     $("#editor-form").onsubmit = (e) => {
       e.preventDefault();
