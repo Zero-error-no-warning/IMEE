@@ -315,6 +315,38 @@
       ) > 18,
     };
   }
+  function taskLabel(text, points, occupied, lineSegments) {
+    const segments = routeSegments(points),
+      a = points[0], b = points.at(-1),
+      middle = pointOnRoute(points, (a.x+b.x)/2, (a.y+b.y)/2),
+      otherLines = lineSegments.filter(line => !segments.some(s => s.a === line.a && s.b === line.b));
+    let chars = Array.from(text);
+    const fullLength = chars.length;
+    while (width(chars.join("")) > 150) chars.pop();
+    // Slide the caption along the existing route; never reroute the Task around text.
+    while (true) {
+      const display = chars.join("") + (chars.length < fullLength ? "…" : ""),
+        w = width(display)+10, h = 18, choices = [];
+      for (const {a,b} of segments) for (const t of [0.5,0.4,0.6,0.3,0.7,0.2,0.8,0.1,0.9]) {
+        const anchor = {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t},
+          box = {x:anchor.x-w/2,y:anchor.y-h/2,width:w,height:h},
+          padded = {x:box.x-2,y:box.y-2,width:w+4,height:h+4};
+        if (occupied.some(o => overlaps(padded,o))) continue;
+        const score = otherLines.reduce((n,line) => n+segmentInsideBox(line,padded),0)*12 +
+          Math.hypot(anchor.x-middle.x,anchor.y-middle.y);
+        choices.push({...box,anchor,score,text:display,fullText:text,leader:false});
+      }
+      if (choices.length) {
+        choices.sort((a,b)=>a.score-b.score);
+        occupied.push(choices[0]);
+        return choices[0];
+      }
+      if (!chars.length) break;
+      chars.pop();
+    }
+    // Very short / crowded segments retain their complete label in the edge Tooltip.
+    return null;
+  }
   function technologyLeader(anchor, box, obstacles, lines) {
     const padded = obstacles.filter(b => b !== box).map(b =>
       ({x:b.x-3,y:b.y-3,width:b.width+6,height:b.height+6}));
@@ -668,7 +700,8 @@
       occupied.push(choices[0].box);
     }
     for (const e of edges) {
-      e.labelInfo = e.hideLabel ? null : label(
+      e.labelInfo = e.hideLabel ? null : e.type === "task"
+        ? taskLabel(e.label, e.points, occupied, lineSegments) : label(
         e.label,
         e.points,
         occupied,

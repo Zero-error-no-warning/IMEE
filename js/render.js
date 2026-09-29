@@ -104,12 +104,17 @@
       svg += "</g>";
     }
     for (const e of edges) {
-      const b = e.labelInfo;
+      const b = e.labelInfo,
+        color = M.actorColor(doc,M.get(doc,"actor",e.actorId)),
+        isTask = e.type === "task";
       if (!b) continue;
-      svg += `<g class="edge-label"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(b.fullText)}</title>`;
+      svg += `<g class="edge-label ${isTask ? "task-label" : "causal-label"}"${data(e.type, e.id)}${emphasis(e.id)}><title>${esc(b.fullText)}</title>`;
       if (b.leader)
         svg += `<path class="label-leader" d="M${b.anchor.x},${b.anchor.y} L${b.x + b.width / 2},${b.y + b.height / 2}" stroke="#9aa8ad" stroke-width="0.7" fill="none"/>`;
-      svg += `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="white" fill-opacity=".94"/><text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
+      svg += `<rect class="${isTask ? "label-frame" : "label-background"}" x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="${isTask ? 2 : 3}" fill="white" fill-opacity="${isTask ? 1 : .94}"${isTask ? ` stroke="${color}" stroke-width="1.2"` : ""}/>`;
+      if (!isTask)
+        svg += `<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+      svg += `<text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
     }
     for (const tag of layout.technologyTags) {
       const {tech,box} = tag;
