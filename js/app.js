@@ -166,7 +166,7 @@
     if (!x) {
       panel.insertAdjacentHTML(
         "beforeend",
-        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。Task・分岐は直線、正の因果は矩形波、負の因果は滑らかな波線で接続します。</p>`,
+        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。CDF有効Taskは実線、固定所要時間（FIX）のTask・分岐後の線は二重線です。正の因果は矩形波、負の因果は滑らかな波線で接続します。</p>`,
       );
       if (selection.length) {
         panel.append(
@@ -186,7 +186,7 @@
       facts = `時刻 T+${x.time} / ${esc(M.get(doc(), "actor", x.actorId).name)}`;
     if (s.type === "task") {
       const w = M.taskWindow(doc(), x);
-      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
+      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>${x.simulation?.enabled ? "CDF：実線・達成までの所要時間と未達を抽選" : "FIX：二重線・所要時間固定（開始時刻は依存条件で変動）"}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
     }
     if (s.type === "causalLink") {
       facts = `${x.polarity === "negative" ? "負の因果（滑らかな波線）" : "正の因果（矩形波）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;

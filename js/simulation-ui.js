@@ -22,7 +22,7 @@
   }
   function performanceFields(d,t) {
     return `<details class="simulation-performance"><summary>Simulation / Performance${t.simulation?.enabled?" · CDF有効":""}</summary>
-      <p class="muted">CDFを有効にするとTaskの時間を抽選します。無効時は図上の所要時間を使います。時間単位：${unit(d)}。Taskは1回実行し、未達なら後続は実行できません。</p>
+      <p class="muted">CDFはTask開始から「${esc(t.toStateId?M.get(d,"state",t.toStateId).name:"分岐点")}」の達成までの時間と未達を表し、実線で表示します。無効時は図上の固定所要時間（FIX）を使い、二重線で表示します。時間単位：${unit(d)}。Taskは1回実行します。</p>
       <label class="simulation-check"><input type="checkbox" name="performanceEnabled" ${t.simulation?.enabled?"checked":""}>CDFを有効にする</label>
       <fieldset id="performance-cdf-fields"><label class="field"><span>固定の性能劣化度 w（0〜1）</span>${input("performanceW",t.simulation?.w??0,"性能劣化度",0,1)}</label>
       <p class="muted">時間方向・曲線間は線形補間します。最終点以降は一定で、1 − 最終確率が未達確率です。</p>

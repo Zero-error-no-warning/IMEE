@@ -217,6 +217,7 @@ main {
 }
 .canvas-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -245,6 +246,8 @@ main {
   color: var(--muted);
 }
 .legend {
+  flex-wrap: wrap;
+  justify-content: flex-end;
   font-size: 10px;
   color: var(--muted);
 }
@@ -1123,4 +1126,12 @@ main {
 #inspector {
   top: 6px;
   right: 8px;
+}
+
+#timeline .connect-target.edge .line-fixed,
+#timeline .connect-hover.edge .line-fixed {
+  stroke-width: 6.6;
+}
+#timeline .connect-hover.edge .line-arrow {
+  stroke: #ee9b18;
 }

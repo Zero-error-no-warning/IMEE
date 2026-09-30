@@ -68,7 +68,7 @@ TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ
 
 outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
 
-通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。
+通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。Task本体はsimulation.enabled=trueならCDFの実線、未設定/無効なら固定所要時間（FIX）の二重線です。分岐後の結果線は固定遅延なので二重線です。線種は描画時に導出し、別のデータ項目には保存しません。
 
 UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
 
@@ -125,7 +125,7 @@ views: { main: {
 
 modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。技術表示時は必要に応じて間隔を広げます。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
+折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。singleの集約Task線はすべて固定なら二重線、CDFを含む場合は実線です。CDF/FIX混在時はTooltipで混在と展開を案内します。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
 ## コピー・削除・履歴
 

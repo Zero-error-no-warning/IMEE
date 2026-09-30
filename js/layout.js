@@ -507,6 +507,7 @@
         label: t.label,
         actorId: from.displayActorId,
         task: t,
+        performance: t.simulation?.enabled ? "cdf" : "fixed",
       };
       edges.push(e);
       tasks.set(t.id, { task: t, points, from, end, window: w, edge: e });
@@ -535,6 +536,7 @@
                 part: "outcome",
                 junctionId: j.id,
                 outcomeIndex: i,
+                performance: "fixed",
                 points: to.collapseMode === "single" ? [{x:p.x,y:p.y},{x:to.x,y:to.y}] : route(p,to,true),
                 label: o.label,
                 actorId: states.get(t.fromStateId).displayActorId,
@@ -563,13 +565,14 @@
     for (const row of rows.filter(r => r.collapseMode === "single")) {
       const sourceEdges = edges.filter(e => e.type === "task" && e.actorId === row.actor.id);
       const intervals = sourceEdges.map(e => ({start:e.points[0].x,end:e.points.at(-1).x,
-        labels:[e.label],members:[e.id]})).sort((a,b) => a.start-b.start || a.end-b.end);
+        labels:[e.label],members:[e.id],performances:[e.performance]})).sort((a,b) => a.start-b.start || a.end-b.end);
       const merged=[];
       for (const interval of intervals) {
         const last=merged.at(-1);
         if (last && interval.start<=last.end) {
           last.end=Math.max(last.end,interval.end);
           last.labels.push(...interval.labels); last.members.push(...interval.members);
+          last.performances.push(...interval.performances);
         } else merged.push(interval);
       }
       for (let i=edges.length-1;i>=0;i--)
@@ -577,6 +580,7 @@
       for (const [i,interval] of merged.entries()) edges.push({
         id:`summary-${row.actor.id}-${i}`,type:"task",part:"task",actorId:row.actor.id,
         summaryActorId:row.actor.id,memberIds:[...new Set(interval.members)],
+        performance: new Set(interval.performances).size === 1 ? interval.performances[0] : "mixed",
         points:[{x:interval.start,y:row.center},{x:interval.end,y:row.center}],
         label:[...new Set(interval.labels)].filter(Boolean).join(" / "),hideLabel:true,
       });
