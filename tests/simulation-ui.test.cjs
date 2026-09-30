@@ -119,7 +119,7 @@ test("run can be cancelled; unsupported branches report an error; demo preserves
   assert(a.$("#simulation-export").disabled);
   a.click("#simulation-demo");a.submit();
   await wait(a,()=>a.$("#simulation-dialog").open);
-  assert.equal(a.savedDoc().title,"Simulation — 検出と並列準備");
+  assert.equal(a.savedDoc().title,"Simulation — 弾道ミサイルの二段階迎撃");
   a.click("#simulation-close");a.w.IMEE.undo();
   assert.equal(a.savedDoc().title,d.title);
   const branched=fixture();branched.tasks[0].junctions=[{id:"j",time:5,outcomes:[{label:"NG",toStateId:"s1"}]}];

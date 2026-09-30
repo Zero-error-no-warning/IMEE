@@ -154,7 +154,7 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 
 Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定入力・省略時0）、`performanceModel`（type: cdf / curves）、`waitForStateIds`（接続元に加えたAND依存）を保存します。CDF有効時のモデルは必須で、時間・累積確率の単調性、wの範囲、最終確率+未達確率=1を本体のvalidate/parseで検証します。CDF無効Taskも実行し、図上の固定所要時間を使います。
 
-文書トップレベルの任意 `simulation` には `successStateIds`（AND）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
+文書トップレベルの任意 `simulation` には `successStateIds` と `successMode`（all: AND / any: OR、省略時all）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
 
 実行依存DAGの検証はシミュレーション実行前に追加で行います。junctionと依存循環は未対応として拒否。作用線から依存条件を自動導出しません。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
 
