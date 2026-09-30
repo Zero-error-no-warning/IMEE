@@ -66,16 +66,93 @@
     P.validateTask(sim,t.label);
     return sim;
   }
-  function chart(points,label,timeUnit,deadline) {
-    const max=Math.max(1,...points.map(p=>p.t),deadline??0), x=t=>50+t/max*520, y=p=>190-p*155;
+  function chart(points,label,timeUnit,deadline,band) {
+    const max=Math.max(1,points.at(-1).t,deadline??0,band?.maxTime??0), x=t=>50+t/max*520, y=p=>190-p*155;
     if(points.at(-1).t<max) points=[...points,{t:max,p:points.at(-1).p}];
     const path=points.map((p,i)=>`${i?"L":"M"}${x(p.t)},${y(p.p)}`).join(" ");
+    const bound=line=>line.map((p,i)=>`${i?"L":"M"}${x(p.t)},${y(p.p)}`).join(" ");
+    const area=band ? bound(band.upper)+" "+[...band.lower].reverse().map(p=>`L${x(p.t)},${y(p.p)}`).join(" ")+" Z" : "";
     return `<svg class="simulation-chart" viewBox="0 0 610 235" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title>
       ${[0,.25,.5,.75,1].map(p=>`<path d="M50 ${y(p)} H570" stroke="#dce5e7"/><text x="43" y="${y(p)+4}" text-anchor="end">${p*100}%</text>`).join("")}
-      <path d="M50 35 V190 H570" fill="none" stroke="#73858b"/><path d="${path}" fill="none" stroke="#087f80" stroke-width="2.5"/>
+      ${band?`<path class="cdf-band" data-min-w="${band.minW}" data-max-w="${band.maxW}" d="${area}" fill="#cce7e4" fill-opacity=".6"/>
+      <path class="cdf-bound cdf-upper" d="${bound(band.upper)}" fill="none" stroke="#79aaa5" stroke-width="1"/>
+      <path class="cdf-bound cdf-lower" d="${bound(band.lower)}" fill="none" stroke="#79aaa5" stroke-width="1"/>`:""}
+      <path d="M50 35 V190 H570" fill="none" stroke="#73858b"/><path class="${band?"cdf-current":"cdf-line"}" d="${path}" fill="none" stroke="#087f80" stroke-width="2.5"/>
       ${deadline==null?"":`<path d="M${x(deadline)} 35 V190" stroke="#c24e50" stroke-dasharray="5 4"/><text x="${x(deadline)}" y="25" text-anchor="middle">期限 ${fmt(deadline)}</text>`}
       ${[0,.25,.5,.75,1].map(f=>`<text x="${x(max*f)}" y="209" text-anchor="middle">${fmt(max*f)}</text>`).join("")}
       <text x="310" y="231" text-anchor="middle">時間 (${esc(timeUnit)})</text></svg>`;
+  }
+  function performanceChart(model,w,timeUnit,inherit=false) {
+    const band=P.envelope(model),range=band.minW===band.maxW ? `w=${fmt(band.minW)}のみ` : `w=${fmt(band.minW)}〜${fmt(band.maxW)}`;
+    return `<div class="cdf-chart-legend"><span><i class="cdf-band-swatch"></i>${range}${band.minW===band.maxW?"（幅は未定義）":"の変化幅"}</span><span><i class="cdf-line-swatch"></i>表示w=${fmt(w)}</span></div>
+      ${chart(P.distribution(model,w),`CDF · ${range} · 表示w=${w}`,timeUnit,null,band)}
+      <p class="cdf-chart-note">${band.minW===band.maxW?"幅を表示するには別のwの曲線を追加します。":"帯はwによるCDFの上下限です。"}${inherit?" 表示wは基準値です。実行時は上流のwを引き継ぎます。":""}</p>`;
+  }
+  function hoverPreview({surface,getDocument,canShow=()=>true}) {
+    const popup=document.createElement("div");popup.id="cdf-hover";popup.className="cdf-popover";
+    popup.hidden=true;popup.setAttribute("role","tooltip");document.body.appendChild(popup);
+    let current=null,timer=null,focusTimer=null,point=null,titles=[],describedBy=null;
+    const eligible=target=>target?.closest?.(".edge.task,.edge.causal,.task-label,.causal-label");
+    function hide() {
+      clearTimeout(timer);timer=null;popup.hidden=true;
+      clearTimeout(focusTimer);focusTimer=null;
+      for(const [node,text] of titles)node.textContent=text;
+      if(current) {if(describedBy===null)current.removeAttribute("aria-describedby");else current.setAttribute("aria-describedby",describedBy);}
+      current=null;point=null;titles=[];describedBy=null;
+    }
+    function position() {
+      if(!point || popup.hidden)return;
+      const rect=popup.getBoundingClientRect(),width=rect.width || Math.min(360,window.innerWidth-24),height=rect.height || 280;
+      let left=point.x+18,top=point.y+16;
+      if(left+width>window.innerWidth-12)left=point.x-width-18;
+      if(top+height>window.innerHeight-12)top=point.y-height-16;
+      popup.style.left=Math.max(12,Math.min(left,window.innerWidth-width-12))+"px";
+      popup.style.top=Math.max(12,Math.min(top,window.innerHeight-height-12))+"px";
+    }
+    function show() {
+      if(!current?.isConnected || !canShow()) {hide();return;}
+      const d=getDocument(),type=current.dataset.type,id=current.dataset.id,item=M.get(d,type,id);
+      const sim=type==="task" ? item?.simulation : type==="causalLink" && item?.simulation?.enabled ? item.simulation.propagation : null;
+      if(!sim?.enabled || !sim.performanceModel) {hide();return;}
+      const inherit=type==="causalLink" ? sim.w===undefined : !!item.simulation.wInput?.stateIds?.length || d.causalLinks.some(l=>l.simulation?.enabled && l.simulation.type==="w" && l.target.id===id);
+      try {
+        P.validateTask(sim);
+        popup.innerHTML=`<strong class="cdf-popover-title">${esc(item.label)}</strong><span class="cdf-popover-context">${type==="task"?"Task開始から達成まで":"作用の発生から到着まで"}のCDF</span>${performanceChart(sim.performanceModel,sim.w??0,unit(d),inherit)}`;
+        popup.dataset.type=type;popup.dataset.id=id;popup.hidden=false;position();
+      } catch(e) {hide();}
+    }
+    function enter(e,focus=false) {
+      const el=eligible(e.target);
+      if(e.pointerType==="touch" || e.buttons || !el || !canShow()) {hide();return;}
+      const item=M.get(getDocument(),el.dataset.type,el.dataset.id),sim=el.dataset.type==="task" ? item?.simulation : el.dataset.type==="causalLink" && item?.simulation?.enabled ? item.simulation.propagation : null;
+      if(!sim?.enabled || !sim.performanceModel) {hide();return;}
+      if(focus){const rect=el.getBoundingClientRect();point={x:rect.right,y:rect.bottom};}
+      else point={x:e.clientX,y:e.clientY};
+      if(current===el){position();return;}
+      const nextPoint=point;hide();current=el;point=nextPoint;
+      describedBy=el.getAttribute("aria-describedby");
+      el.setAttribute("aria-describedby",[describedBy,popup.id].filter(Boolean).join(" "));
+      // Avoid a native SVG title appearing on top of the graph. Restore on exit.
+      titles=[...el.querySelectorAll("title")].map(node=>[node,node.textContent]);
+      for(const [node] of titles)node.textContent="";
+      if(focus)show();else timer=setTimeout(show,240);
+    }
+    surface.addEventListener("pointerover",e=>enter(e));
+    surface.addEventListener("pointermove",e=>enter(e));
+    surface.addEventListener("pointerout",e=>{if(!current?.contains(e.relatedTarget))hide();});
+    surface.addEventListener("pointerleave",hide);
+    surface.addEventListener("focusin",e=>{
+      hide();
+      // Focus can scroll the SVG into view. Show after that initial scroll settles.
+      focusTimer=setTimeout(()=>{focusTimer=null;enter(e,true);},40);
+    });
+    surface.addEventListener("focusout",hide);
+    document.addEventListener("pointerdown",hide,true);
+    document.addEventListener("keydown",e=>{if(e.key==="Escape")hide();});
+    document.addEventListener("scroll",()=>{if(focusTimer===null)hide();},true);
+    document.addEventListener("wheel",hide,{passive:true});
+    window.addEventListener("resize",hide);window.addEventListener("blur",hide);
+    return {hide};
   }
   function bindPerformance(form,d,options={}) {
     const holder=form.querySelector("#cdf-curves"), preview=form.querySelector("#cdf-preview"), error=form.querySelector("#cdf-preview-error");
@@ -94,7 +171,7 @@
         const raw=form.elements[options.wName || "performanceW"].value;
         const sim={enabled:true,w:raw==="" ? (options.inheritW ? 0 : NaN) : Number(raw),performanceModel:{type:"cdf",curves:readCurves(form)}};
         P.validateTask(sim);
-        preview.innerHTML=chart(P.distribution(sim.performanceModel,sim.w),`F(t | w=${sim.w})`,unit(d));
+        preview.innerHTML=performanceChart(sim.performanceModel,sim.w,unit(d),!!options.inheritW && raw==="");
       } catch(e) { error.textContent=e.message; }
     }
     function replace(curves) { holder.innerHTML=curveFields(curves); update(); }
@@ -309,5 +386,5 @@
     analysisExport.onclick=()=>{if(analysisResult && signature===fingerprint(getDocument()))download(new Blob([JSON.stringify({mission:analysisSnapshot,sensitivity:analysisResult},null,2)],{type:"application/json"}),"mission-sensitivity.json");};
     return {open,invalidate};
   }
-  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,stateFields,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
+  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,hoverPreview,stateFields,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
 })(globalThis);

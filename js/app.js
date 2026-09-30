@@ -18,7 +18,8 @@
     saveTimer,
     chain = null,
     gapIds = null,
-    simulationPanel = null;
+    simulationPanel = null,
+    cdfHover = null;
   try {
     history = new M.History(
       localStorage.getItem(KEY)
@@ -75,6 +76,7 @@
     render();
   }
   function render() {
+    cdfHover?.hide();
     simulationPanel?.invalidate();
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
@@ -1570,6 +1572,8 @@
     }),
   });
   $("#simulation-btn").onclick = simulationPanel.open;
+  cdfHover=window.MESimulationUI.hoverPreview({surface:$("#timeline"),getDocument:doc,
+    canShow:()=>!drag && !connecting && !space && !document.querySelector("dialog[open]")});
   inspector(false);
   render();
   persist();

@@ -65,6 +65,44 @@
     const times = [...new Set([0, ...lower.points.map(p => p.t), ...upper.points.map(p => p.t)])].sort((a,b) => a-b);
     return times.map(t => ({ t, p: curveCDF(lower, t) * (1-ratio) + curveCDF(upper, t) * ratio }));
   }
+  // Pointwise bounds over the defined w interval. Linear interpolation in w
+  // attains its extrema at a supplied curve, including intermediate w knots.
+  // Merge piecewise-linear bounds and insert their time-axis crossings exactly.
+  function envelope(model) {
+    const curves=model.curves, maxTime=Math.max(1,...curves.map(c=>c.points.at(-1).t));
+    const lines=curves.map(c=>{
+      const points=c.points.map(p=>({...p}));
+      if(points[0].t>0)points.unshift({t:0,p:0});
+      if(points.at(-1).t<maxTime)points.push({t:maxTime,p:points.at(-1).p});
+      return points;
+    });
+    function merge(a,b,choose) {
+      const times=[...new Set([...a.map(p=>p.t),...b.map(p=>p.t)])].sort((x,y)=>x-y), result=[];
+      let ai=0,bi=0,previous=null;
+      const value=(line,i,t)=>{
+        const l=line[i],r=line[i+1];
+        return !r || t===l.t ? l.p : l.p+(r.p-l.p)*(t-l.t)/(r.t-l.t);
+      };
+      for(const t of times) {
+        while(ai+1<a.length && a[ai+1].t<=t)ai++;
+        while(bi+1<b.length && b[bi+1].t<=t)bi++;
+        const ap=value(a,ai,t),bp=value(b,bi,t),diff=ap-bp;
+        if(previous && previous.diff*diff<0) {
+          const f=previous.diff/(previous.diff-diff);
+          result.push({t:previous.t+(t-previous.t)*f,p:previous.ap+(ap-previous.ap)*f});
+        }
+        result.push({t,p:choose(ap,bp)});previous={t,ap,diff};
+      }
+      return result;
+    }
+    function bounds(list,choose) {
+      if(list.length===1)return list[0];
+      const mid=Math.floor(list.length/2);
+      return merge(bounds(list.slice(0,mid),choose),bounds(list.slice(mid),choose),choose);
+    }
+    return {lower:bounds(lines,Math.min),upper:bounds(lines,Math.max),
+      minW:curves[0].w,maxW:curves.at(-1).w,maxTime};
+  }
   function sample(points, u) {
     if (!Number.isFinite(u) || u < 0 || u >= 1) fail("抽選値は0以上1未満です。");
     if (u >= points.at(-1).p) return Infinity;
@@ -85,7 +123,7 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
-  const api = { validateTask, curveCDF, distribution, sample, random, number };
+  const api = { validateTask, curveCDF, distribution, envelope, sample, random, number };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.MEPerformance = api;
 })(globalThis);
