@@ -148,7 +148,15 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 
 構造完結に加え、到達が時間窓内、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。旧status / proposedは条件判定に使わず、条件充足を実施証明とは扱いません。
 
-最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。
+最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。この構造・技術評価では成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。任意のSimulation機能は別の実行モデルを使用します。
+
+## Simulation（任意・version 2互換）
+
+Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定入力・省略時0）、`performanceModel`（type: cdf / curves）、`waitForStateIds`（接続元に加えたAND依存）を保存します。CDF有効時のモデルは必須で、時間・累積確率の単調性、wの範囲、最終確率+未達確率=1を本体のvalidate/parseで検証します。CDF無効Taskも実行し、図上の固定所要時間を使います。
+
+文書トップレベルの任意 `simulation` には `successStateIds`（AND）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
+
+実行依存DAGの検証はシミュレーション実行前に追加で行います。junctionと依存循環は未対応として拒否。作用線から依存条件を自動導出しません。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
 
 ## 描画の制約
 
