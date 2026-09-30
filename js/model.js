@@ -1,6 +1,7 @@
 /* IMEE v2: pure mission data and operations. No DOM or runtime dependencies. */
 (function (root) {
   "use strict";
+  const P = typeof module !== "undefined" && module.exports ? require("./performance.js") : root.MEPerformance;
   const clone = (v) => JSON.parse(JSON.stringify(v));
   const id = (p) =>
     `${p}-${globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)}`;
@@ -153,6 +154,12 @@
     }
     for (const t of d.tasks) {
       status(t);
+      P.validateTask(t.simulation, t.label || t.id);
+      if (t.simulation?.waitForStateIds !== undefined &&
+          (!Array.isArray(t.simulation.waitForStateIds) || t.simulation.waitForStateIds.length > 10000 ||
+           new Set(t.simulation.waitForStateIds).size !== t.simulation.waitForStateIds.length ||
+           t.simulation.waitForStateIds.some(sid => !get(d, "state", sid))))
+        fail("Taskの追加依存State参照が不正です。");
       str(t.label, "Task名");
       const s = get(d, "state", t.fromStateId);
       if (!s) fail("Taskの接続元が存在しません。");
@@ -229,6 +236,18 @@
         !get(d, "technology", b.technologyId)
       )
         fail("Technology Bindingの参照が不正です。");
+    }
+    if (d.simulation !== undefined) {
+      const sim = d.simulation;
+      if (!sim || typeof sim !== "object" || Array.isArray(sim) ||
+          !Array.isArray(sim.successStateIds) || sim.successStateIds.length > 10000 ||
+          new Set(sim.successStateIds).size !== sim.successStateIds.length ||
+          sim.successStateIds.some(sid => !get(d, "state", sid)))
+        fail("Mission成功State参照が不正です。");
+      if (sim.deadline != null) P.number(sim.deadline, "Mission期限", 0, 1e9);
+      for (const [key, min, max] of [["iterations", 1, 100000], ["seed", 0, 4294967295]])
+        if (sim[key] !== undefined && (!Number.isInteger(sim[key]) || sim[key] < min || sim[key] > max))
+          fail("simulation." + key + "が不正です。");
     }
     if (d.views?.main) {
       const v = d.views.main;
@@ -408,6 +427,8 @@
       t.id = ref(t.id);
       t.fromStateId = ref(t.fromStateId);
       if (t.toStateId) t.toStateId = ref(t.toStateId);
+      if (t.simulation?.waitForStateIds)
+        t.simulation.waitForStateIds = t.simulation.waitForStateIds.map(ref);
       for (const j of t.junctions || []) {
         j.id = ref(j.id);
         j.time += delta;
@@ -465,6 +486,11 @@
     // Retain surviving timed links even when a result deletion shortens a Task.
     // Their explicit attachment time is now an analyzable timing gap.
     d.bindings = d.bindings.filter((b) => get(d, b.targetType, b.targetId));
+    for (const t of d.tasks)
+      if (t.simulation?.waitForStateIds)
+        t.simulation.waitForStateIds = t.simulation.waitForStateIds.filter(sid => get(d, "state", sid));
+    if (d.simulation)
+      d.simulation.successStateIds = d.simulation.successStateIds.filter(sid => get(d, "state", sid));
     validate(d);
   }
   function groupActors(d, ids, name = "新しいグループ") {
