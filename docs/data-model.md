@@ -72,7 +72,7 @@ outcomesはTask内の短い結果ラベルとState参照であり、独立した
 
 UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
 
-Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、作用との紐付けや、因果の成否を自動判定する分岐条件は設定しません。
+Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、追加時点では作用との紐付けや分岐条件を自動設定しません。任意のSimulation設定はTask・作用線編集で明示します。
 
 Task編集で分岐時刻を変えた場合、同じ旧時刻へ接続していた因果端点も追従します。複数junctionの既存情報も編集できます。
 
@@ -156,7 +156,7 @@ Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定
 
 文書トップレベルの任意 `simulation` には `successStateIds` と `successMode`（all: AND / any: OR、省略時all）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
 
-実行依存DAGの検証はシミュレーション実行前に追加で行います。junctionと依存循環は未対応として拒否。作用線から依存条件を自動導出しません。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
+実行依存DAGの検証はシミュレーション実行前に追加で行います。Junctionはsimulation.mode（probability / effect）を明示して実行します。outcomeのprobability・delay、作用線のsimulation（enabled、type: w / branch、delay、w、junctionId、outcomeStateId、stopTargetActor、holdUntilStart）を検証します。Stateにはsimulation.w・join（all / any）、TaskにはwInput（stateIds・waitForLinks・combine: max）、outputW、cancelOnStateIdsを保存できます。依存循環・分岐実行未指定は拒否します。実行指定したw作用線は性能入力となり、到着待ちを指定したときだけ開始依存になります。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
 
 ## 描画の制約
 
