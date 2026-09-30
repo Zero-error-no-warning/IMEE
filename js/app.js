@@ -190,6 +190,7 @@
     }
     if (s.type === "causalLink") {
       facts = `${x.polarity === "negative" ? "負の因果（滑らかな波線）" : "正の因果（矩形波）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;
+      facts += `<br>${x.simulation?.enabled ? `${({w:"w伝播",branch:"作用分岐",state:"State到達"})[x.simulation.type]} / ${x.simulation.propagation?.enabled ? "CDF：実線・伝搬時間と未達を抽選" : "FIX：二重線・伝搬時間固定"}` : "表示のみ（シミュレーション実行なし）"}`;
       const o = M.opportunity(doc(), x);
       if (o) facts += `<br>介入時間窓 ${o.start}〜${o.end} / ${esc(o.message)}`;
     }

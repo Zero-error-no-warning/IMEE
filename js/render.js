@@ -62,14 +62,14 @@
       const chosen = selected(e.summaryActorId || e.id),
         actor = M.get(doc,"actor",e.actorId),
         color = M.actorColor(doc,actor),
-        performance = e.type === "task" ? e.performance || "fixed" : null,
+        performance = e.type === "task" ? e.performance || "fixed" : e.performance,
         fixed = performance === "fixed",
         gap = options.gapIds?.has(e.id) || e.memberIds?.some(id => options.gapIds?.has(id)),
         muted = v.mode === "causality" && e.type === "task" && !chosen ? 0.4 : 1;
       const centeredEnd = [...states.values()].some(s =>
         Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
       let marker = centeredEnd ? "state-arrow" : "arrow";
-      const performanceTitle = performance === "cdf" ? "CDF：所要時間・未達を抽選" : performance === "mixed" ? "CDF / FIXを含む集約線（展開して確認）" : fixed ? e.part === "outcome" ? "FIX：分岐後の遅延は固定" : "FIX：所要時間は固定、開始時刻は依存条件で変動" : "";
+      const performanceTitle = e.type === "causalLink" ? performance === "cdf" ? "CDF：発生から到着までの伝搬時間・未達を抽選" : fixed ? "FIX：伝搬時間は固定、到着時刻は発生時刻で変動" : "表示のみ：シミュレーション実行なし" : performance === "cdf" ? "CDF：所要時間・未達を抽選" : performance === "mixed" ? "CDF / FIXを含む集約線（展開して確認）" : fixed ? e.part === "outcome" ? "FIX：分岐後の遅延は固定" : "FIX：所要時間は固定、開始時刻は依存条件で変動" : "";
       svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${performanceTitle ? " · " + esc(performanceTitle) : ""}</title>`;
       if (e.type === "causalLink") {
         const segment = L.routeSegments(e.points).at(-1);
@@ -86,8 +86,9 @@
         const rowIndex = rows.findIndex(row => row.actor.id === e.actorId), background = rowIndex % 2 ? "#fafcfc" : "#ffffff";
         // Hollow stroke gives parallel rails without moving the routed time anchors.
         // Draw the arrow last so the central gap never cuts through its head.
-        svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 6.6 : 4.8}" stroke-linejoin="round"/>
-          <path class="line-gap" d="${e.path}" fill="none" stroke="${background}" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
+        const join=e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round";
+        svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 6.6 : 4.8}" stroke-linejoin="${join}"/>
+          <path class="line-gap" d="${e.path}" fill="none" stroke="${background}" stroke-width="1.6" stroke-linejoin="${join}" pointer-events="none"/>
           <path class="line-arrow" d="${e.path}" fill="none" stroke="${color}" stroke-width="0" marker-end="url(#${marker})" pointer-events="none"/></g></g>`;
       } else {
         svg += `<path class="line${performance ? " line-cdf" : ""}" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}" marker-end="url(#${marker})"/></g>`;

@@ -34,9 +34,16 @@
         predecessors:unique([t.fromStateId,...(t.simulation?.waitForStateIds || []),...(t.simulation?.wInput?.stateIds || [])]),successors:[],inputs:[],outputs:[],rank:0,distributions:new Map()});
     }
     for (const t of d.tasks) for (const sid of unique([t.toStateId,...(t.junctions || []).flatMap(j => j.outcomes.map(o => o.toStateId))].filter(Boolean))) nodes.get(sid).predecessors.push(t.id);
+    // State-producing links participate in the DAG and joins, so their destinations
+    // never become initial States just because there is no incoming Task.
+    for (const l of links) if (l.simulation.type === "state") {
+      nodes.set(l.id,{id:l.id,type:"link",item:l,predecessors:l.source.type === "actor" ? [] : [l.source.id],successors:[]});
+      nodes.get(l.target.id).predecessors.push(l.id);
+    }
     for (const l of links) {
       const source=nodes.get(l.source.id), target=nodes.get(l.target.id);
       l.delay=l.simulation.delay ?? M.endpoint(d,l.target).time-M.endpoint(d,l.source).time;
+      l.distributions=new Map();
       if (l.source.type === "task") {
         if (l.source.time<source.window.start || l.source.time>source.window.end) fail("実行作用線の出力端点はTask期間内です: "+l.label);
         source.outputs.push(l);
@@ -52,13 +59,17 @@
     const pending=new Map([...nodes.values()].map(n => [n.id,n.predecessors.length]));
     const order=[...nodes.values()].filter(n => !n.predecessors.length);
     for (let i=0;i<order.length;i++) for (const id of order[i].successors) { pending.set(id,pending.get(id)-1); if (!pending.get(id)) order.push(nodes.get(id)); }
-    if (order.length !== nodes.size) fail("Task / 追加依存State / w入力に循環があります。ループの実行は未対応です。");
+    if (order.length !== nodes.size) fail("Task / State到達作用 / 追加依存State / w入力に循環があります。ループの実行は未対応です。");
     // At equal timestamps, source completions and their effects precede receiver completions.
     const effects=links.filter(l => l.simulation.type === "branch");
+    function completionSources(id) {
+      const n=nodes.get(id);
+      return n.type === "task" ? [id] : unique(n.predecessors.flatMap(completionSources));
+    }
     for (let i=0;i<=d.tasks.length;i++) {
       let changed=false;
       for (const l of effects) {
-        const sources=l.source.type === "task" ? [l.source.id] : l.source.type === "state" ? nodes.get(l.source.id).predecessors : [];
+        const sources=l.source.type === "actor" ? [] : completionSources(l.source.id);
         for (const id of sources) { const target=nodes.get(l.target.id), rank=nodes.get(id).rank+1; if(target.rank<rank) {target.rank=rank;changed=true;} }
       }
       if(!changed) break;
@@ -71,7 +82,8 @@
       if(visiting.has(id)) return [0,1];
       visiting.add(id);
       const n=nodes.get(id), sim=n.item.simulation || {}; let v=[];
-      if(n.type === "task") {
+      if(n.type === "link") v=n.item.simulation.w !== undefined ? [n.item.simulation.w] : n.item.source.type === "actor" ? [0] : values(n.item.source.id);
+      else if(n.type === "task") {
         if(sim.outputW !== undefined) v=[sim.outputW];
         else if(overrides[id]?.w !== undefined) v=[overrides[id].w];
         else v=[sim.w ?? 0,...(sim.wInput?.stateIds || []).flatMap(values),...n.inputs.flatMap(l => l.simulation.w !== undefined ? [l.simulation.w] : values(l.source.id))];
@@ -83,7 +95,11 @@
       const inputs=overrides[t.id]?.w !== undefined ? [overrides[t.id].w] : [t.simulation.w ?? 0,...(wi?.stateIds || []).flatMap(values),...n.inputs.flatMap(l => l.simulation.w !== undefined ? [l.simulation.w] : values(l.source.id))];
       for(const w of unique(inputs)) n.distributions.set(w,P.distribution(t.simulation.performanceModel,w));
     }
-    return {document:d,config,nodes,order,links,cost,overrides,warnings:d.causalLinks.some(l => !l.simulation?.enabled) ? ["実行未指定の作用線は表示専用です。依存・w・分岐には適用しません。"] : []};
+    for(const l of links) if(l.simulation.propagation?.enabled) {
+      const p=l.simulation.propagation, inputs=p.w !== undefined ? [p.w] : l.source.type === "actor" ? [l.simulation.w ?? 0] : values(l.source.id);
+      for(const w of unique(inputs)) l.distributions.set(w,P.distribution(p.performanceModel,w));
+    }
+    return {document:d,config,nodes,order,links,cost,overrides,warnings:d.causalLinks.some(l => !l.simulation?.enabled) ? ["実行未指定の作用線は表示専用です。依存・w・分岐・State到達には適用しません。"] : []};
   }
   class Events {
     constructor(){this.heap=[];this.serial=0;}
@@ -98,22 +114,25 @@
       taskTimes.set(n.id,{start:Infinity,end:Infinity,duration:null,wait:null,w:null,status:"pending",stop:null});
       inputs.set(n.id,new Map());
     }
-    const graph=(id,time,parents=[],taskId=null) => {causes.set(id,{time,parents,taskId});return id;};
+    // Reserve link draws after Task draws, even if their source never emits.
+    const linkDraws=new Map(c.links.filter(l=>l.simulation.propagation?.enabled).map(l=>[l.id,rng()]));
+    const graph=(id,time,parents=[],taskId=null,linkId=null) => {causes.set(id,{time,parents,taskId,linkId});return id;};
     const outW=n => n.item.simulation?.outputW ?? taskTimes.get(n.id).w ?? 0;
     const running=id => taskTimes.get(id).status === "running";
     function cancel(id,time) {const r=taskTimes.get(id);if(r.status === "pending" || r.status === "running") {r.status="cancelled";r.stop=time;}}
     function state(id,producer,time,w,cause,force=false) {
       const n=c.nodes.get(id);
-      if(stopped.has(n.item.actorId) && !force) return;
-      if(finite(times.get(id))) return;
+      if(stopped.has(n.item.actorId) && !force) return false;
+      if(finite(times.get(id))) return false;
       let a=arrivals.get(id); if(!a) arrivals.set(id,a=new Map()); a.set(producer,{time,w,cause});
-      if(n.predecessors.length && n.item.simulation?.join !== "any" && !n.predecessors.every(pid => a.has(pid))) return;
+      if(n.predecessors.length && n.item.simulation?.join !== "any" && !n.predecessors.every(pid => a.has(pid))) return true;
       times.set(id,time);
       stateW.set(id,n.item.simulation?.w ?? Math.max(...[...a.values()].map(x => x.w),stateW.get(id) ?? 0));
       graph(id,time,[...a.values()].filter(x => x.time===time).map(x => x.cause));
       for(const t of c.document.tasks) if(t.simulation?.cancelOnStateIds?.includes(id)) cancel(t.id,time);
       for(const l of c.links) if(l.source.type === "state" && l.source.id === id) emit(l,time,stateW.get(id),id);
       scheduleStarts(time);
+      return true;
     }
     function redirect(n,j,o,time,cause,stopActor=false) {
       const r=taskTimes.get(n.id); if(!running(n.id)) return false;
@@ -125,9 +144,14 @@
       return true;
     }
     function emit(l,time,w,cause) {
-      events.add(time+l.delay,1,() => {
-        const at=time+l.delay, sim=l.simulation, target=c.nodes.get(l.target.id), event={linkId:l.id,time:at,status:"accepted"};signalEvents.push(event);
-        const linkCause=graph("link:"+l.id,at,[cause]);
+      const sim=l.simulation, p=sim.propagation, inputW=p?.w ?? w;
+      if(p?.enabled && !l.distributions.has(inputW)) l.distributions.set(inputW,P.distribution(p.performanceModel,inputW));
+      const delay=p?.enabled ? P.sample(l.distributions.get(inputW),linkDraws.get(l.id)) : l.delay;
+      const event={linkId:l.id,emittedAt:time,delay:finite(delay)?delay:null,w:inputW,time:finite(delay)?time+delay:null,status:"failed"};
+      if(!finite(delay)) {signalEvents.push(event);return;}
+      events.add(time+delay,1,() => {
+        const at=time+delay, target=c.nodes.get(l.target.id);event.status="accepted";signalEvents.push(event);
+        const linkCause=graph("link:"+l.id,at,[cause],null,l.id);
         if(sim.type === "w") {
           const value=sim.w ?? w;
           if(target.type === "state") { if(target.item.simulation?.w === undefined) stateW.set(target.id,Math.max(stateW.get(target.id) ?? 0,value)); }
@@ -136,6 +160,9 @@
             if(r.status !== "pending") event.status="late";
             else {inputs.get(target.id).set(l.id,{w:value,time:at,cause:linkCause});scheduleStarts(at);}
           }
+        } else if(sim.type === "state") {
+          times.set(l.id,at);
+          if(!state(target.id,l.id,at,sim.w ?? w,linkCause)) event.status="late";
         } else {
           const r=taskTimes.get(target.id), j=target.junctions.find(j => j.id===sim.junctionId), o=j.outcomes.find(o => o.toStateId===sim.outcomeStateId);
           if(r.status === "pending" && sim.holdUntilStart) {let h=held.get(target.id);if(!h)held.set(target.id,h=[]);h.push({l,j,o,cause:linkCause,event});event.status="held";}
@@ -175,9 +202,9 @@
     for(const l of c.links)if(l.source.type === "actor")emit(l,l.source.time,l.simulation.w ?? 0,graph("actor:"+l.id,l.source.time));
     while(events.heap.length){const e=events.pop();e.fn();}
     for(const r of taskTimes.values()) {if(r.status === "pending")r.status="blocked";else if(r.status === "running")r.status="failed";}
-    const goals=c.config.successStateIds.map(id => times.get(id)), completion=c.config.successMode === "any" ? Math.min(...goals) : Math.max(...goals),reached=finite(completion),success=reached && (c.config.deadline == null || completion<=c.config.deadline),critical=new Set();
-    if(reached){const stack=c.config.successStateIds.filter(id => times.get(id)===completion),visited=new Set();while(stack.length){const id=stack.pop();if(visited.has(id))continue;visited.add(id);const cause=causes.get(id);if(!cause)continue;if(cause.taskId)critical.add(cause.taskId);stack.push(...cause.parents);}}
-    return {success,reached,completion,times,taskTimes,critical,branchEvents,signalEvents};
+    const goals=c.config.successStateIds.map(id => times.get(id)), completion=c.config.successMode === "any" ? Math.min(...goals) : Math.max(...goals),reached=finite(completion),success=reached && (c.config.deadline == null || completion<=c.config.deadline),critical=new Set(),criticalLinks=new Set();
+    if(reached){const stack=c.config.successStateIds.filter(id => times.get(id)===completion),visited=new Set();while(stack.length){const id=stack.pop();if(visited.has(id))continue;visited.add(id);const cause=causes.get(id);if(!cause)continue;if(cause.taskId)critical.add(cause.taskId);if(cause.linkId)criticalLinks.add(cause.linkId);stack.push(...cause.parents);}}
+    return {success,reached,completion,times,taskTimes,critical,criticalLinks,branchEvents,signalEvents};
   }
   function quantile(sorted, p) {
     if (!sorted.length) return null;
@@ -201,7 +228,7 @@
       id: t.id, label: t.label, started: 0, finished: 0, failed: 0, blocked: 0, cancelled: 0, branched: 0,
       criticalCount: 0, successfulCriticalCount: 0, starts: [], ends: [], waits: [], ws: [],
     }]));
-    const branches = new Map(), signals = new Map(c.links.map(l => [l.id,{id:l.id,label:l.label,accepted:0,early:0,late:0,held:0,unavailable:0}]));
+    const branches = new Map(), signals = new Map(c.links.map(l => [l.id,{id:l.id,label:l.label,propagation:l.simulation.propagation?.enabled?"cdf":"fixed",accepted:0,early:0,late:0,held:0,failed:0,unavailable:0,criticalCount:0,successfulCriticalCount:0,delays:[],ws:[]} ]));
     let trace = null;
     function step(batch = 100) {
       if (!Number.isInteger(batch) || batch < 1) fail("バッチサイズは正の整数です。");
@@ -225,7 +252,8 @@
           if (r.critical.has(tid)) { s.criticalCount++; if (r.success) s.successfulCriticalCount++; }
         }
         for(const b of r.branchEvents) { const key=b.taskId+":"+b.junctionId+":"+b.outcomeStateId; const entry=branches.get(key) || {...b,count:0}; entry.count++; branches.set(key,entry); }
-        for(const e of r.signalEvents) signals.get(e.linkId)[e.status]++;
+        for(const e of r.signalEvents) {const s=signals.get(e.linkId);s[e.status]++;s.ws.push(e.w);if(e.delay!==null)s.delays.push(e.delay);}
+        for(const id of r.criticalLinks) {const s=signals.get(id);s.criticalCount++;if(r.success)s.successfulCriticalCount++;}
         const delivered=new Set(r.signalEvents.map(e => e.linkId)); for(const l of c.links) if(!delivered.has(l.id))signals.get(l.id).unavailable++;
       }
       return { completed, total: c.config.iterations, done: completed === c.config.iterations };
@@ -246,7 +274,10 @@
         config: c.config, iterations: completed, successes, reached,
         successProbability: successes/completed, successInterval95: wilson(successes, completed),
         reachProbability: reached/completed, completion, cdf, warnings: c.warnings,
-        branches: [...branches.values()].map(({time,...b}) => b), signals:[...signals.values()], trace,
+        branches: [...branches.values()].map(({time,...b}) => b),
+        signals:[...signals.values()].map(({delays,ws,successfulCriticalCount,...s}) => ({...s,
+          delay:percentiles(delays),w:percentiles(ws),criticality:s.criticalCount/completed,
+          criticalityGivenSuccess:successes?successfulCriticalCount/successes:null})), trace,
         tasks: [...tasks.values()].map(s => ({ id: s.id, label: s.label, started: s.started, finished: s.finished,
           failed: s.failed, blocked: s.blocked, cancelled:s.cancelled, branched:s.branched, w:percentiles(s.ws), start: percentiles(s.starts), end: percentiles(s.ends), wait: percentiles(s.waits),
           criticalCount: s.criticalCount, criticality: s.criticalCount/completed,

@@ -11,6 +11,9 @@
   }
   function defaultCurves(d,t) {
     const duration = M.taskWindow(d,t).end-M.taskWindow(d,t).start;
+    return durationCurves(duration);
+  }
+  function durationCurves(duration) {
     return [{ w:0, points: duration ? [{t:duration/2,p:.2},{t:duration,p:.8},{t:duration*1.5,p:.95}] : [{t:0,p:1}], pInfinity:duration ? .05 : 0 }];
   }
   function curveFields(curves) {
@@ -74,10 +77,10 @@
       ${[0,.25,.5,.75,1].map(f=>`<text x="${x(max*f)}" y="209" text-anchor="middle">${fmt(max*f)}</text>`).join("")}
       <text x="310" y="231" text-anchor="middle">時間 (${esc(timeUnit)})</text></svg>`;
   }
-  function bindPerformance(form,d) {
+  function bindPerformance(form,d,options={}) {
     const holder=form.querySelector("#cdf-curves"), preview=form.querySelector("#cdf-preview"), error=form.querySelector("#cdf-preview-error");
     function update() {
-      const enabled=form.elements.performanceEnabled.checked;
+      const enabled=options.enabled ? options.enabled() : form.elements.performanceEnabled.checked;
       form.querySelector("#performance-cdf-fields").hidden=!enabled;
       form.querySelector("#performance-cdf-fields").disabled=!enabled;
       const curves=readCurves(form);
@@ -88,8 +91,8 @@
       preview.innerHTML=""; error.textContent="";
       if (!enabled) return;
       try {
-        const sim={enabled:true,w:Number(form.elements.performanceW.value),performanceModel:{type:"cdf",curves:readCurves(form)}};
-        if (form.elements.performanceW.value==="") sim.w=NaN;
+        const raw=form.elements[options.wName || "performanceW"].value;
+        const sim={enabled:true,w:raw==="" ? (options.inheritW ? 0 : NaN) : Number(raw),performanceModel:{type:"cdf",curves:readCurves(form)}};
         P.validateTask(sim);
         preview.innerHTML=chart(P.distribution(sim.performanceModel,sim.w),`F(t | w=${sim.w})`,unit(d));
       } catch(e) { error.textContent=e.message; }
@@ -116,13 +119,13 @@
       if (w===null) { let gap=-1; for(let i=1;i<ws.length;i++) if(ws[i]-ws[i-1]>gap) {gap=ws[i]-ws[i-1];w=(ws[i]+ws[i-1])/2;} }
       curves.push({...M.clone(curves.at(-1)),w}); curves.sort((a,b)=>a.w-b.w); replace(curves);
     };
-    const section=form.querySelector(".simulation-performance");
+    const section=form.querySelector(options.section || ".simulation-performance");
     section.addEventListener("input",update); section.addEventListener("change",update); update();
   }
   function stateFields(s) {
-    return `<details><summary>Simulation / State</summary><p class="muted">固定wが空欄なら到達したTaskや作用線のwを引き継ぎます。代替経路の合流はORを選びます。</p>
+    return `<details><summary>Simulation / State</summary><p class="muted">固定wが空欄なら到達したTaskやState到達作用線のwを引き継ぎます。生成元が複数ならANDはすべて、ORは最初の到達を待ちます。</p>
       <label class="field"><span>固定出力w（任意）</span>${input("stateW",s.simulation?.w??"","State出力w",0,1)}</label>
-      <label class="field"><span>複数Taskからの合流</span><select name="stateJoin"><option value="all">すべて（AND）</option><option value="any" ${s.simulation?.join==="any"?"selected":""}>いずれか（OR）</option></select></label></details>`;
+      <label class="field"><span>複数Task・State到達作用からの合流</span><select name="stateJoin"><option value="all">すべて（AND）</option><option value="any" ${s.simulation?.join==="any"?"selected":""}>いずれか（OR）</option></select></label></details>`;
   }
   function readState(form,s) {
     const sim={...M.clone(s.simulation || {}),join:form.elements.stateJoin.value};
@@ -136,14 +139,19 @@
       ${j.outcomes.map((o,n)=>`<div class="field-row"><label class="field"><span>${esc(o.label)} · 選択確率</span>${input(`branchP-${i}-${n}`,o.probability??"","分岐確率",0,1)}</label><label class="field"><span>結果到達までの遅延</span>${input(`branchDelay-${i}-${n}`,o.delay??"","分岐遅延")}</label></div>`).join("")}</details>`).join("");
   }
   function causalFields(d,c) {
-    const sim=c.simulation || {};
-    return `<details class="simulation-causal"><summary>Simulation / 作用線</summary><p class="muted">極性・ラベルから実行規則を推測しません。遅延が空欄なら図上の端点時刻の差。Task出力端点は抽選した実行時間に比例して到達します。</p>
-      <label class="field"><span>実行タイプ</span><select name="causalSimulationType"><option value="">表示のみ</option><option value="w" ${sim.enabled&&sim.type==="w"?"selected":""}>w伝播</option><option value="branch" ${sim.enabled&&sim.type==="branch"?"selected":""}>作用分岐</option></select></label>
-      <label class="field"><span>伝播遅延（任意）</span>${input("causalDelay",sim.delay??"","伝播遅延")}</label>
-      <label class="field"><span>w入力値（空欄で出力元から引き継ぐ）</span>${input("causalW",sim.w??"","作用線w",0,1)}</label>
-      <label class="field"><span>作用分岐の結果（入力先Taskの分岐）</span><select name="causalOutcome"></select></label>
+    const sim=c.simulation || {}, p=sim.propagation || {}, duration=M.endpoint(d,c.target).time-M.endpoint(d,c.source).time;
+    return `<details class="simulation-causal"><summary>Simulation / 作用線</summary><p class="muted">作用の実行タイプと伝搬時間を別々に設定します。Task出力端点は抽選したTask時間に比例して到達します。State到達作用は入力先Stateを成立させ、その後続Taskを開始できます。</p>
+      <label class="field"><span>実行タイプ</span><select name="causalSimulationType"><option value="">表示のみ</option><option value="w" ${sim.enabled&&sim.type==="w"?"selected":""}>w伝播</option><option value="branch" ${sim.enabled&&sim.type==="branch"?"selected":""}>作用分岐</option><option value="state" ${sim.enabled&&sim.type==="state"?"selected":""}>State到達</option></select></label>
+      <label class="field"><span>伝搬時間</span><select name="causalPropagationType"><option value="fixed">固定（FIX・二重線）</option><option value="cdf" ${p.enabled?"selected":""}>CDF（時間と未達を抽選・実線）</option></select></label>
+      <label class="field"><span>固定の伝搬遅延（空欄なら図上の端点時刻の差）</span>${input("causalDelay",sim.delay??"","伝搬遅延")}</label>
+      <fieldset id="performance-cdf-fields"><p class="muted">CDFのtは作用の発生から到着までの経過時間です。CDF使用時は固定遅延を加算しません。T=∞なら作用は届きません。時間単位：${unit(d)}。</p>
+      <label class="field"><span>CDF入力w（空欄で発生元のwを引き継ぐ）</span>${input("causalPropagationW",p.w??"","伝搬CDFのw",0,1)}</label><p class="muted">入力wが空欄のプレビューはw=0。実行時は発生元のwで曲線を補間します。</p>
+      <div id="cdf-curves">${curveFields(p.performanceModel?.curves || durationCurves(duration))}</div>
+      <button type="button" id="add-cdf-curve">＋ wの曲線</button><div id="cdf-preview"></div><p id="cdf-preview-error" role="status"></p></fieldset>
+      <label class="field"><span>受け手へ渡すw（空欄で発生元から引き継ぐ）</span>${input("causalW",sim.w??"","作用線w",0,1)}</label>
+      <fieldset id="causal-branch-fields"><label class="field"><span>作用分岐の結果（入力先Taskの分岐）</span><select name="causalOutcome"></select></label>
       <label class="simulation-check"><input type="checkbox" name="stopTargetActor" ${sim.stopTargetActor?"checked":""}>分岐後、入力先Actorの他Taskを中止する</label>
-      <label class="simulation-check"><input type="checkbox" name="holdUntilStart" ${sim.holdUntilStart?"checked":""}>開始前の作用を保持し、Task開始時に適用する</label></details>`;
+      <label class="simulation-check"><input type="checkbox" name="holdUntilStart" ${sim.holdUntilStart?"checked":""}>開始前の作用を保持し、Task開始時に適用する</label></fieldset></details>`;
   }
   function bindCausal(form,d,c) {
     function update() {
@@ -153,15 +161,27 @@
         const v=JSON.stringify([j.id,o.toStateId]);return `<option value="${esc(v)}">${esc(o.label)} → ${esc(M.get(d,"state",o.toStateId).name)}</option>`;
       })).join("");
       form.elements.causalOutcome.value=selected || JSON.stringify([c.simulation?.junctionId,c.simulation?.outcomeStateId]);
+      const type=form.elements.causalSimulationType.value, cdf=form.elements.causalPropagationType.value==="cdf";
+      form.elements.causalPropagationType.disabled=!type;
+      form.elements.causalDelay.disabled=!type || cdf;form.elements.causalDelay.closest("label").hidden=cdf;
+      form.elements.causalW.disabled=!["w","state"].includes(type);
+      form.querySelector("#causal-branch-fields").hidden=type!=="branch";
+      form.querySelector("#causal-branch-fields").disabled=type!=="branch";
     }
-    form.elements.target.addEventListener("change",update);update();
+    for(const name of ["target","causalSimulationType","causalPropagationType"])form.elements[name].addEventListener("change",update);update();
+    bindPerformance(form,d,{enabled:()=>!!form.elements.causalSimulationType.value && form.elements.causalPropagationType.value==="cdf",wName:"causalPropagationW",inheritW:true,section:".simulation-causal"});
   }
   function readCausal(form,c) {
     const type=form.elements.causalSimulationType.value;
     if(!type)return {...M.clone(c.simulation || {}),enabled:false};
     const sim={enabled:true,type};
     if(form.elements.causalDelay.value!=="")sim.delay=Number(form.elements.causalDelay.value);
-    if(type==="w" && form.elements.causalW.value!=="")sim.w=Number(form.elements.causalW.value);
+    if(["w","state"].includes(type) && form.elements.causalW.value!=="")sim.w=Number(form.elements.causalW.value);
+    if(form.elements.causalPropagationType.value==="cdf") {
+      sim.propagation={enabled:true,performanceModel:{type:"cdf",degradationInput:"w",curves:readCurves(form)}};
+      if(form.elements.causalPropagationW.value!=="")sim.propagation.w=Number(form.elements.causalPropagationW.value);
+      P.validateTask(sim.propagation,"作用線の伝搬CDF");
+    } else if(c.simulation?.propagation) sim.propagation={...M.clone(c.simulation.propagation),enabled:false};
     if(type==="branch") {
       if(!form.elements.causalOutcome.value)throw new Error("入力先Taskの作用分岐の結果を選んでください。");
       [sim.junctionId,sim.outcomeStateId]=JSON.parse(form.elements.causalOutcome.value);
@@ -193,7 +213,7 @@
       <h3>Task別の時間・Criticality</h3><p class="muted">CIは完了時間を決めたTaskの試行数 ÷ 全試行数。未達試行ではCritical Pathを定義しません。成功時CIは期限内成功を分母にします。同率の経路はすべて数えます。</p>
       <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>Task</th><th>開始 P50 / P90</th><th>終了 P50 / P90</th><th>追加依存待ち P50 / P90</th><th>未達 / 開始不能</th><th>分岐 / 中止</th><th>入力w P50 / P90</th><th>CI / 成功時CI</th></tr></thead><tbody>
       ${r.tasks.map(t=>`<tr><td>${esc(t.label)}</td><td>${fmt(t.start.p50)} / ${fmt(t.start.p90)}</td><td>${fmt(t.end.p50)} / ${fmt(t.end.p90)}</td><td>${fmt(t.wait.p50)} / ${fmt(t.wait.p90)}</td><td>${t.failed} / ${t.blocked}</td><td>${t.branched} / ${t.cancelled}</td><td>${fmt(t.w.p50)} / ${fmt(t.w.p90)}</td><td>${pct(t.criticality)} / ${pct(t.criticalityGivenSuccess)}</td></tr>`).join("")}</tbody></table></div>
-      ${r.signals.length?`<h3>作用線の適用状況</h3><div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>作用線</th><th>適用</th><th>開始前・未適用</th><th>開始後/終了後・未適用</th><th>保持したまま</th><th>未発生</th></tr></thead><tbody>${r.signals.map(l=>`<tr><td>${esc(l.label)}</td><td>${l.accepted}</td><td>${l.early}</td><td>${l.late}</td><td>${l.held}</td><td>${l.unavailable}</td></tr>`).join("")}</tbody></table></div>`:""}
+      ${r.signals.length?`<h3>作用線の伝搬時間・適用状況</h3><p class="muted">伝搬時間は到着した作用（未適用も含む）の分布。未達はT=∞、未発生は出力元が作用を発生できなかった試行です。CIはMission完了を決めた因果経路に含まれた割合です。</p><div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>作用線</th><th>伝搬時間 P50 / P90</th><th>CI / 成功時CI</th><th>適用</th><th>開始前・未適用</th><th>到着済み・未適用</th><th>保持したまま</th><th>未達 / 未発生</th></tr></thead><tbody>${r.signals.map(l=>`<tr><td>${esc(l.label)} · ${l.propagation==="cdf"?"CDF":"FIX"}</td><td>${fmt(l.delay.p50)} / ${fmt(l.delay.p90)}</td><td>${pct(l.criticality)} / ${pct(l.criticalityGivenSuccess)}</td><td>${l.accepted}</td><td>${l.early}</td><td>${l.late}</td><td>${l.held}</td><td>${l.failed} / ${l.unavailable}</td></tr>`).join("")}</tbody></table></div>`:""}
       <details><summary>第1試行の分岐・到達履歴</summary><p class="muted">代表値ではありません。結果JSONにはTask時刻・w・中止理由の状態区分も記録します。</p><ul>${r.trace.states.map(s=>`<li>${esc(s.id)} · ${fmt(s.time)}</li>`).join("")}</ul></details>
       <p class="muted">開始・待ち時間は開始できた試行、終了時刻は完了した試行の分布です。待ち時間は接続元State到達から追加依存がそろうまで。時間単位：${esc(r.unit)}。図上の時刻は変更しません。試行数 ${r.iterations.toLocaleString()} / Seed ${r.config.seed}。</p>`;
   }
@@ -216,7 +236,7 @@
     function stop() { stopAnalysis(); token++; running=false; runButton.disabled=false; document.querySelector("#simulation-stop").hidden=true; }
     function setupHTML() {
       const d=getDocument(), sim=d.simulation;
-      setup.innerHTML=`<p class="muted">外部解析で得たTask性能をMission Threadへ伝播させます。各Taskを1回実行し、初期Stateの時刻から依存関係で進みます。複数Taskの同一Stateへの合流はState設定でAND/ORを指定します。作用分岐・w伝播は実行指定した作用線だけを使います。</p>
+      setup.innerHTML=`<p class="muted">外部解析で得たTask性能・作用線の伝搬時間をMission Threadへ伝播させます。各Taskを1回実行し、初期Stateの時刻から依存関係で進みます。TaskとState到達作用の同一Stateへの合流はState設定でAND/ORを指定します。作用分岐・w伝播・State到達は実行指定した作用線だけを使います。</p>
         <p><strong>成功条件：</strong>${sim?.successStateIds.length?sim.successStateIds.map(sid=>esc(M.get(d,"state",sid).name)).join(sim.successMode==="any"?" OR ":" AND "):"未設定"}<br>期限：${sim?.deadline==null?"なし":fmt(sim.deadline)+" "+unit(d)} / 試行数：${sim?.iterations??1000} / Seed：${sim?.seed??1}</p>`;
       const selected=analysisForm.elements.taskId.value;
       analysisForm.elements.taskId.innerHTML=d.tasks.map(t=>`<option value="${esc(t.id)}">${esc(t.label)}</option>`).join("");

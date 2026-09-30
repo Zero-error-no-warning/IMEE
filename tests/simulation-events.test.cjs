@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const M=require('../js/model.js'),S=require('../js/simulation.js'),sample=require('../js/simulation-sample.js');
-function trial(d,overrides={}){const c=S.compile(d),draws=c.order.filter(n=>n.type==='task').flatMap(n=>[overrides[n.id]??.25,...n.junctions.map(()=>overrides['branch:'+n.id]??.25)]);let i=0;return S.trial(c,()=>draws[i++]);}
+function trial(d,overrides={}){const c=S.compile(d),draws=[...c.order.filter(n=>n.type==='task').flatMap(n=>[overrides[n.id]??.25,...n.junctions.map(()=>overrides['branch:'+n.id]??.25)]),...c.links.filter(l=>l.simulation.propagation?.enabled).map(l=>overrides[l.id]??.25)];let i=0;return S.trial(c,()=>draws[i++]);}
 function simple(){const d=sample();d.tasks=d.tasks.filter(t=>t.id==='boost-flight'||t.id==='midcourse-flight');d.states=d.states.filter(s=>s.actorId==='missile'&&s.id!=='missile-impact'&&s.id!=='missile-destroyed-terminal');d.actors=d.actors.filter(a=>a.id==='missile');d.views.main.actorOrder=['missile'];d.causalLinks=[];d.tasks[1].junctions[0].time=90;d.states.find(s=>s.id==='missile-destroyed-mid').time=90;d.simulation.successStateIds=['missile-destroyed-mid'];return d;}
 test('probability branches execute at sampled progress, suppress ordinary destination, and preserve residual continuation',()=>{
   const d=simple(),t=d.tasks[1],j=t.junctions[0];j.simulation.mode='probability';j.outcomes[0].probability=.4;
@@ -36,7 +36,7 @@ test('w crosses State, command and causal inputs; task snapshots w at start and 
   const l=d.causalLinks.find(l=>l.id==='track-information');l.simulation.w=.7;r=trial(d);assert.equal(r.taskTimes.get('midcourse-intercept').w,.7);
   l.simulation.delay=100;d.tasks.find(t=>t.id==='decide').simulation.wInput.waitForLinks=false;
   r=trial(d);assert.equal(r.taskTimes.get('decide').w,0);assert.equal(r.signalEvents.find(e=>e.linkId===l.id).status,'late');
-  d.tasks.find(t=>t.id==='decide').simulation.wInput.waitForLinks=true;r=trial(d,{detect:.99});assert.equal(r.taskTimes.get('decide').status,'blocked');
+  d.tasks.find(t=>t.id==='decide').simulation.wInput.waitForLinks=true;r=trial(d,{'missile-observation':.99});assert.equal(r.taskTimes.get('decide').status,'blocked');
 });
 test('task output ports follow sampled time, and do not emit beyond interruption',()=>{
   const d=simple();d.causalLinks=[{id:'port',source:{type:'task',id:'midcourse-flight',time:100},target:{type:'state',id:'missile-terminal'},polarity:'positive',label:'port',simulation:{enabled:true,type:'w',delay:0,w:.4}}];

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
 const sample=require('../js/simulation-sample.js'),S=require('../js/simulation.js');
 function trial(overrides={}) {
-  const compiled=S.compile(sample()),draws=compiled.order.filter(n=>n.type==='task').flatMap(n=>[overrides[n.id]??.25,...n.junctions.map(()=>.25)]);
+  const compiled=S.compile(sample()),draws=[...compiled.order.filter(n=>n.type==='task').flatMap(n=>[overrides[n.id]??.25,...n.junctions.map(()=>.25)]),...compiled.links.filter(l=>l.simulation.propagation?.enabled).map(l=>overrides[l.id]??.25)];
   let i=0; return S.trial(compiled,()=>draws[i++]);
 }
 test('missile demo has precisely one hostile missile and four friendly actors; JSON stays synchronized',()=>{
@@ -12,6 +12,9 @@ test('missile demo has precisely one hostile missile and four friendly actors; J
   assert.deepEqual(JSON.parse(fs.readFileSync(require.resolve('../examples/simulation.json'),'utf8')),d);
   assert.equal(d.tasks.filter(t=>t.junctions?.length).length,2);
   assert(d.simulation.successStateIds.every(id=>d.states.find(s=>s.id===id).actorId==='missile'));
+  const detection=d.causalLinks.find(l=>l.id==='missile-observation');
+  assert.deepEqual(detection.source,{type:'state',id:'missile-launched'});assert.deepEqual(detection.target,{type:'state',id:'radar-detected'});
+  assert.equal(detection.simulation.type,'state');assert(detection.simulation.propagation.enabled);assert(!d.tasks.some(t=>t.id==='detect'));
 });
 test('midcourse kill wins first; terminal kill recovers failed midcourse; both failures lose',()=>{
   const early=trial({'terminal-intercept':.99});
@@ -25,7 +28,7 @@ test('midcourse kill wins first; terminal kill recovers failed midcourse; both f
   assert(!trial({'midcourse-intercept':.99,'terminal-intercept':.99}).success);
 });
 test('radar is a shared dependency and launch directives wait for orders and flight phase; interceptors follow launch completion',()=>{
-  const failed=trial({detect:.99});
+  const failed=trial({'missile-observation':.99});
   assert(!failed.success);
   assert.equal(failed.taskTimes.get('midcourse-intercept').start,Infinity);
   assert.equal(failed.taskTimes.get('terminal-intercept').start,Infinity);
@@ -35,7 +38,7 @@ test('radar is a shared dependency and launch directives wait for orders and fli
   assert.equal(fast.taskTimes.get('midcourse-intercept').start,70);
   assert.equal(fast.taskTimes.get('midcourse-launch').w,.25);
   assert.equal(fast.taskTimes.get('terminal-intercept').status,'cancelled');
-  const late=trial({detect:.979999,decide:.999999,'midcourse-intercept':.737499,'terminal-intercept':.787499});
+  const late=trial({'missile-observation':.979999,decide:.999999,'midcourse-intercept':.737499,'terminal-intercept':.787499});
   assert(late.taskTimes.get('midcourse-intercept').start>60);
   assert.equal(late.taskTimes.get('midcourse-launch').start,late.times.get('control-orders'));
   assert.equal(late.taskTimes.get('midcourse-intercept').start,late.times.get('control-orders')+10);

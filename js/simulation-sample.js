@@ -38,11 +38,6 @@
         {id:"boost-flight",fromStateId:"missile-launched",toStateId:"missile-midcourse",label:"上昇飛行（基準）",kind:"flight"},
         {id:"midcourse-flight",fromStateId:"missile-midcourse",toStateId:"missile-terminal",label:"中間軌道飛行（基準）",kind:"flight",junctions:[{id:"mid-effect-junction",time:100,simulation:{mode:"effect"},outcomes:[{label:"撃破",toStateId:"missile-destroyed-mid",delay:0}]}]},
         {id:"terminal-flight",fromStateId:"missile-terminal",toStateId:"missile-impact",label:"終末軌道飛行（基準）",kind:"flight",junctions:[{id:"terminal-effect-junction",time:160,simulation:{mode:"effect"},outcomes:[{label:"撃破",toStateId:"missile-destroyed-terminal",delay:0}]}]},
-        {id:"detect",fromStateId:"radar-ready",toStateId:"radar-detected",label:"探知",kind:"detection",notes:"説明用の仮定。探知の未達確率2%。実在レーダーの性能ではない。",
-          simulation:{enabled:true,w:0,waitForStateIds:["missile-launched"],performanceModel:{type:"cdf",degradationInput:"w",curves:[
-            {w:0,points:[{t:5,p:.1},{t:15,p:.6},{t:30,p:.9},{t:40,p:.98}],pInfinity:.02},
-            {w:1,points:[{t:5,p:.02},{t:15,p:.2},{t:30,p:.6},{t:40,p:.85}],pInfinity:.15},
-          ]}}},
         {id:"track",fromStateId:"radar-detected",toStateId:"radar-track",label:"追尾",kind:"information"},
         {id:"decide",fromStateId:"control-ready",toStateId:"control-decision",label:"脅威評価・迎撃判断",
           simulation:{enabled:true,w:0,waitForStateIds:["radar-track"],wInput:{waitForLinks:true},performanceModel:{type:"cdf",curves:[
@@ -68,7 +63,12 @@
           ]}},notes:"発射から敵ミサイルの撃破達成までの時間CDF。中間撃破時は実行しない。w=0時の未達確率15%。"},
       ],
       causalLinks: [
-        {id:"missile-observation",source:{type:"state",id:"missile-launched"},target:{type:"task",id:"detect",time:10},polarity:"positive",label:"目標の出現",kind:"observation"},
+        {id:"missile-observation",source:{type:"state",id:"missile-launched"},target:{type:"state",id:"radar-detected"},polarity:"positive",label:"探知",kind:"observation",
+          notes:"発射から目標探知成立までを作用線の伝搬CDFで表す。未達確率2%。説明用の外部性能入力であり、伝搬の物理計算は行わない。",
+          simulation:{enabled:true,type:"state",propagation:{enabled:true,w:0,performanceModel:{type:"cdf",degradationInput:"w",curves:[
+            {w:0,points:[{t:5,p:.1},{t:15,p:.6},{t:30,p:.9},{t:40,p:.98}],pInfinity:.02},
+            {w:1,points:[{t:5,p:.02},{t:15,p:.2},{t:30,p:.6},{t:40,p:.85}],pInfinity:.15},
+          ]}}}},
         {id:"track-information",source:{type:"state",id:"radar-track"},target:{type:"task",id:"decide",time:30},polarity:"positive",label:"追尾情報",kind:"information",simulation:{enabled:true,type:"w",delay:0}},
         {id:"midcourse-command",source:{type:"state",id:"control-orders"},target:{type:"task",id:"midcourse-launch",time:60},polarity:"positive",label:"中間迎撃指令",kind:"command",simulation:{enabled:true,type:"w",delay:0}},
         {id:"terminal-command",source:{type:"state",id:"control-orders"},target:{type:"task",id:"terminal-launch",time:120},polarity:"positive",label:"終末迎撃指令",kind:"command",simulation:{enabled:true,type:"w",delay:0}},

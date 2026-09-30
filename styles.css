@@ -574,7 +574,8 @@ dialog::backdrop {
 .simulation-performance { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
 .simulation-performance summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 .simulation-check { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
-#performance-cdf-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+#performance-cdf-fields, #causal-branch-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.simulation-causal [hidden] { display: none; }
 .simulation-state-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
 .simulation-state-list label { display: flex; align-items: flex-start; gap: 8px; padding: 6px; }
 .simulation-state-list input { flex: none; margin-top: 3px; }

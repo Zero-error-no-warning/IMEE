@@ -1,4 +1,4 @@
-/* Task-level CDFs; shared by the file:// editor, validator and Node tests. */
+/* Task and causal-link CDFs; shared by the editor, validator and Node tests. */
 (function (root) {
   "use strict";
   const fail = message => { throw new Error(message); };

@@ -248,13 +248,15 @@
       if (c.simulation !== undefined) {
         const sim = c.simulation;
         if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean") fail("作用線simulation.enabledは真偽値です。");
-        opt(sim.type, ["w", "branch"], "作用線実行タイプ");
+        opt(sim.type, ["w", "branch", "state"], "作用線実行タイプ");
         if (sim.enabled && !sim.type) fail("作用線の実行タイプが必要です。");
         if (sim.delay !== undefined) P.number(sim.delay, "作用線遅延", 0, 1e9);
         if (sim.w !== undefined) P.number(sim.w, "作用線w", 0, 1);
+        P.validateTask(sim.propagation, "作用線「" + c.label + "」の伝搬CDF");
         for (const k of ["stopTargetActor", "holdUntilStart"]) if (sim[k] !== undefined && typeof sim[k] !== "boolean") fail(k + "は真偽値です。");
         if (sim.enabled && sim.type === "w" && c.target.type === "actor") fail("w入力先はTaskまたはStateです。");
         if (sim.enabled && sim.type === "w" && c.source.type === "actor" && sim.w === undefined) fail("Actor出力には固定wが必要です。");
+        if (sim.enabled && sim.type === "state" && c.target.type !== "state") fail("State到達作用の入力先はStateです。");
         if (sim.enabled && sim.type === "branch") {
           const task = get(d, "task", c.target.id), junction = task?.junctions?.find(j => j.id === sim.junctionId);
           if (c.target.type !== "task" || junction?.simulation?.mode !== "effect" || !junction.outcomes.some(o => o.toStateId === sim.outcomeStateId)) fail("作用分岐のJunction・結果State参照が不正です。");
