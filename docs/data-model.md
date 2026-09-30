@@ -156,7 +156,7 @@ Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定
 
 文書トップレベルの任意 `simulation` には `successStateIds` と `successMode`（all: AND / any: OR、省略時all）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
 
-実行依存DAGの検証はシミュレーション実行前に追加で行います。Junctionはsimulation.mode（probability / effect）を明示して実行します。outcomeのprobability・delay、作用線のsimulation（enabled、type: w / branch、delay、w、junctionId、outcomeStateId、stopTargetActor、holdUntilStart）を検証します。Stateにはsimulation.w・join（all / any）、TaskにはwInput（stateIds・waitForLinks・combine: max）、outputW、cancelOnStateIdsを保存できます。依存循環・分岐実行未指定は拒否します。実行指定したw作用線は性能入力となり、到着待ちを指定したときだけ開始依存になります。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
+実行依存DAGの検証はシミュレーション実行前に追加で行います。Junctionはsimulation.mode（probability / effect）を明示して実行します。outcomeのprobability・delay、作用線のsimulation（enabled、type: w / branch / state、propagation、delay、w、junctionId、outcomeStateId、stopTargetActor、holdUntilStart）を検証します。Stateにはsimulation.w・join（all / any）、TaskにはwInput（stateIds・waitForLinks・combine: max）、outputW、cancelOnStateIdsを保存できます。依存循環・分岐実行未指定は拒否します。実行指定したw作用線は性能入力となり、到着待ちを指定したときだけ開始依存になります。State到達作用は入力先Stateの生成元となり、Taskと同じAND/OR合流に参加します。作用線の任意 `simulation.propagation` は `{enabled, w?, performanceModel?}` で、CDF有効ならモデル必須。w省略時は発生元wを引き継ぎ、出力の固定simulation.wとは別に扱います。CDF無効/未設定は従来の固定delayを使います。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
 
 ## 描画の制約
 
