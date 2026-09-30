@@ -77,6 +77,8 @@ Taskを1回ずつ実行するイベントモデルです。確率分岐・作用
 
 [LLM向け生成仕様書](docs/llm-json-generation.md)と、[リポジトリ用SKILL](skills/imee-json-generator/SKILL.md)を用意しています。生成したファイルは以下で本体と同じ検証を実行できます。
 
+シミュレーションも含めて生成する場合は、[LLM向けシナリオ作成手順](docs/llm-simulation-generation.md)を併用してください。CDF・作用線の伝搬・w・実行分岐・時間窓・Mission成功条件の設計から、実行検証・感度分析までを説明しています。[迎撃例のJSON](examples/simulation.json)を完成例として使えます。
+
 ```sh
 node scripts/validate-mission.cjs examples/llm-example.json
 node scripts/validate-mission.cjs mission.json
