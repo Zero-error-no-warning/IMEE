@@ -8,6 +8,18 @@ async function wait(a,predicate) {
   const deadline=Date.now()+5000;
   while (!predicate()) { if(Date.now()>deadline) throw new Error("Timed out"); await new Promise(r=>a.w.setTimeout(r,5)); }
 }
+test("second native click opens Task performance even when SVG redraw suppresses dblclick",async t=>{
+  const a=await app(t);
+  a.event(a.$('[data-id="detect"].task-label text'),"pointerdown");
+  a.event(a.$('[data-id="detect"].task-label text'),"click",{detail:2});
+  assert.equal(a.$("#dialog-title").textContent,"Task");
+  assert(a.$("#editor-dialog").open);
+  assert(a.$(".simulation-performance"));
+  const field=a.$('[name="label"]');
+  field.value="入力を維持";
+  a.event(a.$('[data-id="detect"]'),"dblclick");
+  assert.equal(a.$('[name="label"]').value,"入力を維持");
+});
 test("performance editor edits CDF graph and table, keeps disabled curves, saves dependencies and Undo",async t=>{
   const a=await app(t);
   a.event(a.$('[data-id="detect"]'),"dblclick");

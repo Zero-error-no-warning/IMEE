@@ -1009,10 +1009,17 @@
       connect(s, timeAt(point(e).x));
       return;
     }
+    // Selection redraw can detach the pressed SVG node and suppress the native
+    // dblclick. The second click still carries the browser's click count.
+    if (e.detail === 2) {
+      doubleClick(e);
+      return;
+    }
     if(e.target.closest(".technology-summary")) inspector(true);
     select(s, e.ctrlKey || e.metaKey);
   });
-  $("#timeline").addEventListener("dblclick", (e) => {
+  function doubleClick(e) {
+    if (document.querySelector("dialog[open]")) return;
     const summary = e.target.closest("[data-expand-group]");
     if (summary) {
       change(d => { d.views.main.collapsedActors = d.views.main.collapsedActors.filter(id => id !== summary.dataset.expandGroup); });
@@ -1026,7 +1033,8 @@
       if (row && p.x >= geometry.vp.left)
         editState(null, row.actor.id, timeAt(p.x));
     }
-  });
+  }
+  $("#timeline").addEventListener("dblclick", doubleClick);
   function menu(e, entries) {
     const el = $("#context-menu");
     el.replaceChildren();
