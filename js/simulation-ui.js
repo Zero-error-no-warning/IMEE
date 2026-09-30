@@ -29,7 +29,12 @@
       <div id="cdf-curves">${curveFields(t.simulation?.performanceModel?.curves || defaultCurves(d,t))}</div>
       <button type="button" id="add-cdf-curve">＋ wの曲線</button><div id="cdf-preview"></div><p id="cdf-preview-error" role="status"></p></fieldset>
       <details><summary>追加依存State（すべてへの到達を待つ）</summary><p class="muted">接続元Stateに加えて、ここで選んだStateを待ちます。Actor間の実行依存も指定できます。作用線からは自動設定しません。</p>
-      ${stateChoices(d,t.simulation?.waitForStateIds || [],"waitForStateIds",t.fromStateId)}</details></details>`;
+      ${stateChoices(d,t.simulation?.waitForStateIds || [],"waitForStateIds",t.fromStateId)}</details>
+      <details><summary>w入力・出力</summary><p class="muted">開始時点の入力wの最大値を使い、入力がなければ固定wを使います。開始後の入力は適用しません。選んだStateは到達を待ちます。出力wが空欄なら入力wを引き継ぎます。</p>
+      <label class="simulation-check"><input type="checkbox" name="waitForWLinks" ${t.simulation?.wInput?.waitForLinks?"checked":""}>実行指定したw作用線すべての到着を待つ</label>
+      ${stateChoices(d,t.simulation?.wInput?.stateIds || [],"wStateIds")}
+      <label class="field"><span>固定出力w（任意）</span>${input("outputW",t.simulation?.outputW??"","固定出力w",0,1)}</label></details>
+      <details><summary>中止条件（いずれかのState到達）</summary>${stateChoices(d,t.simulation?.cancelOnStateIds || [],"cancelOnStateIds")}</details></details>`;
   }
   function readCurves(form) {
     return [...form.querySelectorAll("[data-curve]")].map(el=>{
@@ -41,7 +46,11 @@
   }
   function readPerformance(form,t) {
     const enabled=form.elements.performanceEnabled.checked;
-    const sim = { enabled, waitForStateIds: new FormData(form).getAll("waitForStateIds") };
+    const values=new FormData(form);
+    const sim = { ...M.clone(t.simulation || {}), enabled, waitForStateIds: values.getAll("waitForStateIds"),
+      wInput:{stateIds:values.getAll("wStateIds"),waitForLinks:form.elements.waitForWLinks.checked,combine:"max"},
+      cancelOnStateIds:values.getAll("cancelOnStateIds") };
+    if(form.elements.outputW.value!=="")sim.outputW=Number(form.elements.outputW.value);else delete sim.outputW;
     if (enabled) {
       const raw=form.elements.performanceW.value;
       sim.w=raw==="" ? NaN : Number(raw);
@@ -110,6 +119,56 @@
     const section=form.querySelector(".simulation-performance");
     section.addEventListener("input",update); section.addEventListener("change",update); update();
   }
+  function stateFields(s) {
+    return `<details><summary>Simulation / State</summary><p class="muted">固定wが空欄なら到達したTaskや作用線のwを引き継ぎます。代替経路の合流はORを選びます。</p>
+      <label class="field"><span>固定出力w（任意）</span>${input("stateW",s.simulation?.w??"","State出力w",0,1)}</label>
+      <label class="field"><span>複数Taskからの合流</span><select name="stateJoin"><option value="all">すべて（AND）</option><option value="any" ${s.simulation?.join==="any"?"selected":""}>いずれか（OR）</option></select></label></details>`;
+  }
+  function readState(form,s) {
+    const sim={...M.clone(s.simulation || {}),join:form.elements.stateJoin.value};
+    if(form.elements.stateW.value!=="")sim.w=Number(form.elements.stateW.value);else delete sim.w;
+    return sim;
+  }
+  function junctionFields(t) {
+    return (t.junctions || []).map((j,i)=>`<details><summary>分岐 ${i+1}の実行設定</summary>
+      <label class="field"><span>実行モード</span><select name="branchMode-${i}"><option value="">未指定（表示のみ・実行時エラー）</option><option value="probability" ${j.simulation?.mode==="probability"?"selected":""}>確率分岐</option><option value="effect" ${j.simulation?.mode==="effect"?"selected":""}>作用線による分岐</option></select></label>
+      <p class="muted">確率は分岐点へ到達した条件下の選択確率。残りは通常経路。作用分岐はTask実行中の入力で移り、元の接続先を取り消します。遅延が空欄なら図上の分岐点から結果Stateまでの時間です。</p>
+      ${j.outcomes.map((o,n)=>`<div class="field-row"><label class="field"><span>${esc(o.label)} · 選択確率</span>${input(`branchP-${i}-${n}`,o.probability??"","分岐確率",0,1)}</label><label class="field"><span>結果到達までの遅延</span>${input(`branchDelay-${i}-${n}`,o.delay??"","分岐遅延")}</label></div>`).join("")}</details>`).join("");
+  }
+  function causalFields(d,c) {
+    const sim=c.simulation || {};
+    return `<details class="simulation-causal"><summary>Simulation / 作用線</summary><p class="muted">極性・ラベルから実行規則を推測しません。遅延が空欄なら図上の端点時刻の差。Task出力端点は抽選した実行時間に比例して到達します。</p>
+      <label class="field"><span>実行タイプ</span><select name="causalSimulationType"><option value="">表示のみ</option><option value="w" ${sim.enabled&&sim.type==="w"?"selected":""}>w伝播</option><option value="branch" ${sim.enabled&&sim.type==="branch"?"selected":""}>作用分岐</option></select></label>
+      <label class="field"><span>伝播遅延（任意）</span>${input("causalDelay",sim.delay??"","伝播遅延")}</label>
+      <label class="field"><span>w入力値（空欄で出力元から引き継ぐ）</span>${input("causalW",sim.w??"","作用線w",0,1)}</label>
+      <label class="field"><span>作用分岐の結果（入力先Taskの分岐）</span><select name="causalOutcome"></select></label>
+      <label class="simulation-check"><input type="checkbox" name="stopTargetActor" ${sim.stopTargetActor?"checked":""}>分岐後、入力先Actorの他Taskを中止する</label>
+      <label class="simulation-check"><input type="checkbox" name="holdUntilStart" ${sim.holdUntilStart?"checked":""}>開始前の作用を保持し、Task開始時に適用する</label></details>`;
+  }
+  function bindCausal(form,d,c) {
+    function update() {
+      const selected=form.elements.causalOutcome.value, target=form.elements.target.value;
+      const task=d.tasks.find(t=>target===`task:${t.id}`);
+      form.elements.causalOutcome.innerHTML=`<option value="">選択してください</option>`+(task?.junctions || []).filter(j=>j.simulation?.mode==="effect").flatMap(j=>j.outcomes.map(o=>{
+        const v=JSON.stringify([j.id,o.toStateId]);return `<option value="${esc(v)}">${esc(o.label)} → ${esc(M.get(d,"state",o.toStateId).name)}</option>`;
+      })).join("");
+      form.elements.causalOutcome.value=selected || JSON.stringify([c.simulation?.junctionId,c.simulation?.outcomeStateId]);
+    }
+    form.elements.target.addEventListener("change",update);update();
+  }
+  function readCausal(form,c) {
+    const type=form.elements.causalSimulationType.value;
+    if(!type)return {...M.clone(c.simulation || {}),enabled:false};
+    const sim={enabled:true,type};
+    if(form.elements.causalDelay.value!=="")sim.delay=Number(form.elements.causalDelay.value);
+    if(type==="w" && form.elements.causalW.value!=="")sim.w=Number(form.elements.causalW.value);
+    if(type==="branch") {
+      if(!form.elements.causalOutcome.value)throw new Error("入力先Taskの作用分岐の結果を選んでください。");
+      [sim.junctionId,sim.outcomeStateId]=JSON.parse(form.elements.causalOutcome.value);
+      sim.stopTargetActor=form.elements.stopTargetActor.checked;sim.holdUntilStart=form.elements.holdUntilStart.checked;
+    }
+    return sim;
+  }
   function settingsFields(d) {
     const sim=d.simulation || {};
     return `<p class="muted">成功条件は選んだStateすべてへの到達（AND）、またはいずれかへの到達（OR）です。期限はMission開始からの時刻で、空欄なら期限なし。時間単位：${unit(d)}。</p>
@@ -132,33 +191,50 @@
       <h3>Mission完了の累積確率</h3><p class="muted">縦軸は全試行を分母にした「この時刻までに成功条件（${r.config.successMode==="any"?"OR・いずれかへの到達":"AND・すべてへの到達"}）が成立する確率」。未達試行の確率は残ります。</p>
       ${chart(r.cdf,"Mission完了時間の累積確率",{seconds:"秒",minutes:"分",hours:"時間"}[r.unit],r.config.deadline)}
       <h3>Task別の時間・Criticality</h3><p class="muted">CIは完了時間を決めたTaskの試行数 ÷ 全試行数。未達試行ではCritical Pathを定義しません。成功時CIは期限内成功を分母にします。同率の経路はすべて数えます。</p>
-      <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>Task</th><th>開始 P50 / P90</th><th>終了 P50 / P90</th><th>追加依存待ち P50 / P90</th><th>未達 / 開始不能</th><th>CI / 成功時CI</th></tr></thead><tbody>
-      ${r.tasks.map(t=>`<tr><td>${esc(t.label)}</td><td>${fmt(t.start.p50)} / ${fmt(t.start.p90)}</td><td>${fmt(t.end.p50)} / ${fmt(t.end.p90)}</td><td>${fmt(t.wait.p50)} / ${fmt(t.wait.p90)}</td><td>${t.failed} / ${t.blocked}</td><td>${pct(t.criticality)} / ${pct(t.criticalityGivenSuccess)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>Task</th><th>開始 P50 / P90</th><th>終了 P50 / P90</th><th>追加依存待ち P50 / P90</th><th>未達 / 開始不能</th><th>分岐 / 中止</th><th>入力w P50 / P90</th><th>CI / 成功時CI</th></tr></thead><tbody>
+      ${r.tasks.map(t=>`<tr><td>${esc(t.label)}</td><td>${fmt(t.start.p50)} / ${fmt(t.start.p90)}</td><td>${fmt(t.end.p50)} / ${fmt(t.end.p90)}</td><td>${fmt(t.wait.p50)} / ${fmt(t.wait.p90)}</td><td>${t.failed} / ${t.blocked}</td><td>${t.branched} / ${t.cancelled}</td><td>${fmt(t.w.p50)} / ${fmt(t.w.p90)}</td><td>${pct(t.criticality)} / ${pct(t.criticalityGivenSuccess)}</td></tr>`).join("")}</tbody></table></div>
+      ${r.signals.length?`<h3>作用線の適用状況</h3><div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>作用線</th><th>適用</th><th>開始前・未適用</th><th>開始後/終了後・未適用</th><th>保持したまま</th><th>未発生</th></tr></thead><tbody>${r.signals.map(l=>`<tr><td>${esc(l.label)}</td><td>${l.accepted}</td><td>${l.early}</td><td>${l.late}</td><td>${l.held}</td><td>${l.unavailable}</td></tr>`).join("")}</tbody></table></div>`:""}
+      <details><summary>第1試行の分岐・到達履歴</summary><p class="muted">代表値ではありません。結果JSONにはTask時刻・w・中止理由の状態区分も記録します。</p><ul>${r.trace.states.map(s=>`<li>${esc(s.id)} · ${fmt(s.time)}</li>`).join("")}</ul></details>
       <p class="muted">開始・待ち時間は開始できた試行、終了時刻は完了した試行の分布です。待ち時間は接続元State到達から追加依存がそろうまで。時間単位：${esc(r.unit)}。図上の時刻は変更しません。試行数 ${r.iterations.toLocaleString()} / Seed ${r.config.seed}。</p>`;
+  }
+  function sensitivityHTML(r,d) {
+    const labels={bracketed:`要求を満たす上限の推定区間：${fmt(r.requirement.maxPassingValue)}〜${fmt(r.requirement.firstFailingValue)}（左端は達成、右端は未達）`,"all-tested-pass":`評価範囲の全点で要求達成。真の上限は未特定（最大評価値 ${fmt(r.requirement.maxPassingValue)}）`,"no-passing-sample":"評価範囲内に要求を満たす点がありません。範囲外の達成可否は未評価。",nonmonotone:"非単調な結果です。「この値以下なら達成」という上限は導出できません。"};
+    const axis=r.config.parameter==="duration"?`Task完了時間 (${unit(d)})`:"入力劣化度 w";
+    return `<h3>${esc(M.get(d,"task",r.config.taskId).label)}の感度と要求</h3>
+      <p>基準成功率 ${pct(r.baseline.successProbability)} / 要求 ${pct(r.config.targetProbability)} / 成功率不足 ${pct(r.probabilityGap)}</p>
+      <p><strong>${esc(labels[r.requirement.status])}</strong><br>${esc(axis)} · ${r.config.criterion==="lower95"?"95%区間下限":"推定値"}で判定</p>
+      ${chart(r.points.map(p=>({t:p.value,p:p.probability})),"Task性能とMission成功率",axis).replace(`時間 (${esc(axis)})`,esc(axis))}
+      <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>${esc(axis)}</th><th>Mission成功率</th><th>95%区間</th><th>要求達成</th></tr></thead><tbody>${r.points.map(p=>`<tr><td>${fmt(p.value)}</td><td>${pct(p.probability)}</td><td>${pct(p.interval95.low)}〜${pct(p.interval95.high)}</td><td>${(r.config.criterion==="lower95"?p.interval95.low:p.probability)>=r.config.targetProbability?"達成":"未達"}</td></tr>`).join("")}</tbody></table></div>
+      <p class="muted">${esc(r.interpretation)} ${esc(r.scope)} グラフの線は評価点を結んだ表示です。評価点間の確率を保証しません。達成した評価点の範囲：${r.requirement.ranges.length?r.requirement.ranges.map(x=>`${fmt(x.min)}〜${fmt(x.max)}`).join("、"):"なし"}。各点 ${r.config.iterations.toLocaleString()}試行 / Seed ${r.config.seed}。</p>`;
   }
   function controller({getDocument,configure,loadDemo,download}) {
     const dialog=document.querySelector("#simulation-dialog"), setup=document.querySelector("#simulation-setup"), output=document.querySelector("#simulation-results"), error=document.querySelector("#simulation-error"), progress=document.querySelector("#simulation-progress"), runButton=document.querySelector("#simulation-run"), exportButton=document.querySelector("#simulation-export");
-    let token=0, result=null, snapshot=null, signature=null, running=false;
+    const analysisForm=document.querySelector("#sensitivity-form"), analysisOutput=document.querySelector("#sensitivity-results"),analysisError=document.querySelector("#sensitivity-error"),analysisProgress=document.querySelector("#sensitivity-progress"),analysisRun=document.querySelector("#sensitivity-run"),analysisExport=document.querySelector("#sensitivity-export");
+    let token=0, result=null, snapshot=null, signature=null, running=false,analysisToken=0,analysisResult=null,analysisSnapshot=null;
+    function stopAnalysis(){analysisToken++;analysisRun.disabled=false;document.querySelector("#sensitivity-stop").hidden=true;}
     const fingerprint=d=>JSON.stringify({...d,views:undefined});
-    function stop() { token++; running=false; runButton.disabled=false; document.querySelector("#simulation-stop").hidden=true; }
+    function stop() { stopAnalysis(); token++; running=false; runButton.disabled=false; document.querySelector("#simulation-stop").hidden=true; }
     function setupHTML() {
       const d=getDocument(), sim=d.simulation;
-      setup.innerHTML=`<p class="muted">外部解析で得たTask性能をMission Threadへ伝播させます。各Taskを1回実行し、初期Stateの時刻から依存関係で進みます。複数Taskの同一Stateへの合流はANDです。</p>
+      setup.innerHTML=`<p class="muted">外部解析で得たTask性能をMission Threadへ伝播させます。各Taskを1回実行し、初期Stateの時刻から依存関係で進みます。複数Taskの同一Stateへの合流はState設定でAND/ORを指定します。作用分岐・w伝播は実行指定した作用線だけを使います。</p>
         <p><strong>成功条件：</strong>${sim?.successStateIds.length?sim.successStateIds.map(sid=>esc(M.get(d,"state",sid).name)).join(sim.successMode==="any"?" OR ":" AND "):"未設定"}<br>期限：${sim?.deadline==null?"なし":fmt(sim.deadline)+" "+unit(d)} / 試行数：${sim?.iterations??1000} / Seed：${sim?.seed??1}</p>`;
+      const selected=analysisForm.elements.taskId.value;
+      analysisForm.elements.taskId.innerHTML=d.tasks.map(t=>`<option value="${esc(t.id)}">${esc(t.label)}</option>`).join("");
+      if(d.tasks.some(t=>t.id===selected))analysisForm.elements.taskId.value=selected;
       try { const c=S.compile(d); error.textContent=c.warnings.join("\n"); }
       catch(e) { error.textContent=e.message; }
     }
     function invalidate() {
       const next=fingerprint(getDocument());
       if (signature!==null && signature!==next) {
-        stop(); result=null; snapshot=null; exportButton.disabled=true;
+        stop(); result=null; snapshot=null; exportButton.disabled=true; analysisResult=null;analysisSnapshot=null;analysisExport.disabled=true;analysisOutput.innerHTML="";analysisProgress.textContent="文書が変わりました。再実行してください。";
         output.innerHTML=""; progress.textContent="文書が変わりました。再実行してください。";
         if(dialog.open) setupHTML();
       }
       signature=next;
     }
     function open() { invalidate(); setupHTML(); dialog.showModal(); }
-    function cancel() { if(running) progress.textContent="実行を中断しました。"; stop(); }
+    function cancel() { if(running) progress.textContent="実行を中断しました。"; if(analysisRun.disabled)analysisProgress.textContent="分析を中断しました。"; stop(); }
     document.querySelector("#simulation-close").onclick=()=>{cancel();dialog.close();};
     dialog.addEventListener("cancel",cancel); dialog.addEventListener("close",cancel);
     document.querySelector("#simulation-configure").onclick=()=>{stop();dialog.close();configure();};
@@ -185,7 +261,33 @@
     exportButton.onclick=()=>{
       if(result && signature===fingerprint(getDocument())) download(new Blob([JSON.stringify({mission:snapshot,result},null,2)],{type:"application/json"}),"mission-simulation.json");
     };
+    analysisForm.elements.parameter.onchange=()=>{
+      const w=analysisForm.elements.parameter.value==="w";
+      analysisForm.elements.minimum.value=0;analysisForm.elements.maximum.value=w?1:60;
+      analysisForm.elements.maximum.max=w?1:1e9;analysisForm.elements.minimum.max=w?1:1e9;
+    };
+    document.querySelector("#sensitivity-stop").onclick=()=>{stopAnalysis();analysisProgress.textContent="分析を中断しました。";};
+    analysisForm.onsubmit=event=>{
+      event.preventDefault(); stop();analysisResult=null;analysisExport.disabled=true;analysisOutput.innerHTML="";analysisError.textContent="";
+      const f=analysisForm.elements,min=Number(f.minimum.value),max=Number(f.maximum.value),steps=Number(f.steps.value);
+      let job;
+      try {
+        if(!Number.isInteger(steps)||steps<2||steps>25||max<=min)throw new Error("最小値より大きい最大値と、2〜25の整数の評価点数を指定してください。");
+        analysisSnapshot=getDocument();signature=fingerprint(analysisSnapshot);
+        job=root.MESensitivity.createSensitivity(analysisSnapshot,{taskId:f.taskId.value,parameter:f.parameter.value,values:Array.from({length:steps},(_,i)=>min+(max-min)*i/(steps-1)),iterations:Number(f.iterations.value),seed:analysisSnapshot.simulation?.seed??1,targetProbability:Number(f.targetProbability.value),criterion:f.criterion.value});
+      }catch(e){analysisError.textContent=e.message;return;}
+      analysisRun.disabled=true;document.querySelector("#sensitivity-stop").hidden=false;const current=++analysisToken;
+      function tick(){
+        if(current!==analysisToken)return;
+        try { const status=job.step(32);analysisProgress.textContent=`${status.completed.toLocaleString()} / 最大 ${status.total.toLocaleString()} 試行`;
+          if(!status.done){setTimeout(tick,0);return;}
+          analysisResult=job.result();stopAnalysis();analysisOutput.innerHTML=sensitivityHTML(analysisResult,analysisSnapshot);analysisExport.disabled=false;
+        }catch(e){stopAnalysis();analysisError.textContent=e.message;}
+      }
+      setTimeout(tick,0);
+    };
+    analysisExport.onclick=()=>{if(analysisResult && signature===fingerprint(getDocument()))download(new Blob([JSON.stringify({mission:analysisSnapshot,sensitivity:analysisResult},null,2)],{type:"application/json"}),"mission-sensitivity.json");};
     return {open,invalidate};
   }
-  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,settingsFields,readSettings,controller};
+  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,stateFields,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
 })(globalThis);

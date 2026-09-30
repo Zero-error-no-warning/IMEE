@@ -57,6 +57,7 @@ async function openApp(saved) {
     "performance.js",
     "model.js",
     "simulation.js",
+    "sensitivity.js",
     "layout.js",
     "render.js",
     "simulation-ui.js",

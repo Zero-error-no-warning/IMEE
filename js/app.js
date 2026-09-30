@@ -407,10 +407,14 @@
           ],
           x.phase,
         ) +
-        notes(x),
+        notes(x) + window.MESimulationUI.stateFields(x),
       (v) =>
         applyEdit((d) => {
-          const s = { ...x, ...v, time: +v.time };
+          const s = {
+            ...x, name: v.name, actorId: v.actorId, activity: v.activity,
+            phase: v.phase, notes: v.notes, time: +v.time,
+            simulation: window.MESimulationUI.readState($("#editor-form"), x),
+          };
           if (sid) Object.assign(M.get(d, "state", sid), s);
           else d.states.push(s);
           return { type: "state", id: s.id };
@@ -448,7 +452,7 @@
             o.toStateId,
           );
     }
-    dialog("Task", html + notes(t) + window.MESimulationUI.performanceFields(doc(), t), (v) =>
+    dialog("Task", html + notes(t) + window.MESimulationUI.junctionFields(t) + window.MESimulationUI.performanceFields(doc(), t), (v) =>
       applyEdit((d) => {
         const x = M.get(d, "task", tid);
         x.label = v.label;
@@ -466,14 +470,24 @@
               p.time = changedTimes.get(p.time);
         for (const [i, j] of (x.junctions || []).entries()) {
           j.time = +v["j" + i];
+          if (v[`branchMode-${i}`]) j.simulation = { mode: v[`branchMode-${i}`] };
+          else delete j.simulation;
           j.outcomes = j.outcomes
             .map((o, n) => ({
+              ...o,
+              probability:v[`branchP-${i}-${n}`]===""?undefined:Number(v[`branchP-${i}-${n}`]),
+              delay:v[`branchDelay-${i}-${n}`]===""?undefined:Number(v[`branchDelay-${i}-${n}`]),
               label: v[`label-${i}-${n}`],
               toStateId: v[`target-${i}-${n}`],
             }))
             .filter((o) => o.toStateId);
         }
         x.junctions = (x.junctions || []).filter((j) => j.outcomes.length);
+        d.causalLinks = d.causalLinks.filter(c =>
+          c.target.id !== tid || !c.simulation?.enabled || c.simulation.type !== "branch" ||
+          x.junctions.some(j => j.id === c.simulation.junctionId && j.simulation?.mode === "effect" &&
+            j.outcomes.some(o => o.toStateId === c.simulation.outcomeStateId)));
+        d.bindings = d.bindings.filter(b => M.get(d, b.targetType, b.targetId));
       }),
     );
     window.MESimulationUI.bindPerformance($("#editor-form"), doc());
@@ -584,7 +598,7 @@
         endpointFields("source", c.source) +
         endpointFields("target", c.target) +
         field("kind", "分析分類", c.kind || "") +
-        notes(c),
+        notes(c) + window.MESimulationUI.causalFields(doc(),c),
       (v) =>
         applyEdit((d) => {
           const x = M.get(d, "causalLink", cid);
@@ -598,6 +612,7 @@
               ...(type === "state" ? {} : { time: +v[name + "Time"] }),
             };
           }
+          x.simulation=window.MESimulationUI.readCausal($("#editor-form"),c);
           Object.assign(x, {
             label: v.label,
             polarity: v.polarity,
@@ -606,6 +621,7 @@
           });
         }),
     );
+    window.MESimulationUI.bindCausal($("#editor-form"),doc(),c);
   }
   function editTechnology(tid) {
     const t = tid
