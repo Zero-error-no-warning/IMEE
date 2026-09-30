@@ -35,6 +35,7 @@ test("malformed CDFs and dangling mission/dependency refs are rejected on import
     d=>d.simulation.iterations=1.5,
     d=>d.simulation.seed=-1,
     d=>d.simulation.deadline=Infinity,
+    d=>d.simulation.successMode="unknown",
   ]) { const d=fixture(); mutate(d); assert.throws(()=>M.validate(d)); }
 });
 test("explicit cross-actor waits propagate failures, without clamping to diagram times", () => {
@@ -90,6 +91,22 @@ test("parallel tasks join with AND, count tied critical paths and ignore unconfi
   r=S.run(d,{iterations:2});
   assert.equal(r.warnings.length,1);
   assert.equal(r.successProbability,1);
+});
+test("OR success uses first reached goal; failed alternative does not block fallback, CI follows winning path", () => {
+  const d=fixture();
+  d.tasks[1].simulation.waitForStateIds=[];
+  d.simulation.successStateIds=["s1","c1"];
+  d.simulation.successMode="any";
+  let r=S.trial(S.compile(d),()=>.2);
+  assert.equal(r.completion,5); assert.equal(r.success,true);
+  assert.deepEqual([...r.critical],["detect"]);
+  r=S.trial(S.compile(d),()=>.95);
+  assert.equal(r.completion,30); assert.equal(r.success,true);
+  assert.deepEqual([...r.critical],["act"]);
+  r=S.trial(S.compile(d,{deadline:20}),()=>.95);
+  assert.equal(r.reached,true); assert.equal(r.success,false);
+  assert.equal(S.trial(S.compile(d,{successMode:"all"}),()=>.95).reached,false);
+  assert.throws(()=>S.compile(d,{successMode:"unknown"}),/成功条件/);
 });
 test("root times are releases; derived states use arrivals and unsupported branches/cycles fail", () => {
   const d=fixture(); d.tasks[0].simulation.enabled=false; d.states[0].time=3;

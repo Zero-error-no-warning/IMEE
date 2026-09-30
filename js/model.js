@@ -245,6 +245,7 @@
           sim.successStateIds.some(sid => !get(d, "state", sid)))
         fail("Mission成功State参照が不正です。");
       if (sim.deadline != null) P.number(sim.deadline, "Mission期限", 0, 1e9);
+      opt(sim.successMode, ["all", "any"], "Mission成功条件モード");
       for (const [key, min, max] of [["iterations", 1, 100000], ["seed", 0, 4294967295]])
         if (sim[key] !== undefined && (!Number.isInteger(sim[key]) || sim[key] < min || sim[key] > max))
           fail("simulation." + key + "が不正です。");

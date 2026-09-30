@@ -7,7 +7,8 @@
   function compile(document, options = {}) {
     const d = M.clone(document);
     M.validate(d);
-    const config = { iterations: 1000, seed: 1, deadline: null, ...d.simulation, ...options };
+    const config = { iterations: 1000, seed: 1, deadline: null, successMode: "all", ...d.simulation, ...options };
+    if (!["all", "any"].includes(config.successMode)) fail("Mission成功条件はall（AND）またはany（OR）です。");
     if (!Array.isArray(config.successStateIds) || !config.successStateIds.length ||
         config.successStateIds.some(sid => !M.get(d, "state", sid)))
       fail("Mission成功Stateを1件以上選択してください。");
@@ -59,7 +60,8 @@
           wait: Number.isFinite(ready) ? ready-times.get(n.item.fromStateId) : null });
       }
     }
-    const completion = Math.max(...compiled.config.successStateIds.map(sid => times.get(sid)));
+    const goalTimes = compiled.config.successStateIds.map(sid => times.get(sid));
+    const completion = compiled.config.successMode === "any" ? Math.min(...goalTimes) : Math.max(...goalTimes);
     const reached = Number.isFinite(completion);
     const success = reached && (compiled.config.deadline == null || completion <= compiled.config.deadline);
     const critical = new Set();

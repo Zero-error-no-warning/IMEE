@@ -95,11 +95,14 @@ test("settings save all selected success States, deadline and integer seed, and 
   const a=await app(t);
   a.click("#simulation-btn"); a.click("#simulation-configure");
   a.$('[name="successStateIds"][value="s1"]').checked=true;
+  a.fill("successMode","any");
   a.fill("deadline",40);a.fill("iterations",1500);a.fill("seed",12);
   a.submit();
   await wait(a,()=>a.$("#simulation-dialog").open);
   assert.deepEqual(a.savedDoc().simulation.successStateIds,["s1","c1"]);
   assert.equal(a.savedDoc().simulation.deadline,40);
+  assert.equal(a.savedDoc().simulation.successMode,"any");
+  assert(a.$("#simulation-setup").textContent.includes(" OR "));
   a.click("#simulation-close"); a.w.IMEE.undo();
   assert.equal(a.savedDoc().simulation.deadline,45);
   a.click("#simulation-btn");a.click("#simulation-configure");

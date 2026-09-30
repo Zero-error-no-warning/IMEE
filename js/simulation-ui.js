@@ -112,7 +112,8 @@
   }
   function settingsFields(d) {
     const sim=d.simulation || {};
-    return `<p class="muted">成功条件は選んだStateすべてへの到達（AND）です。期限はMission開始からの時刻で、空欄なら期限なし。時間単位：${unit(d)}。</p>
+    return `<p class="muted">成功条件は選んだStateすべてへの到達（AND）、またはいずれかへの到達（OR）です。期限はMission開始からの時刻で、空欄なら期限なし。時間単位：${unit(d)}。</p>
+      <label class="field"><span>成功条件の組み合わせ</span><select name="successMode"><option value="all" ${sim.successMode!=="any"?"selected":""}>すべてに到達（AND）</option><option value="any" ${sim.successMode==="any"?"selected":""}>いずれかに到達（OR）</option></select></label>
       ${stateChoices(d,sim.successStateIds || [],"successStateIds")}
       <label class="field"><span>Mission期限（任意）</span>${input("deadline",sim.deadline??"","Mission期限")}</label>
       <div class="field-row"><label class="field"><span>試行数</span>${input("iterations",sim.iterations??1000,"試行数",1,100000)}</label>
@@ -121,14 +122,14 @@
   function readSettings(form) {
     const values=new FormData(form);
     const numeric = name => values.get(name)==="" ? NaN : Number(values.get(name));
-    return {successStateIds:values.getAll("successStateIds"),deadline:values.get("deadline")===""?null:numeric("deadline"),iterations:numeric("iterations"),seed:numeric("seed")};
+    return {successStateIds:values.getAll("successStateIds"),successMode:values.get("successMode"),deadline:values.get("deadline")===""?null:numeric("deadline"),iterations:numeric("iterations"),seed:numeric("seed")};
   }
   function resultHTML(r) {
     return `<div class="simulation-metrics">
       <div><span>Mission成功率</span><strong>${pct(r.successProbability)}</strong><small>95%区間 ${pct(r.successInterval95.low)}〜${pct(r.successInterval95.high)}</small></div>
-      <div><span>成功Stateへの到達率</span><strong>${pct(r.reachProbability)}</strong><small>期限超過も到達に含む</small></div>
+      <div><span>成功条件の到達率</span><strong>${pct(r.reachProbability)}</strong><small>期限超過も到達に含む</small></div>
       <div><span>完了時間 P50 / P90</span><strong>${fmt(r.completion.p50)} / ${fmt(r.completion.p90)}</strong><small>到達した試行のみ・${esc(r.unit)}</small></div></div>
-      <h3>Mission完了の累積確率</h3><p class="muted">縦軸は全試行を分母にした「この時刻までに成功Stateすべてへ到達する確率」。未達試行の確率は残ります。</p>
+      <h3>Mission完了の累積確率</h3><p class="muted">縦軸は全試行を分母にした「この時刻までに成功条件（${r.config.successMode==="any"?"OR・いずれかへの到達":"AND・すべてへの到達"}）が成立する確率」。未達試行の確率は残ります。</p>
       ${chart(r.cdf,"Mission完了時間の累積確率",{seconds:"秒",minutes:"分",hours:"時間"}[r.unit],r.config.deadline)}
       <h3>Task別の時間・Criticality</h3><p class="muted">CIは完了時間を決めたTaskの試行数 ÷ 全試行数。未達試行ではCritical Pathを定義しません。成功時CIは期限内成功を分母にします。同率の経路はすべて数えます。</p>
       <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>Task</th><th>開始 P50 / P90</th><th>終了 P50 / P90</th><th>追加依存待ち P50 / P90</th><th>未達 / 開始不能</th><th>CI / 成功時CI</th></tr></thead><tbody>
@@ -143,7 +144,7 @@
     function setupHTML() {
       const d=getDocument(), sim=d.simulation;
       setup.innerHTML=`<p class="muted">外部解析で得たTask性能をMission Threadへ伝播させます。各Taskを1回実行し、初期Stateの時刻から依存関係で進みます。複数Taskの同一Stateへの合流はANDです。</p>
-        <p><strong>成功条件：</strong>${sim?.successStateIds.length?sim.successStateIds.map(sid=>esc(M.get(d,"state",sid).name)).join(" AND "):"未設定"}<br>期限：${sim?.deadline==null?"なし":fmt(sim.deadline)+" "+unit(d)} / 試行数：${sim?.iterations??1000} / Seed：${sim?.seed??1}</p>`;
+        <p><strong>成功条件：</strong>${sim?.successStateIds.length?sim.successStateIds.map(sid=>esc(M.get(d,"state",sid).name)).join(sim.successMode==="any"?" OR ":" AND "):"未設定"}<br>期限：${sim?.deadline==null?"なし":fmt(sim.deadline)+" "+unit(d)} / 試行数：${sim?.iterations??1000} / Seed：${sim?.seed??1}</p>`;
       try { const c=S.compile(d); error.textContent=c.warnings.join("\n"); }
       catch(e) { error.textContent=e.message; }
     }
