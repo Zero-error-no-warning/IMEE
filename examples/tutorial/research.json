@@ -1,0 +1,282 @@
+{
+  "version": 2,
+  "title": "技術Gap — 妨害源の探知から妨害活動への介入まで",
+  "notes": "架空の能力検討例。電波監視→指揮所の判断→介入担当への指令→敵Taskへの負の因果を追う。敵の妨害実行は20〜68分、介入は48分。指向性妨害の追尾制御だけを研究段階（仮定のTRL4）として、時間窓内でも技術条件が未充足になる例。耐妨害受信と敵の送信活動抑制は別の能力として扱う。",
+  "time": {
+    "unit": "minutes",
+    "duration": 80,
+    "snap": 1
+  },
+  "actors": [
+    {
+      "id": "sensor",
+      "name": "電波監視",
+      "parentId": null,
+      "side": "friendly",
+      "color": "#a75353"
+    },
+    {
+      "id": "control",
+      "name": "指揮所",
+      "parentId": null,
+      "side": "friendly",
+      "color": "#236d78"
+    },
+    {
+      "id": "effector",
+      "name": "介入担当",
+      "parentId": null,
+      "side": "friendly",
+      "color": "#8061a8"
+    },
+    {
+      "id": "enemy",
+      "name": "敵妨害装置",
+      "parentId": null,
+      "side": "hostile",
+      "color": "#a56c24"
+    }
+  ],
+  "states": [
+    {
+      "id": "s0",
+      "actorId": "sensor",
+      "name": "監視開始",
+      "time": 2,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "s1",
+      "actorId": "sensor",
+      "name": "妨害源探知",
+      "time": 14,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "c0",
+      "actorId": "control",
+      "name": "報告受領",
+      "time": 16,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "c1",
+      "actorId": "control",
+      "name": "介入決定",
+      "time": 30,
+      "activity": "active",
+      "phase": "decision",
+      "notes": ""
+    },
+    {
+      "id": "w0",
+      "actorId": "effector",
+      "name": "指令受領",
+      "time": 32,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "w1",
+      "actorId": "effector",
+      "name": "介入終了",
+      "time": 60,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "e0",
+      "actorId": "enemy",
+      "name": "送信準備済",
+      "time": 20,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    },
+    {
+      "id": "e1",
+      "actorId": "enemy",
+      "name": "妨害終了",
+      "time": 68,
+      "activity": "active",
+      "phase": "other",
+      "notes": ""
+    }
+  ],
+  "tasks": [
+    {
+      "id": "detect",
+      "fromStateId": "s0",
+      "toStateId": "s1",
+      "label": "電波を探知・測位",
+      "kind": "detection",
+      "notes": ""
+    },
+    {
+      "id": "decide",
+      "fromStateId": "c0",
+      "toStateId": "c1",
+      "label": "介入可否を判断",
+      "kind": "support",
+      "notes": ""
+    },
+    {
+      "id": "suppress",
+      "fromStateId": "w0",
+      "toStateId": "w1",
+      "label": "追尾・指向性妨害",
+      "kind": "interference",
+      "notes": ""
+    },
+    {
+      "id": "jam",
+      "fromStateId": "e0",
+      "toStateId": "e1",
+      "label": "通信帯域を妨害",
+      "kind": "interference",
+      "notes": ""
+    }
+  ],
+  "causalLinks": [
+    {
+      "id": "report",
+      "source": {
+        "type": "state",
+        "id": "s1"
+      },
+      "target": {
+        "type": "state",
+        "id": "c0"
+      },
+      "label": "位置・周波数",
+      "kind": "information",
+      "polarity": "positive"
+    },
+    {
+      "id": "order",
+      "source": {
+        "type": "state",
+        "id": "c1"
+      },
+      "target": {
+        "type": "state",
+        "id": "w0"
+      },
+      "label": "介入指令",
+      "kind": "command",
+      "polarity": "positive"
+    },
+    {
+      "id": "blue-action",
+      "source": {
+        "type": "task",
+        "id": "suppress",
+        "time": 48
+      },
+      "target": {
+        "type": "task",
+        "id": "jam",
+        "time": 48
+      },
+      "label": "妨害活動を抑制",
+      "kind": "interference",
+      "polarity": "negative"
+    }
+  ],
+  "technologies": [
+    {
+      "id": "esm",
+      "name": "電波探知・測位",
+      "status": "existing",
+      "trl": 9
+    },
+    {
+      "id": "c2",
+      "name": "情報融合・指揮",
+      "status": "existing",
+      "trl": 9
+    },
+    {
+      "id": "array",
+      "name": "指向性送信装置",
+      "status": "existing",
+      "trl": 9
+    },
+    {
+      "id": "tracking",
+      "name": "妨害源追尾制御",
+      "status": "research",
+      "trl": 4
+    }
+  ],
+  "bindings": [
+    {
+      "id": "b-sensor",
+      "technologyId": "esm",
+      "targetType": "actor",
+      "targetId": "sensor"
+    },
+    {
+      "id": "b-control",
+      "technologyId": "c2",
+      "targetType": "actor",
+      "targetId": "control"
+    },
+    {
+      "id": "b-effector",
+      "technologyId": "array",
+      "targetType": "actor",
+      "targetId": "effector"
+    },
+    {
+      "id": "b-report",
+      "technologyId": "c2",
+      "targetType": "causalLink",
+      "targetId": "report"
+    },
+    {
+      "id": "b-order",
+      "technologyId": "c2",
+      "targetType": "causalLink",
+      "targetId": "order"
+    },
+    {
+      "id": "b-action",
+      "technologyId": "tracking",
+      "targetType": "causalLink",
+      "targetId": "blue-action"
+    }
+  ],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "sensor",
+        "control",
+        "effector",
+        "enemy"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 80
+      },
+      "filters": {
+        "technology": true,
+        "causalLink": true,
+        "quiet": true
+      },
+      "laneHeight": 64,
+      "collapsedLayout": "compact",
+      "mode": "gap"
+    }
+  }
+}
