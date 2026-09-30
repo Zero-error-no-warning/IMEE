@@ -151,10 +151,27 @@
       status(s);
       opt(s.activity, ["active", "quiet"], "活動");
       opt(s.phase, ["other", "decision"], "役割");
+      if (s.simulation !== undefined) {
+        if (!s.simulation || typeof s.simulation !== "object" || Array.isArray(s.simulation)) fail("State.simulationが不正です。");
+        if (s.simulation.w !== undefined) P.number(s.simulation.w, "State出力w", 0, 1);
+        opt(s.simulation.join, ["all", "any"], "State合流モード");
+      }
     }
     for (const t of d.tasks) {
       status(t);
       P.validateTask(t.simulation, t.label || t.id);
+      const refs = (ids, label) => {
+        if (ids !== undefined && (!Array.isArray(ids) || ids.length > 10000 || new Set(ids).size !== ids.length || ids.some(sid => !get(d, "state", sid)))) fail(label + "参照が不正です。");
+      };
+      refs(t.simulation?.cancelOnStateIds, "Task中止State");
+      if (t.simulation?.outputW !== undefined) P.number(t.simulation.outputW, "Task出力w", 0, 1);
+      if (t.simulation?.wInput !== undefined) {
+        const wi = t.simulation.wInput;
+        if (!wi || typeof wi !== "object" || Array.isArray(wi)) fail("wInputが不正です。");
+        refs(wi.stateIds, "w入力State");
+        if (wi.waitForLinks !== undefined && typeof wi.waitForLinks !== "boolean") fail("waitForLinksは真偽値です。");
+        opt(wi.combine, ["max"], "w結合方式");
+      }
       if (t.simulation?.waitForStateIds !== undefined &&
           (!Array.isArray(t.simulation.waitForStateIds) || t.simulation.waitForStateIds.length > 10000 ||
            new Set(t.simulation.waitForStateIds).size !== t.simulation.waitForStateIds.length ||
@@ -196,6 +213,15 @@
         for (const o of j.outcomes) {
           str(o.label, "結果ラベル");
           dest(o.toStateId, j.time);
+          if (o.probability !== undefined) P.number(o.probability, "分岐確率", 0, 1);
+          if (o.delay !== undefined) P.number(o.delay, "分岐後の遅延", 0, 1e9);
+        }
+        if (j.simulation !== undefined) {
+          if (!j.simulation || !["probability", "effect"].includes(j.simulation.mode)) fail("分岐実行モードが不正です。");
+          if (new Set(j.outcomes.map(o => o.toStateId)).size !== j.outcomes.length) fail("実行分岐の結果Stateは重複できません。");
+          if (j.simulation.mode === "probability") {
+            if (j.outcomes.some(o => o.probability === undefined) || j.outcomes.reduce((sum,o) => sum+o.probability,0) > 1+1e-10) fail("分岐確率の合計は1以下にしてください。");
+          }
         }
       }
     }
@@ -219,6 +245,21 @@
       }
       if (endpoint(d, c.source).time > endpoint(d, c.target).time)
         fail("因果リンクは時間を逆行できません。");
+      if (c.simulation !== undefined) {
+        const sim = c.simulation;
+        if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean") fail("作用線simulation.enabledは真偽値です。");
+        opt(sim.type, ["w", "branch"], "作用線実行タイプ");
+        if (sim.enabled && !sim.type) fail("作用線の実行タイプが必要です。");
+        if (sim.delay !== undefined) P.number(sim.delay, "作用線遅延", 0, 1e9);
+        if (sim.w !== undefined) P.number(sim.w, "作用線w", 0, 1);
+        for (const k of ["stopTargetActor", "holdUntilStart"]) if (sim[k] !== undefined && typeof sim[k] !== "boolean") fail(k + "は真偽値です。");
+        if (sim.enabled && sim.type === "w" && c.target.type === "actor") fail("w入力先はTaskまたはStateです。");
+        if (sim.enabled && sim.type === "w" && c.source.type === "actor" && sim.w === undefined) fail("Actor出力には固定wが必要です。");
+        if (sim.enabled && sim.type === "branch") {
+          const task = get(d, "task", c.target.id), junction = task?.junctions?.find(j => j.id === sim.junctionId);
+          if (c.target.type !== "task" || junction?.simulation?.mode !== "effect" || !junction.outcomes.some(o => o.toStateId === sim.outcomeStateId)) fail("作用分岐のJunction・結果State参照が不正です。");
+        }
+      }
     }
     for (const t of d.technologies || []) {
       str(t.name, "技術名");
@@ -430,6 +471,8 @@
       if (t.toStateId) t.toStateId = ref(t.toStateId);
       if (t.simulation?.waitForStateIds)
         t.simulation.waitForStateIds = t.simulation.waitForStateIds.map(ref);
+      if (t.simulation?.cancelOnStateIds) t.simulation.cancelOnStateIds = t.simulation.cancelOnStateIds.map(ref);
+      if (t.simulation?.wInput?.stateIds) t.simulation.wInput.stateIds = t.simulation.wInput.stateIds.map(ref);
       for (const j of t.junctions || []) {
         j.id = ref(j.id);
         j.time += delta;
@@ -438,6 +481,8 @@
     }
     for (const c of f.causalLinks) {
       c.id = ref(c.id);
+      if (c.simulation?.junctionId) c.simulation.junctionId = ref(c.simulation.junctionId);
+      if (c.simulation?.outcomeStateId) c.simulation.outcomeStateId = ref(c.simulation.outcomeStateId);
       for (const p of [c.source, c.target]) {
         p.id = ref(p.id);
         if (p.type !== "state") p.time += delta;
@@ -470,7 +515,8 @@
       if (!t.toStateId && !t.junctions.length) set.add(t.id);
     }
     for (const c of d.causalLinks)
-      if (set.has(c.source.id) || set.has(c.target.id)) set.add(c.id);
+      if (set.has(c.source.id) || set.has(c.target.id) || (c.simulation?.type === "branch" &&
+          !get(d,"task",c.target.id)?.junctions?.some(j => j.id === c.simulation.junctionId && j.outcomes.some(o => o.toStateId === c.simulation.outcomeStateId)))) set.add(c.id);
     for (const k of [
       "actors",
       "states",
@@ -487,9 +533,12 @@
     // Retain surviving timed links even when a result deletion shortens a Task.
     // Their explicit attachment time is now an analyzable timing gap.
     d.bindings = d.bindings.filter((b) => get(d, b.targetType, b.targetId));
-    for (const t of d.tasks)
+    for (const t of d.tasks) {
       if (t.simulation?.waitForStateIds)
         t.simulation.waitForStateIds = t.simulation.waitForStateIds.filter(sid => get(d, "state", sid));
+      if (t.simulation?.cancelOnStateIds) t.simulation.cancelOnStateIds = t.simulation.cancelOnStateIds.filter(sid => get(d,"state",sid));
+      if (t.simulation?.wInput?.stateIds) t.simulation.wInput.stateIds = t.simulation.wInput.stateIds.filter(sid => get(d,"state",sid));
+    }
     if (d.simulation)
       d.simulation.successStateIds = d.simulation.successStateIds.filter(sid => get(d, "state", sid));
     validate(d);
