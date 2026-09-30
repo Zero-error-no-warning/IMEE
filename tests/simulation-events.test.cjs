@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const M=require('../js/model.js'),S=require('../js/simulation.js'),sample=require('../js/simulation-sample.js');
 function trial(d,overrides={}){const c=S.compile(d),draws=c.order.filter(n=>n.type==='task').flatMap(n=>[overrides[n.id]??.25,...n.junctions.map(()=>overrides['branch:'+n.id]??.25)]);let i=0;return S.trial(c,()=>draws[i++]);}
-function simple(){const d=sample();d.tasks=d.tasks.filter(t=>t.id==='boost-flight'||t.id==='midcourse-flight');d.states=d.states.filter(s=>s.actorId==='missile'&&s.id!=='missile-impact'&&s.id!=='missile-destroyed-terminal');d.actors=d.actors.filter(a=>a.id==='missile');d.views.main.actorOrder=['missile'];d.causalLinks=[];d.simulation.successStateIds=['missile-destroyed-mid'];return d;}
+function simple(){const d=sample();d.tasks=d.tasks.filter(t=>t.id==='boost-flight'||t.id==='midcourse-flight');d.states=d.states.filter(s=>s.actorId==='missile'&&s.id!=='missile-impact'&&s.id!=='missile-destroyed-terminal');d.actors=d.actors.filter(a=>a.id==='missile');d.views.main.actorOrder=['missile'];d.causalLinks=[];d.tasks[1].junctions[0].time=90;d.states.find(s=>s.id==='missile-destroyed-mid').time=90;d.simulation.successStateIds=['missile-destroyed-mid'];return d;}
 test('probability branches execute at sampled progress, suppress ordinary destination, and preserve residual continuation',()=>{
   const d=simple(),t=d.tasks[1],j=t.junctions[0];j.simulation.mode='probability';j.outcomes[0].probability=.4;
   let r=trial(d);assert.equal(r.times.get('missile-destroyed-mid'),90);assert.equal(r.times.get('missile-terminal'),Infinity);assert.equal(r.taskTimes.get(t.id).status,'branched');assert(r.critical.has(t.id));
@@ -58,7 +58,7 @@ test('simultaneous source completion interrupts the receiver regardless of docum
   for(const reverse of [false,true]){if(reverse)d.tasks.reverse();const r=trial(d);assert.equal(r.times.get('missile-destroyed-mid'),120);assert.equal(r.times.get('missile-terminal'),Infinity);}
 });
 test('multiple w inputs use max; explicit output override and fixed State output have precedence',()=>{
-  const d=sample(), t=d.tasks.find(t=>t.id==='midcourse-intercept');t.simulation.wInput.stateIds=['radar-track'];
+  const d=sample(), t=d.tasks.find(t=>t.id==='midcourse-intercept');t.simulation.wInput.stateIds.push('radar-track');
   d.causalLinks.find(l=>l.id==='midcourse-command').simulation.w=.6;
   assert.equal(trial(d).taskTimes.get(t.id).w,.6);
   d.states.find(s=>s.id==='control-orders').simulation={w:.8};delete d.causalLinks.find(l=>l.id==='midcourse-command').simulation.w;

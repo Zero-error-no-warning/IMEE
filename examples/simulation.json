@@ -69,13 +69,13 @@
       "id": "missile-destroyed-mid",
       "actorId": "missile",
       "name": "中間軌道で撃破",
-      "time": 90
+      "time": 100
     },
     {
       "id": "missile-destroyed-terminal",
       "actorId": "missile",
       "name": "終末軌道で撃破",
-      "time": 150
+      "time": 160
     },
     {
       "id": "radar-ready",
@@ -131,10 +131,17 @@
       "time": 60
     },
     {
+      "id": "midcourse-launched",
+      "actorId": "midcourse",
+      "name": "迎撃ミサイル発射",
+      "time": 70
+    },
+    {
       "id": "midcourse-kill",
       "actorId": "midcourse",
-      "name": "中間撃破作用成立",
-      "time": 90
+      "name": "迎撃",
+      "time": 100,
+      "notes": "迎撃CDFの達成結果。敵ミサイルの撃破までを含む作用が成立した時点を表す。"
     },
     {
       "id": "terminal-standby",
@@ -149,10 +156,17 @@
       "time": 120
     },
     {
+      "id": "terminal-launched",
+      "actorId": "terminal",
+      "name": "迎撃ミサイル発射",
+      "time": 130
+    },
+    {
       "id": "terminal-kill",
       "actorId": "terminal",
-      "name": "終末撃破作用成立",
-      "time": 150
+      "name": "迎撃",
+      "time": 160,
+      "notes": "迎撃CDFの達成結果。敵ミサイルの撃破までを含む作用が成立した時点を表す。"
     }
   ],
   "tasks": [
@@ -172,7 +186,7 @@
       "junctions": [
         {
           "id": "mid-effect-junction",
-          "time": 90,
+          "time": 100,
           "simulation": {
             "mode": "effect"
           },
@@ -195,7 +209,7 @@
       "junctions": [
         {
           "id": "terminal-effect-junction",
-          "time": 150,
+          "time": 160,
           "simulation": {
             "mode": "effect"
           },
@@ -360,20 +374,36 @@
       "label": "中間迎撃準備・待機"
     },
     {
-      "id": "midcourse-intercept",
+      "id": "midcourse-launch",
       "fromStateId": "midcourse-ready",
-      "toStateId": "midcourse-kill",
-      "label": "中間軌道迎撃",
-      "kind": "attack",
+      "toStateId": "midcourse-launched",
+      "label": "発射指示",
+      "kind": "command",
       "simulation": {
-        "enabled": true,
-        "w": 0,
+        "enabled": false,
         "waitForStateIds": [
           "control-orders",
           "missile-midcourse"
         ],
         "wInput": {
           "waitForLinks": true
+        }
+      },
+      "notes": "指令・飛行段階への到達・準備完了を待ち、説明用の固定10秒で発射する。入力wを発射Stateへ引き継ぐ。"
+    },
+    {
+      "id": "midcourse-intercept",
+      "fromStateId": "midcourse-launched",
+      "toStateId": "midcourse-kill",
+      "label": "中間軌道迎撃",
+      "kind": "attack",
+      "simulation": {
+        "enabled": true,
+        "w": 0,
+        "wInput": {
+          "stateIds": [
+            "midcourse-launched"
+          ]
         },
         "performanceModel": {
           "type": "cdf",
@@ -417,7 +447,7 @@
           ]
         }
       },
-      "notes": "管制指令・中間軌道への突入・準備完了を待つ。説明用の撃破達成CDF。未達確率20%。"
+      "notes": "発射から敵ミサイルの撃破達成までの時間CDF。飛翔や交戦の詳細は外部性能に縮約する。w=0時の未達確率20%。"
     },
     {
       "id": "terminal-prepare",
@@ -432,20 +462,39 @@
       }
     },
     {
-      "id": "terminal-intercept",
+      "id": "terminal-launch",
       "fromStateId": "terminal-ready",
-      "toStateId": "terminal-kill",
-      "label": "終末軌道迎撃",
-      "kind": "attack",
+      "toStateId": "terminal-launched",
+      "label": "発射指示",
+      "kind": "command",
       "simulation": {
-        "enabled": true,
-        "w": 0,
+        "enabled": false,
         "waitForStateIds": [
           "control-orders",
           "missile-terminal"
         ],
         "wInput": {
           "waitForLinks": true
+        },
+        "cancelOnStateIds": [
+          "missile-destroyed-mid"
+        ]
+      },
+      "notes": "指令・終末軌道への到達・準備完了を待ち、説明用の固定10秒で発射する。中間撃破時は中止する。"
+    },
+    {
+      "id": "terminal-intercept",
+      "fromStateId": "terminal-launched",
+      "toStateId": "terminal-kill",
+      "label": "終末軌道迎撃",
+      "kind": "attack",
+      "simulation": {
+        "enabled": true,
+        "w": 0,
+        "wInput": {
+          "stateIds": [
+            "terminal-launched"
+          ]
         },
         "cancelOnStateIds": [
           "missile-destroyed-mid"
@@ -492,7 +541,7 @@
           ]
         }
       },
-      "notes": "中間迎撃の撃破作用が成立しない場合だけ終末迎撃へ進む。説明用のCDFで、w=0時の未達確率15%。"
+      "notes": "発射から敵ミサイルの撃破達成までの時間CDF。中間撃破時は実行しない。w=0時の未達確率15%。"
     }
   ],
   "causalLinks": [
@@ -539,7 +588,7 @@
       },
       "target": {
         "type": "task",
-        "id": "midcourse-intercept",
+        "id": "midcourse-launch",
         "time": 60
       },
       "polarity": "positive",
@@ -559,7 +608,7 @@
       },
       "target": {
         "type": "task",
-        "id": "terminal-intercept",
+        "id": "terminal-launch",
         "time": 120
       },
       "polarity": "positive",
@@ -580,7 +629,7 @@
       "target": {
         "type": "task",
         "id": "midcourse-flight",
-        "time": 90
+        "time": 100
       },
       "polarity": "negative",
       "label": "中間撃破作用",
@@ -603,7 +652,7 @@
       "target": {
         "type": "task",
         "id": "terminal-flight",
-        "time": 150
+        "time": 160
       },
       "polarity": "negative",
       "label": "終末撃破作用",

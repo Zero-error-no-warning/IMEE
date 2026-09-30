@@ -133,7 +133,7 @@ test("State, Task and causal editors configure propagated w, effect branches, in
   a.event(a.$('[data-id="radar-track"]'),"dblclick");a.fill('stateW',.4);a.fill('stateJoin','any');a.submit();assert.equal(a.savedDoc().states.find(s=>s.id==='radar-track').simulation.w,.4);
   a.event(a.$('[data-id="midcourse-flight"].task-label text'),"dblclick");assert.equal(a.$('[name="branchMode-0"]').value,'effect');a.fill('branchDelay-0-0',2);a.submit();assert.equal(a.savedDoc().tasks.find(t=>t.id==='midcourse-flight').junctions[0].outcomes[0].delay,2);
   a.event(a.$('[data-id="midcourse-effect"]'),"dblclick");assert.equal(a.$('[name="causalSimulationType"]').value,'branch');assert(a.$('[name="causalOutcome"]').value.includes('missile-destroyed-mid'));a.fill('causalDelay',1);a.submit();assert.equal(a.savedDoc().causalLinks.find(l=>l.id==='midcourse-effect').simulation.delay,1);
-  a.event(a.$('[data-id="midcourse-intercept"].task-label text'),"dblclick");assert(a.$('[name="waitForWLinks"]').checked);a.fill('outputW',.7);a.submit();const task=a.savedDoc().tasks.find(t=>t.id==='midcourse-intercept');assert(task.simulation.wInput.waitForLinks);assert.equal(task.simulation.outputW,.7);
+  a.event(a.$('[data-id="midcourse-launch"].task-label text'),"dblclick");assert(a.$('[name="waitForWLinks"]').checked);a.fill('outputW',.7);a.submit();const task=a.savedDoc().tasks.find(t=>t.id==='midcourse-launch');assert(task.simulation.wInput.waitForLinks);assert.equal(task.simulation.outputW,.7);
 });
 test("sensitivity UI exports paired requirement analysis, invalidates edits, and cancels without exporting partial results",async t=>{
   const d=fixture();d.tasks[0].simulation.enabled=false;
