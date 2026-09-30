@@ -1,0 +1,212 @@
+{
+  "version": 2,
+  "title": "Simulation — 検出と並列準備",
+  "time": {
+    "unit": "seconds",
+    "duration": 60,
+    "snap": 1
+  },
+  "actors": [
+    {
+      "id": "sensor",
+      "name": "観測",
+      "side": "friendly",
+      "color": "#a75353"
+    },
+    {
+      "id": "control",
+      "name": "管制",
+      "side": "friendly",
+      "color": "#236d78"
+    }
+  ],
+  "states": [
+    {
+      "id": "s0",
+      "actorId": "sensor",
+      "name": "観測開始",
+      "time": 0
+    },
+    {
+      "id": "s1",
+      "actorId": "sensor",
+      "name": "検出完了",
+      "time": 15
+    },
+    {
+      "id": "c0",
+      "actorId": "control",
+      "name": "準備開始",
+      "time": 0
+    },
+    {
+      "id": "c1",
+      "actorId": "control",
+      "name": "準備完了",
+      "time": 18
+    },
+    {
+      "id": "c2",
+      "actorId": "control",
+      "name": "Mission完了",
+      "time": 26
+    }
+  ],
+  "tasks": [
+    {
+      "id": "detect",
+      "fromStateId": "s0",
+      "toStateId": "s1",
+      "label": "検出",
+      "notes": "説明用の仮定。曲線の上限が未達確率を表す。",
+      "simulation": {
+        "enabled": true,
+        "w": 0,
+        "performanceModel": {
+          "type": "cdf",
+          "degradationInput": "w",
+          "curves": [
+            {
+              "w": 0,
+              "points": [
+                {
+                  "t": 5,
+                  "p": 0.2
+                },
+                {
+                  "t": 10,
+                  "p": 0.6
+                },
+                {
+                  "t": 20,
+                  "p": 0.9
+                },
+                {
+                  "t": 30,
+                  "p": 0.95
+                }
+              ],
+              "pInfinity": 0.05
+            },
+            {
+              "w": 1,
+              "points": [
+                {
+                  "t": 5,
+                  "p": 0.05
+                },
+                {
+                  "t": 10,
+                  "p": 0.2
+                },
+                {
+                  "t": 20,
+                  "p": 0.55
+                },
+                {
+                  "t": 30,
+                  "p": 0.7
+                }
+              ],
+              "pInfinity": 0.3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "prepare",
+      "fromStateId": "c0",
+      "toStateId": "c1",
+      "label": "並列準備",
+      "simulation": {
+        "enabled": true,
+        "w": 0,
+        "performanceModel": {
+          "type": "cdf",
+          "curves": [
+            {
+              "w": 0,
+              "points": [
+                {
+                  "t": 8,
+                  "p": 0.2
+                },
+                {
+                  "t": 16,
+                  "p": 0.8
+                },
+                {
+                  "t": 24,
+                  "p": 1
+                }
+              ],
+              "pInfinity": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "execute",
+      "fromStateId": "c1",
+      "toStateId": "c2",
+      "label": "判断・実行（8秒）",
+      "simulation": {
+        "enabled": false,
+        "waitForStateIds": [
+          "s1"
+        ]
+      },
+      "notes": "検出と準備の両方を待つ。未達なら開始不能。"
+    }
+  ],
+  "causalLinks": [
+    {
+      "id": "information",
+      "source": {
+        "type": "state",
+        "id": "s1"
+      },
+      "target": {
+        "type": "task",
+        "id": "execute",
+        "time": 18
+      },
+      "polarity": "positive",
+      "label": "検出情報"
+    }
+  ],
+  "simulation": {
+    "successStateIds": [
+      "c2"
+    ],
+    "deadline": 30,
+    "iterations": 5000,
+    "seed": 17
+  },
+  "technologies": [],
+  "bindings": [],
+  "views": {
+    "main": {
+      "collapsedActors": [],
+      "actorOrder": [
+        "sensor",
+        "control"
+      ],
+      "zoom": 1,
+      "visibleTimeRange": {
+        "start": 0,
+        "end": 60
+      },
+      "filters": {
+        "technology": true,
+        "causalLink": true,
+        "quiet": true
+      },
+      "laneHeight": 64,
+      "collapsedLayout": "compact",
+      "mode": "mission"
+    }
+  }
+}

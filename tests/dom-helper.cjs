@@ -59,7 +59,9 @@ async function openApp(saved) {
     "simulation.js",
     "layout.js",
     "render.js",
+    "simulation-ui.js",
     "sample.js",
+    "simulation-sample.js",
     "tutorial-sample.js",
     "app.js",
   ])

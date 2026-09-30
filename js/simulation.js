@@ -16,8 +16,8 @@
     if (!Number.isInteger(config.seed) || config.seed < 0 || config.seed > 4294967295)
       fail("Seedは0〜4,294,967,295の整数です。");
     if (config.deadline != null) P.number(config.deadline, "Mission期限", 0, 1e9);
-    if (config.iterations * (d.tasks.length + d.states.length) > 20000000)
-      fail("この文書の試行数が多すぎます。State・Task数 × 試行数を2,000万以下にしてください。");
+    if (config.iterations * (d.tasks.length + d.states.length) > 5000000)
+      fail("この文書の試行数が多すぎます。State・Task数 × 試行数を500万以下にしてください。");
     const branched = d.tasks.filter(t => t.junctions?.length);
     if (branched.length)
       fail("分岐Taskの実行規則は未対応です。分岐を除いたシミュレーション用文書にしてください: " + branched.slice(0,5).map(t => t.label).join("、"));
@@ -55,7 +55,8 @@
         const u = rng(), duration = n.points ? P.sample(n.points, u) : n.duration;
         const end = ready + duration;
         times.set(n.id, end);
-        taskTimes.set(n.id, { start: ready, end, duration: Number.isFinite(ready) ? duration : null });
+        taskTimes.set(n.id, { start: ready, end, duration: Number.isFinite(ready) ? duration : null,
+          wait: Number.isFinite(ready) ? ready-times.get(n.item.fromStateId) : null });
       }
     }
     const completion = Math.max(...compiled.config.successStateIds.map(sid => times.get(sid)));
@@ -97,7 +98,7 @@
     let completed = 0, successes = 0, reached = 0, cached = null;
     const completionTimes = [], tasks = new Map(c.document.tasks.map(t => [t.id, {
       id: t.id, label: t.label, started: 0, finished: 0, failed: 0, blocked: 0,
-      criticalCount: 0, successfulCriticalCount: 0, starts: [], ends: [],
+      criticalCount: 0, successfulCriticalCount: 0, starts: [], ends: [], waits: [],
     }]));
     function step(batch = 100) {
       if (!Number.isInteger(batch) || batch < 1) fail("バッチサイズは正の整数です。");
@@ -108,7 +109,7 @@
         if (r.reached) { reached++; completionTimes.push(r.completion); }
         for (const [tid, timing] of r.taskTimes) {
           const s = tasks.get(tid);
-          if (Number.isFinite(timing.start)) { s.started++; s.starts.push(timing.start); }
+          if (Number.isFinite(timing.start)) { s.started++; s.starts.push(timing.start); s.waits.push(timing.wait); }
           else s.blocked++;
           if (Number.isFinite(timing.end)) { s.finished++; s.ends.push(timing.end); }
           else if (Number.isFinite(timing.start)) s.failed++;
@@ -134,7 +135,7 @@
         successProbability: successes/completed, successInterval95: wilson(successes, completed),
         reachProbability: reached/completed, completion, cdf, warnings: c.warnings,
         tasks: [...tasks.values()].map(s => ({ id: s.id, label: s.label, started: s.started, finished: s.finished,
-          failed: s.failed, blocked: s.blocked, start: percentiles(s.starts), end: percentiles(s.ends),
+          failed: s.failed, blocked: s.blocked, start: percentiles(s.starts), end: percentiles(s.ends), wait: percentiles(s.waits),
           criticalCount: s.criticalCount, criticality: s.criticalCount/completed,
           criticalityGivenSuccess: successes ? s.successfulCriticalCount/successes : null })),
       };

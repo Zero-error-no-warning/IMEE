@@ -17,7 +17,8 @@
     swallowClick = false,
     saveTimer,
     chain = null,
-    gapIds = null;
+    gapIds = null,
+    simulationPanel = null;
   try {
     history = new M.History(
       localStorage.getItem(KEY)
@@ -74,6 +75,7 @@
     render();
   }
   function render() {
+    simulationPanel?.invalidate();
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
     geometry = L.layout(
@@ -446,12 +448,13 @@
             o.toStateId,
           );
     }
-    dialog("Task", html + notes(t), (v) =>
+    dialog("Task", html + notes(t) + window.MESimulationUI.performanceFields(doc(), t), (v) =>
       applyEdit((d) => {
         const x = M.get(d, "task", tid);
         x.label = v.label;
         x.kind = v.kind;
         x.notes = v.notes;
+        x.simulation = window.MESimulationUI.readPerformance($("#editor-form"), t);
         M.get(d, "state", x.fromStateId).time = +v.start;
         if (x.toStateId) M.get(d, "state", x.toStateId).time = +v.end;
         const changedTimes = new Map(
@@ -473,6 +476,7 @@
         x.junctions = (x.junctions || []).filter((j) => j.outcomes.length);
       }),
     );
+    window.MESimulationUI.bindPerformance($("#editor-form"), doc());
   }
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
@@ -1526,6 +1530,21 @@
     undo,
     redo,
   };
+  simulationPanel = window.MESimulationUI.controller({
+    getDocument: () => M.clone(doc()), download,
+    configure: () => dialog("Simulation設定", window.MESimulationUI.settingsFields(doc()), () => {
+      applyEdit(d => {
+        d.simulation = window.MESimulationUI.readSettings($("#editor-form"));
+        if (!d.simulation.successStateIds.length) throw new Error("成功Stateを1件以上選択してください。");
+      });
+      setTimeout(() => simulationPanel.open(), 0);
+    }),
+    loadDemo: () => confirmReplace("シミュレーション例へ置き換え", () => {
+      loadJSON(JSON.stringify(createSimulationSample()));
+      setTimeout(() => simulationPanel.open(), 0);
+    }),
+  });
+  $("#simulation-btn").onclick = simulationPanel.open;
   inspector(false);
   render();
   persist();

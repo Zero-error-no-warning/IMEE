@@ -42,6 +42,7 @@ test("explicit cross-actor waits propagate failures, without clamping to diagram
   const r=S.trial(compiled,()=>.2);
   close(r.taskTimes.get("detect").end,5);
   close(r.taskTimes.get("act").start,5);
+  close(r.taskTimes.get("act").wait,5);
   close(r.completion,35);
   assert.equal(r.success,true);
   assert.deepEqual([...r.critical].sort(),["act","detect"]);
