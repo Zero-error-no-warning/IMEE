@@ -480,10 +480,13 @@
         const changedTimes = new Map(
           (x.junctions || []).map((j, i) => [j.time, +v["j" + i]]),
         );
-        for (const c of d.causalLinks)
-          for (const p of [c.source, c.target])
-            if (p.type === "task" && p.id === tid && changedTimes.has(p.time))
-              p.time = changedTimes.get(p.time);
+        for (const c of d.causalLinks) {
+          const oldArrival = M.causalArrivalTime(d, c);
+          if (c.source.type === "task" && c.source.id === tid && changedTimes.has(c.source.time))
+            c.source.time = changedTimes.get(c.source.time);
+          if (c.target.type === "task" && c.target.id === tid && changedTimes.has(oldArrival))
+            c.propagation.duration += changedTimes.get(oldArrival) - oldArrival;
+        }
         for (const [i, j] of (x.junctions || []).entries()) {
           j.time = +v["j" + i];
           if (v[`branchMode-${i}`]) j.simulation = { mode: v[`branchMode-${i}`] };
