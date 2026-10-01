@@ -565,7 +565,7 @@
         if (!a || !b) continue;
         edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
           label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId),
-          performance:c.simulation?.enabled ? c.simulation.propagation?.enabled ? "cdf" : "fixed" : null});
+          performance:c.simulation?.enabled ? c.propagation?.performanceModel ? "cdf" : "fixed" : null});
       }
     for (const row of rows.filter(r => r.collapseMode === "single")) {
       const sourceEdges = edges.filter(e => e.type === "task" && e.actorId === row.actor.id);
