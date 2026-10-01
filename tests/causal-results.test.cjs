@@ -3,8 +3,8 @@ const M=require('../js/model'),L=require('../js/layout');
 const fixture=require('./fixtures/mission.cjs'),{openApp}=require('./dom-helper.cjs');
 function scenario(polarity='negative') {
   const d=fixture();
-  d.causalLinks.push({id:'effect',source:{type:'actor',id:'enemy',time:8},target:{type:'task',id:'search',time:10.5},label:'外部作用',polarity});
-  d.causalLinks.push({id:'later',source:{type:'actor',id:'enemy',time:9},target:{type:'task',id:'search',time:15},label:'後続作用',polarity:'positive'});
+  d.causalLinks.push({id:'effect',source:{type:'actor',id:'enemy',time:8},target:{type:'task',id:'search'},propagation:{duration:2.5},label:'外部作用',polarity});
+  d.causalLinks.push({id:'later',source:{type:'actor',id:'enemy',time:9},target:{type:'task',id:'search'},propagation:{duration:6},label:'後続作用',polarity:'positive'});
   return M.validate(d);
 }
 async function app(t,d=scenario()) {
@@ -85,7 +85,7 @@ test('multiple incoming causes share one action and are listed as context from e
 });
 
 test('out-of-window causal action does not create a branch or change the Task period',async t=>{
-  const d=scenario();d.causalLinks.find(c=>c.id==='effect').target.time=18;
+  const d=scenario();d.causalLinks.find(c=>c.id==='effect').propagation.duration=10;
   const a=await app(t,d),before=a.savedDoc();
   context(a,a.$('[data-id="effect"]'),'分岐を追加');
   assert.match(a.$('#toast').textContent,/実行期間外/);assert(!a.$('#editor-dialog').hasAttribute('open'));
