@@ -28,9 +28,20 @@
     );
   } catch (e) {
     history = new M.History(createSample());
-    setTimeout(() => toast("保存データを読み込めません: " + e.message), 0);
+    setTimeout(() => toast("保存データを読み込めません:\n" + errorText(e)), 0);
   }
   const doc = () => history.doc;
+  function errorText(error) {
+    let text = error?.message || String(error);
+    if (error?.validationPath) text += "\nJSON path: " + error.validationPath;
+    if (error?.validationFragment !== undefined) {
+      let fragment;
+      try { fragment = JSON.stringify(error.validationFragment, null, 2); }
+      catch (_) { fragment = String(error.validationFragment); }
+      text += "\nProblem JSON:\n" + fragment;
+    }
+    return text;
+  }
   function toast(message) {
     $("#toast").textContent = message;
     $("#toast").hidden = false;
@@ -55,7 +66,7 @@
       persist();
       return result;
     } catch (e) {
-      toast(e.message);
+      toast(errorText(e));
       return false;
     }
   }
@@ -1386,7 +1397,7 @@
       M.parse(text);
       confirmReplace("JSONを読み込む", () => loadJSON(text));
     } catch (e) {
-      toast(e.message);
+      toast(errorText(e));
     }
     e.target.value = "";
   };
