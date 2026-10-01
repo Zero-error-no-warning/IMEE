@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="565" viewBox="0 0 920 565" role="img" aria-labelledby="title desc">
+  <title id="title">IMEE 時間軸と直交線の設計例</title>
+  <desc id="desc">横方向は全Actorで共有する時間。固定ノードからタスクを経て相対ノードへ、作用線を経て別Actorの相対ノードへ接続する。CDFは各線の水平時間軸に重ねる。最後の固定ノードへは早着入力の待機を示す。設定CDFの説明例であり実行結果ではない。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#256b76"/></marker>
+  </defs>
+  <rect width="920" height="565" fill="#fff"/>
+  <g font-family="Noto Sans JP, sans-serif" fill="#243d44">
+    <text x="24" y="32" font-size="20" font-weight="700">同じ時間軸に、接続とCDFを重ねる</text>
+    <text x="24" y="57" font-size="12" fill="#637880">設計例：設定CDF / 入力品質 q=1。開始・発生時刻を仮定した表示。実行結果ではありません。</text>
+    <rect x="18" y="112" width="884" height="164" rx="6" fill="#f3f8f8"/>
+    <rect x="18" y="282" width="884" height="198" rx="6" fill="#f7f8fc"/>
+    <text x="35" y="215" font-size="14" font-weight="700">Actor A</text>
+    <text x="35" y="423" font-size="14" font-weight="700">Actor B</text>
+    <g stroke="#e1e9eb" stroke-width="1">
+      <path d="M160 93 V475 M240 93 V475 M320 93 V475 M400 93 V475 M480 93 V475 M560 93 V475 M640 93 V475 M720 93 V475 M800 93 V475"/>
+    </g>
+    <g font-size="11" text-anchor="middle" fill="#60757d">
+      <text x="160" y="88">H+0</text><text x="240" y="88">4</text><text x="320" y="88">8</text><text x="400" y="88">12</text><text x="480" y="88">16</text><text x="560" y="88">20</text><text x="640" y="88">24</text><text x="720" y="88">28</text><text x="800" y="88">32 分</text>
+    </g>
+    <g fill="none" stroke="#256b76" stroke-width="3" stroke-linejoin="miter">
+      <path d="M160 230 V175 H400 V223" marker-end="url(#arrow)"/>
+      <path d="M400 237 V335 H560 V428" marker-end="url(#arrow)"/>
+    </g>
+    <g fill="none" stroke="#9eafb6" stroke-width="1.3" stroke-dasharray="4 4">
+      <path d="M400 175 H480"/><path d="M560 335 H640"/>
+      <path d="M567 435 H634"/>
+    </g>
+    <g fill="none" stroke="#d07528" stroke-width="2.5">
+      <path d="M160 175 L200 165.4 L320 143.8 L480 131.8"/>
+      <path d="M400 335 L440 323 L520 301.4 L640 291.8"/>
+    </g>
+    <g fill="none" stroke="#b9c6cb" stroke-width="1">
+      <path d="M151 175 V127 M148 175 H154 M148 127 H154"/>
+      <path d="M389 335 V287 M386 335 H392 M386 287 H392"/>
+    </g>
+    <g font-size="10" fill="#60757d" text-anchor="end">
+      <text x="143" y="178">0%</text><text x="143" y="131">100%</text>
+      <text x="381" y="338">0%</text><text x="381" y="291">100%</text>
+    </g>
+    <g font-size="12">
+      <text x="202" y="119" fill="#b7621f">Taskの設定CDF（開始 H+0 を仮定）</text>
+      <text x="488" y="135" fill="#b7621f">最終90% / 未達10%</text>
+      <text x="223" y="200">Task：基準所要時間12分</text>
+      <text x="429" y="367">作用線：基準伝搬時間8分</text>
+      <text x="432" y="278" fill="#b7621f">作用の設定CDF（発生 H+12 を仮定）</text>
+      <text x="650" y="300" fill="#b7621f">基準到着より先の裾も同じ尺度</text>
+      <text x="571" y="422" font-size="10" fill="#60757d">早着の待機</text>
+    </g>
+    <g fill="#256b76" stroke="#256b76" stroke-width="1.5">
+      <path d="M152 222 H168 L160 236 Z"/>
+      <circle cx="400" cy="230" r="6"/>
+      <circle cx="560" cy="435" r="6"/>
+      <path d="M632 427 H648 L640 441 Z"/>
+    </g>
+    <g font-size="12" text-anchor="middle">
+      <text x="178" y="254">▼ 固定開始 H+0</text>
+      <text x="407" y="254">● 相対結果（基準 H+12）</text>
+      <text x="519" y="462">● 相対受領（基準 H+20）</text>
+      <text x="695" y="462">▼ 予定開始 H+24</text>
+    </g>
+    <text x="24" y="510" font-size="12">水平：時間経過　　垂直：Actor間の接続・レイアウト　　曲線の高さ：その線の累積確率</text>
+    <text x="24" y="534" font-size="12" fill="#60757d">基準ノード位置とCDF末端は一致しなくてもよい。薄い延長は確率表示用で、接続先を追加しない。</text>
+    <text x="24" y="553" font-size="11" fill="#60757d">予定開始に間に合わない試行は不成立。絶対時刻の結果CDFは、上流の遅れも含めてシミュレーションから求める。</text>
+  </g>
+</svg>
