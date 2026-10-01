@@ -1,6 +1,6 @@
 # 人がシナリオを作るための操作ガイド
 
-アプリケーション0.4.0。保存するシナリオは従来のversion 3。計算の意味は [data-model.md](data-model.md) と [simulation.md](simulation.md) を参照する。直交線・Relative / Fixedノード・図上CDFは [別の設計案](time-axis-design.md) であり、今回の実装には含めない。
+アプリケーション0.5.1。保存するシナリオは従来のversion 3に時間種別などの任意項目を追加したもの。計算の意味は [data-model.md](data-model.md) と [simulation.md](simulation.md) を参照する。通常Taskは水平線を保ち、作用線は直交化する。Relative / Fixedノード・図上CDFも実装済み。[設計と実装状況](time-axis-design.md)を参照する。
 
 ## 空の文書から作る
 

@@ -456,7 +456,6 @@
         const cy = top + 24 + lane * spacing;
         states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:radius,
           lane, collapseMode, lines:textLines(s.name,112) });
-        nodeBodies.push({x:x-radius-2,y:cy-radius-2,width:radius*2+4,height:radius*2+4});
       }
       if (collapseMode === "single") {
         const atTime = new Map();
@@ -475,15 +474,13 @@
           ? 42 + Math.max(0,lanes.length-1)*spacing
           : Math.max(1,lanes.length)*spacing+6;
       const nodeHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
-      const rowHeight=nodeHeight+T.position(axis,actor.id,top+nodeHeight);
-      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode});
+      const rowHeight=nodeHeight+T.position(axis,actor.id,top+nodeHeight,states);
+      const center=ss.length?states.get(ss[0].id).y:top+24;
+      rows.push({actor,depth,y:top,height:rowHeight,center,aggregated,collapseMode});
       y += rowHeight;
     }
     let height = y + 24;
-    const router = createEdgeRouter(
-        nodeBodies,
-        { left: vp.left, right: vp.right, top: 36, bottom: height - 12 },
-      );
+    for(const s of states.values())nodeBodies.push({x:s.x-s.r-2,y:s.y-s.r-2,width:s.r*2+4,height:s.r*2+4});
     function facing(a, b) {
       const direction = Math.sign(b.y - a.y);
       return [
@@ -495,11 +492,11 @@
     function route(a, b, timeAxis = false, key) {
       const [s, e] = facing(a, b);
       if(Math.abs(s.x-e.x)<1e-9)return [s,e];
-      let cy=axis.specs.get(key)?.y??Math.max(s.y,e.y)+18;
+      let cy=axis.specs.get(key)?.y??(s.y===e.y?s.y:Math.max(s.y,e.y)+18);
       while(horizontal.some(h=>Math.abs(h.y-cy)<8&&Math.max(h.start,Math.min(s.x,e.x))<Math.min(h.end,Math.max(s.x,e.x))))cy+=12;
       horizontal.push({y:cy,start:Math.min(s.x,e.x),end:Math.max(s.x,e.x)});
       height=Math.max(height,cy+28);
-      return [s,{x:s.x,y:cy},{x:e.x,y:cy},e];
+      return [s,...(s.y===cy?[]:[{x:s.x,y:cy}]),...(e.y===cy?[]:[{x:e.x,y:cy}]),e];
     }
     for (const t of doc.tasks) {
       if (!visible(t) || !states.has(t.fromStateId)) continue;

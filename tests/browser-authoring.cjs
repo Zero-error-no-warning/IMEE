@@ -193,6 +193,10 @@ async function main() {
     if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
     assert.equal(await page.locator('#timeline .fixed-time-node').count(),2);
     assert.equal(await page.locator('#timeline .axis-cdf').count(),2);
+    assert(await page.evaluate(()=>[...document.querySelectorAll('#timeline .edge.task .hit')].every(p=>{
+      const coords=p.getAttribute('d').match(/-?\d+(?:\.\d+)?/g).map(Number);
+      return coords.length===4&&coords[1]===coords[3];
+    })), 'the demo Tasks, including the CDF Task, must render as horizontal lines');
     await page.screenshot({path:path.join(output,'08-time-axis-config.png')});
     const cursor=await page.evaluate(()=>{const svg=document.querySelector('#timeline'),line=svg.querySelector('.cdf-axis'),b=line.getBBox(),m=svg.getScreenCTM();return {x:m.a*(b.x+b.width/2)+m.e,y:m.d*(b.y-20)+m.f};});
     await page.mouse.move(cursor.x,cursor.y);

@@ -57,6 +57,43 @@ test('all lines stay orthogonal, horizontal intervals do not overlap, and node X
   for(const [i,a]of horizontal.entries())for(const b of horizontal.slice(i+1))if(a.a.y===b.a.y)assert(Math.min(a.b.x,b.b.x)<=Math.max(a.a.x,b.a.x));
   for(const s of g.states.values())assert.equal(s.x,g.vp.x(s.time));
 });
+function chain(count){
+  return M.defaults({version:3,title:'horizontal chain',time:{unit:'minutes',duration:100,snap:1},
+    actors:[{id:'a',name:'A',side:'friendly'}],
+    states:Array.from({length:count+1},(_,i)=>state('s'+i,'a',i*5)),
+    tasks:Array.from({length:count},(_,i)=>task('t'+i,'s'+i,'s'+(i+1))),causalLinks:[]});
+}
+test('serial Tasks remain on their node baseline and do not add routing rows',()=>{
+  const short=L.layout(chain(1),2400),d=chain(12),before=M.clone(d);
+  for(const mode of ['off','config','results']){
+    d.views.main.cdfMode=mode;const g=L.layout(d,2400);
+    assert.equal(g.rows[0].height,short.rows[0].height);
+    for(const e of g.edges){assert.equal(e.points.length,2);assert.equal(e.points[0].y,e.points[1].y);}
+    assert.equal(g.axis.tracks.get('a').length,0);
+  }
+  assert.deepEqual(d.states,before.states);assert.deepEqual(d.tasks,before.tasks);
+});
+test('an inline Task CDF uses the horizontal Task as its axis without a vertical detour',()=>{
+  const d=chain(2);d.views.main.cdfScope='all';
+  d.tasks[0].simulation={enabled:true,performanceModel:cdf([{t:0,p:0,q:1},{t:5,p:.8,q:1}])};
+  const g=L.layout(d,2400),e=g.edges.find(e=>e.id==='t0'),c=g.cdfCharts[0];
+  assert.equal(e.points.length,2);assert.equal(e.points[0].y,g.states.get('s0').y);assert.equal(e.points[1].y,g.states.get('s1').y);
+  assert.equal(c.y,e.points[0].y);assert.equal(g.axis.tracks.get('a').length,0);
+  d.views.main.cdfMode='off';const off=L.layout(d,2400);assert.equal(off.rows[0].height,L.layout(chain(2),2400).rows[0].height);
+});
+test('overlapping CDF tails reserve another chart lane while ordinary Tasks stay horizontal',()=>{
+  const d=chain(3);d.views.main.cdfScope='all';
+  for(const t of d.tasks.slice(0,2))t.simulation={enabled:true,performanceModel:cdf([{t:0,p:0,q:1},{t:20,p:.8,q:1}])};
+  const g=L.layout(d,2400),charts=g.cdfCharts;
+  assert.equal(charts.length,2);assert(Math.abs(charts[0].y-charts[1].y)>=88);
+  const plain=g.edges.find(e=>e.id==='t2');assert.equal(plain.points.length,2);
+});
+test('hidden interactions and hidden CDF Tasks do not allocate empty rows',()=>{
+  const d=base();d.views.main.cdfScope='all';d.views.main.filters.causalLink=false;
+  let g=L.layout(d);assert.equal(g.axis.specs.has('causalLink:report'),false);
+  d.tasks[0].activity='quiet';d.tasks[0].simulation={enabled:true,performanceModel:cdf([{t:0,p:0,q:1},{t:20,p:1,q:1}])};d.views.main.filters.quiet=false;
+  g=L.layout(d);assert.equal(g.cdfCharts.length,0);assert.equal(g.rows[0].height,d.views.main.laneHeight+6);
+});
 test('configured CDF is unscaled, includes t=0 atoms and missing mass, and exports on the same axis',()=>{
   const d=base();d.views.main.cdfScope='all';d.tasks[0].simulation={enabled:true,performanceModel:cdf([{t:0,p:.2,q:1},{t:30,p:.7,q:1}])};
   const g=L.layout(d),c=g.cdfCharts.find(c=>c.id==='produce');
