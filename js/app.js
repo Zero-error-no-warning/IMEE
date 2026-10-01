@@ -830,6 +830,7 @@
   }
   const canvas = $("#canvas-scroll");
   $("#timeline").addEventListener("pointerdown", (e) => {
+    if(e.target.closest(".import-error"))return;
     if (e.button !== 0) return;
     const p = point(e),
       s = targetInfo(e);
@@ -998,7 +999,29 @@
     }
     if (d.kind === "pan") persist();
   });
-  $("#timeline").addEventListener("click", (e) => {
+  $("#timeline").addEventListener("click", async (e) => {
+    const copyButton=e.target.closest(".copy-import-error");
+    if(copyButton){
+      const text=copyButton.closest(".import-error").querySelector(".import-error-detail").textContent;
+      try {
+        if(!navigator.clipboard?.writeText)throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(text);
+        copyButton.textContent="コピー済み";
+      }catch(_){
+        const field=document.createElement("textarea");field.value=text;field.readOnly=true;
+        field.style.cssText="position:fixed;left:0;top:0;width:1px;height:1px;opacity:0";
+        document.body.append(field);field.select();
+        let copied=false;try{copied=!!document.execCommand?.("copy");}catch(_){}field.remove();
+        if(copied)copyButton.textContent="コピー済み";
+        else {
+          const detail=copyButton.closest(".import-error").querySelector(".import-error-detail"),range=document.createRange();
+          detail.focus();range.selectNodeContents(detail);const selectedText=window.getSelection();selectedText.removeAllRanges();selectedText.addRange(range);
+          toast("自動コピーできませんでした。選択されたエラー詳細をCtrl+C / ⌘Cでコピーしてください。");
+        }
+      }
+      return;
+    }
+    if(e.target.closest(".import-error"))return;
     if (swallowClick) return;
     const toggle = e.target.closest("[data-collapse]");
     if (toggle) {
@@ -1026,6 +1049,7 @@
     select(s, e.ctrlKey || e.metaKey);
   });
   function doubleClick(e) {
+    if(e.target.closest(".import-error"))return;
     if (document.querySelector("dialog[open]")) return;
     const summary = e.target.closest("[data-expand-group]");
     if (summary) {
@@ -1062,6 +1086,7 @@
       ) + "px";
   }
   $("#timeline").addEventListener("contextmenu", (e) => {
+    if(e.target.closest(".import-error"))return;
     e.preventDefault();
     const s = targetInfo(e),
       p = point(e),
@@ -1464,6 +1489,7 @@
     ]);
   window.addEventListener("keydown", (e) => {
     if (
+      e.target.closest(".import-error") ||
       e.target.matches("input,textarea,select") ||
       document.querySelector("dialog[open]")
     )
