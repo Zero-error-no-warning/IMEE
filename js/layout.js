@@ -546,21 +546,22 @@
               });
           }
         }
-    function anchor(p) {
-      const ep = M.endpoint(doc, p);
+    function anchor(p, c = null, side = "source") {
+      const ep = side === "target" && c ? M.causalEndpoint(doc, c, "target") : M.endpoint(doc, p);
+      if (!ep) return null;
       if (p.type === "actor") {
         const row = rows.find(r => r.actor.id === displayActor(ep.actorId));
         return row && {x:vp.x(ep.time),y:row.center,r:0};
       }
       if (p.type === "state") return states.get(p.id);
-      if (p.type === "task") return ensure(p.id,p.time);
+      if (p.type === "task") return ensure(p.id, ep.time);
     }
     if (filters.causalLink)
       for (const c of doc.causalLinks) {
         const sourceActorId = M.endpoint(doc,c.source).actorId;
         // Only causal links wholly inside the same collapsed subtree disappear.
         if (internal(c)) continue;
-        const a=anchor(c.source), b=anchor(c.target);
+        const a=anchor(c.source,c,"source"), b=anchor(c.target,c,"target");
         if (!a || !b) continue;
         edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
           label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId),
