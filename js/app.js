@@ -103,7 +103,7 @@
     geometry = L.layout(
       d,
       Math.max(320, $("#canvas-scroll").clientWidth || window.innerWidth - 48),
-      {simulationResult:simulationPanel?.getOverlayResult()},
+      {simulationResult:simulationPanel?.getOverlayResult(),cdfResult:simulationPanel?.getResult(),cdfSelection:selection},
     );
     const current = selected();
     chain = null;
@@ -145,6 +145,12 @@
     $("#document-title").textContent = d.title;
     $("#counts").textContent =
       `${d.actors.length} Actor / ${d.states.length} State / ${d.tasks.length} Task`;
+    $("#axis-cdf-mode").value=d.views.main.cdfMode||"config";
+    $("#axis-cdf-scope").value=d.views.main.cdfScope||"selected";
+    $("#axis-cdf-q").value=d.views.main.cdfQ??1;
+    $("#axis-cdf-q-value").textContent=Number(d.views.main.cdfQ??1).toFixed(2);
+    $("#axis-cdf-q").disabled=d.views.main.cdfMode==="results";
+    $("#axis-cdf-status").textContent=d.views.main.cdfMode==="results"&&!simulationPanel?.getResult()?"結果CDF：Simulationを実行してください":"横＝共通の時間 / 縦＝主体・接続";
     $("#undo").disabled = !importPreview && !history.past.length;
     $("#simulation-btn").disabled=!!importPreview;
     $("#redo").disabled = !history.future.length;
@@ -154,9 +160,10 @@
       span = r.end - r.start;
     $("#zoom-label").textContent =
       Math.round((d.time.duration / span) * 100) + "%";
-    $("#time-pan").max = d.time.duration - span;
+    const horizon=Math.max(d.time.duration,...geometry.axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0)));
+    $("#time-pan").max = Math.max(0,horizon - span);
     $("#time-pan").value = r.start;
-    $("#time-pan").disabled = span >= d.time.duration;
+    $("#time-pan").disabled = span >= horizon;
     $("#time-window").textContent =
       `T+${+r.start.toPrecision(6)} — T+${+r.end.toPrecision(6)}`;
     $("#snap").innerHTML = [...new Set([0.1, 0.5, 1, 5, 10, d.time.snap])]
@@ -219,10 +226,10 @@
     );
     let facts = "";
     if (s.type === "state")
-      facts = `時刻 T+${x.time} / ${esc(M.get(doc(), "actor", x.actorId).name)}`;
+      facts = `${M.nodeTiming(doc(),x).mode==='fixed'?'▼ Fixed-time Node':'● Relative Node'} / H+${x.time} / ${esc(M.get(doc(), "actor", x.actorId).name)}`;
     if (s.type === "task") {
       const w = M.taskWindow(doc(), x);
-      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>${x.simulation?.enabled ? "CDF：実線・達成までの所要時間と未達を抽選" : "FIX：二重線・所要時間固定（開始時刻は依存条件で変動）"}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
+      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>${x.simulation?.enabled ? "CDF：実線・達成までの所要時間と未達を抽選" : "FIX：二重線・所要時間固定（開始時刻は依存条件で変動）"}<br>${x.timing?"所要時間の変更を後続Relativeへ反映します。Fixedの指定時刻は保持します。":"接続元・先Stateまたは分岐点から所要時間を計算する従来モデルです。"}`;
     }
     if (s.type === "causalLink") {
       facts = `作用線<br>発生 ${M.endpoint(doc(), x.source).time} + 伝搬 ${x.propagation.duration} → 基準到達 ${M.causalArrivalTime(doc(), x)}<br>分類: ${esc(x.kind || "未指定")}`;
@@ -437,7 +444,10 @@
           doc().actors.map((a) => [a.id, a.name]),
           x.actorId,
         ) +
-        field("time", "時刻", x.time, "number") +
+        choices("nodeTiming","時間種別",[["relative","● Relative Node：入力から時刻が決まる"],["fixed","▼ Fixed-time Node：指定時刻に成立"]],sid?M.nodeTiming(doc(),x).mode:"fixed") +
+        '<p class="dialog-summary">Fixedは指定時刻までに条件が揃えば成立し、間に合わなければ未成立です。時刻はシナリオ開始からの経過時間（H+）で入力します。</p>' +
+        field("time", "時刻 / H+", x.time, "number") +
+        (sid&&A.incomingRelations(doc(),sid).length>1?choices("incomingTiming","Relativeの時刻調整に使う入力",[["","成立時刻を決める入力"],...A.incomingRelations(doc(),sid).map(r=>[r.id,r.label+" / H+"+r.time])],"")+'<p class="muted">他の入力は保持します。Fixedでは入力時間を変更しません。</p>':"") +
         choices("timePolicy", "時刻変更時の後続", [["follow","後続の所要時間を保って移動"],["keep","後続の基準時刻を維持"]], "follow") +
         choices(
           "activity",
@@ -460,11 +470,13 @@
         notes(x) + window.MESimulationUI.stateFields(x),
       (v) =>
         applyEdit((d) => {
-          if(sid && +v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy);
+          if(sid && v.nodeTiming!==M.nodeTiming(doc(),x).mode)A.setNodeTiming(d,sid,v.nodeTiming,+v.time);
+          else if(sid && +v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy,v.incomingTiming||undefined);
           const before=M.clone(d);
           const s = {
             ...x, name: v.name, actorId: v.actorId, activity: v.activity,
-            phase: v.phase, notes: v.notes, time: +v.time,
+            phase: v.phase, notes: v.notes, time: sid?M.get(d,"state",sid).time:+v.time,
+            timing:sid?M.get(d,"state",sid).timing:(v.nodeTiming==="fixed"?{mode:"fixed",at:+v.time}:{mode:"relative"}),
             simulation: window.MESimulationUI.readState($("#editor-form"), x),
           };
           if (sid) {Object.assign(M.get(d, "state", sid), s);if((x.simulation?.join||'all')!==v.stateJoin)A.reconcile(d,before);}
@@ -472,7 +484,7 @@
           return { type: "state", id: s.id };
         }),
     );
-    if(sid)authoringUI?.preview((d,v)=>{if(+v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy);const before=M.clone(d);M.get(d,'state',sid).simulation=window.MESimulationUI.readState($("#editor-form"),x);if((x.simulation?.join||'all')!==v.stateJoin)A.reconcile(d,before);});
+    if(sid)authoringUI?.preview((d,v)=>{if(v.nodeTiming!==M.nodeTiming(doc(),x).mode)A.setNodeTiming(d,sid,v.nodeTiming,+v.time);else if(+v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy,v.incomingTiming||undefined);const before=M.clone(d);M.get(d,'state',sid).simulation=window.MESimulationUI.readState($("#editor-form"),x);if((x.simulation?.join||'all')!==v.stateJoin)A.reconcile(d,before);});
     window.MESimulationUI.bindState($('#editor-form'),doc(),x);
   }
   function editTask(tid) {
@@ -494,7 +506,8 @@
         x.notes = v.notes;
         x.simulation = window.MESimulationUI.readPerformance($("#editor-form"), t);
         if(+v.start!==w.start)A.moveState(d,x.fromStateId,+v.start,v.timePolicy);
-        if(x.toStateId && +v.end!==M.get(d,'state',x.toStateId).time)A.moveState(d,x.toStateId,+v.end,v.timePolicy);
+        if(x.timing){x.timing.duration=+v.end-+v.start;}
+        else if(x.toStateId && +v.end!==M.get(d,'state',x.toStateId).time)A.moveState(d,x.toStateId,+v.end,v.timePolicy);
         const changedTimes = new Map(
           (x.junctions || []).map((j, i) => [j.time, +v["j" + i]]),
         );
@@ -805,7 +818,7 @@
   }
   const canvas = $("#canvas-scroll");
   $("#timeline").addEventListener("pointerdown", (e) => {
-    if(e.target.closest(".import-error,.cdf-map-marker,.authoring-handle"))return;
+    if(e.target.closest(".import-error,.cdf-map-marker,.authoring-handle,.axis-cdf"))return;
     if (e.button !== 0) return;
     const p = point(e),
       s = targetInfo(e);
@@ -880,7 +893,7 @@
         span = drag.range.end - drag.range.start,
         start = Math.max(
           0,
-          Math.min(doc().time.duration - span, drag.range.start + delta),
+          Math.min(Math.max(doc().time.duration,...geometry.axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0))) - span, drag.range.start + delta),
         );
       doc().views.main.visibleTimeRange = { start, end: start + span };
       canvas.scrollTop = drag.scroll + drag.start.y - p.y;
@@ -1165,12 +1178,12 @@
     persist();
   }
   function setRange(start, end) {
-    const duration = doc().time.duration,
+    const duration = Math.max(doc().time.duration,...(geometry?.axis?.curves||[]).map(c=>c.start+(c.points.at(-1)?.t||0))),
       span = Math.max(duration / 1000, Math.min(duration, end - start));
     start = Math.max(0, Math.min(duration - span, start));
     change((d) => {
       d.views.main.visibleTimeRange = { start, end: start + span };
-      d.views.main.zoom = duration / span;
+      d.views.main.zoom = Math.max(1,d.time.duration / span);
     });
   }
   function zoom(factor) {
@@ -1309,7 +1322,7 @@
     const d = M.clone(doc());
     d.views.main.mode = "mission";
     simulationPanel?.invalidate();
-    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true, simulationResult:simulationPanel?.getOverlayResult() });
+    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true, simulationResult:simulationPanel?.getOverlayResult(),cdfResult:simulationPanel?.getResult(),cdfSelection:selection });
     return {
       svg: R.render(d, g, { export: true, full: true }),
       width: g.vp.width,
@@ -1461,6 +1474,7 @@
       ['新しいシナリオ',()=>authoringUI.newDocument()],
       ['文書・別案・保存時点',()=>authoringUI.documents()],
       ["Technologyカタログ", catalog],
+      ["共通時間軸デモ（図上CDF・固定時刻）",()=>confirmReplace("共通時間軸デモへ置き換え",()=>loadJSON(JSON.stringify(createTimeAxisSample())))],
       ["表現デモ（捜索・識別・通信）", () =>
         confirmReplace("表現デモへ置き換え", () =>
           loadJSON(JSON.stringify(createTutorialSample())))],
@@ -1615,6 +1629,20 @@
     }),
   });
   $("#simulation-btn").onclick = simulationPanel.open;
+  $("#axis-cdf-fit").onclick=()=>setRange(0,Math.max(doc().time.duration,...geometry.axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0))));
+  $("#timeline").addEventListener("pointermove",e=>{
+    $("#axis-cdf-cursor")?.remove();if(drag||connecting)return;
+    const p=point(e),c=geometry.cdfCharts?.find(c=>p.y>=c.y-c.height-5&&p.y<=c.y+5&&p.x>=c.startX&&p.x<=Math.max(c.endX,c.startX+8));
+    if(!c)return;
+    const absolute=geometry.vp.time(p.x),t=absolute-c.start,ps=c.distribution;
+    let probability=0,left={t:0,p:0};
+    for(const right of ps){if(t<right.t){if(c.kind==='config')probability=left.p+(right.p-left.p)*(t-left.t)/(right.t-left.t);else probability=left.p;break;}probability=right.p;left=right;}
+    const textX=Math.max(geometry.vp.left+4,Math.min(p.x+6,geometry.vp.width-160));
+    $('#timeline').insertAdjacentHTML('beforeend',`<g id="axis-cdf-cursor" pointer-events="none"><path d="M${p.x},${c.y-c.height} V${c.y}" stroke="#087f80" stroke-dasharray="2 2"/><rect x="${textX-3}" y="${c.y-c.height-23}" width="158" height="18" rx="3" fill="white"/><text x="${textX}" y="${c.y-c.height-10}" font-size="10">H+${Number(absolute.toFixed(2))} : ${(probability*100).toFixed(1)}%</text></g>`);
+  });
+  $("#timeline").addEventListener("pointerleave",()=>$("#axis-cdf-cursor")?.remove());
+
+  for(const [id,key] of [["axis-cdf-mode","cdfMode"],["axis-cdf-scope","cdfScope"],["axis-cdf-q","cdfQ"]])$("#"+id).addEventListener(id==="axis-cdf-q"?"input":"change",e=>change(d=>{d.views.main[key]=key==="cdfQ"?+e.target.value:e.target.value;}));
   cdfHover=window.MESimulationUI.hoverPreview({surface:$("#timeline"),getDocument:doc,
     canShow:()=>!drag && !connecting && !space && !document.querySelector("dialog[open]")});
   inspector(false);

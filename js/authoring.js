@@ -176,7 +176,8 @@
     for (const node of graph.order) {
       if (node.type === "task") {
         const t = node.item,
-          start = M.get(d, "state", t.fromStateId).time;
+          start = t.timing ? M.nominalStart(d,t) : M.get(d, "state", t.fromStateId).time;
+        if(t.timing)t.timing.duration=round(durations[t.id]);
         for (const j of t.junctions || []) {
           j.time = round(start + offsets[j.id]);
           for (const o of j.outcomes)
@@ -187,8 +188,9 @@
       if (node.type !== "state") continue;
       const s = node.item,
         arrivals = [];
+      if(s.timing?.mode === "fixed"){s.time=s.timing.at;continue;}
       for (const t of d.tasks) {
-        const start = M.get(d, "state", t.fromStateId).time;
+        const start = t.timing ? M.nominalStart(d,t) : M.get(d, "state", t.fromStateId).time;
         if (t.toStateId === s.id) arrivals.push(start + durations[t.id]);
         for (const j of t.junctions || [])
           for (const o of j.outcomes)
@@ -196,7 +198,7 @@
               arrivals.push(j.time + delays[j.id + ":" + s.id]);
       }
       for (const c of d.causalLinks)
-        if (c.target.type === "state" && c.target.id === s.id)
+        if (c.target.type === "state" && c.target.id === s.id && (s.timing?.mode!=="relative" || c.simulation?.enabled))
           arrivals.push(M.causalArrivalTime(d, c));
       let time = arrivals.length
         ? (s.simulation?.join === "any" ? Math.min : Math.max)(...arrivals)
@@ -211,6 +213,15 @@
     }
     for (const c of d.causalLinks)
       if (c.target.type === "junction") {
+        const t=M.get(d,"task",c.target.taskId),j=M.get(d,"junction",c.target.id);
+        if(t.timing){
+          const expected=M.causalArrivalTime(d,c);
+          if(Math.abs(j.time-expected)>1e-8){
+            if((overrides.effectPass||0)>d.states.length+d.tasks.length)throw new Error("作用分岐の基準時刻を整合できません。");
+            return reconcile(d,before,{durations,delays,offsets:{...offsets,[j.id]:expected-M.taskWindow(d,t).start},effectPass:(overrides.effectPass||0)+1});
+          }
+          continue;
+        }
         c.propagation.duration = round(
           M.get(d, "junction", c.target.id).time -
             M.get(d, "state", c.source.id).time,
@@ -224,6 +235,7 @@
       d.time.duration,
       ...d.states.map((s) => s.time),
       ...d.tasks.flatMap((t) => (t.junctions || []).map((j) => j.time)),
+      ...d.tasks.map(t=>M.taskWindow(d,t).end),
       ...d.causalLinks.map((c) => M.causalArrivalTime(d, c)),
     );
     if (max > 1e6) throw new Error("全期間は1,000,000以下にしてください。");
@@ -231,7 +243,13 @@
     M.validate(d);
     return changes(before, d);
   }
-  function moveState(d, id, time, mode = "follow") {
+  function incomingRelations(d,id){
+    const s=M.get(d,"state",id),relations=[];
+    for(const t of d.tasks){if(t.toStateId===id)relations.push({id:"task:"+t.id,label:t.label,time:M.taskWindow(d,t).end});for(const j of t.junctions||[])for(const o of j.outcomes)if(o.toStateId===id)relations.push({id:"outcome:"+j.id+":"+id,label:t.label+" / "+o.label,time:j.time+(o.delay??s.time-j.time)});}
+    for(const c of d.causalLinks)if(c.target.type==="state"&&c.target.id===id&&(s.timing?.mode!=="relative"||c.simulation?.enabled))relations.push({id:"causalLink:"+c.id,label:c.label,time:M.causalArrivalTime(d,c)});
+    return relations;
+  }
+  function moveState(d, id, time, mode = "follow", incomingId) {
     if (!Number.isFinite(time) || time < 0)
       throw new Error("時刻は0以上の数値にしてください。");
     const before = clone(d),
@@ -240,8 +258,15 @@
       b = timing(before),
       delta = time - old;
     s.time = time;
+    if(s.timing?.mode === "fixed") {
+      s.timing.at=time;
+      return reconcile(d,before);
+    }
+    const inputs=incomingRelations(before,id);
+    const chosen=incomingId||(inputs.find(x=>Math.abs(x.time-old)<1e-8)||inputs[0])?.id;
+    if(incomingId&&!inputs.some(x=>x.id===incomingId))throw new Error("時間を調整する入力が存在しません。");
     for (const c of d.causalLinks) {
-      if (c.target.type === "state" && c.target.id === id)
+      if (c.target.type === "state" && c.target.id === id && chosen==="causalLink:"+c.id)
         c.propagation.duration = round(
           time - M.get(d, "state", c.source.id).time,
         );
@@ -253,10 +278,10 @@
         );
     }
     for (const t of d.tasks) {
-      if (t.toStateId === id) b.durations[t.id] += delta;
+      if (t.toStateId === id && chosen==="task:"+t.id) b.durations[t.id] += delta;
       for (const j of t.junctions || [])
         for (const o of j.outcomes)
-          if (o.toStateId === id) b.delays[j.id + ":" + id] += delta;
+          if (o.toStateId === id && chosen==="outcome:"+j.id+":"+id) b.delays[j.id + ":" + id] += delta;
       if (mode === "keep" && t.fromStateId === id) {
         b.durations[t.id] -= delta;
         for (const j of t.junctions || []) b.offsets[j.id] -= delta;
@@ -270,7 +295,18 @@
       throw new Error(
         "活動・分岐の時間が負になります。後続を移動する方法を選んでください。",
       );
-    return reconcile(d, before, b);
+    const result=reconcile(d, before, b);
+    if(Math.abs(s.time-time)>1e-8)throw new Error("他の入力・開始依存が成立時刻を拘束しています。調整する入力を変更するか、依存先も調整してください。");
+    return result;
+  }
+  function setNodeTiming(d,id,mode,at){
+    if(!["relative","fixed"].includes(mode))throw new Error("時間種別が不正です。");
+    const before=clone(d),base=timing(d);
+    // Capture old durations before releasing the destination's time constraint.
+    for(const t of d.tasks)if(t.fromStateId===id||t.toStateId===id||t.junctions?.some(j=>j.outcomes.some(o=>o.toStateId===id))){t.timing??={duration:base.durations[t.id]};for(const j of t.junctions||[])for(const o of j.outcomes)o.delay??=base.delays[j.id+":"+o.toStateId];}
+    const s=M.get(d,"state",id);s.timing=mode==="fixed"?{mode,at}:{mode};
+    if(mode==="fixed")s.time=at;
+    return reconcile(d,before,base);
   }
   function propagation(d, id, duration) {
     if (!Number.isFinite(duration) || duration < 0)
@@ -282,7 +318,7 @@
     if (c.target.type === "junction") {
       const t = M.get(d, "task", c.target.taskId),
         j = M.get(d, "junction", c.target.id),
-        start = M.get(d, "state", t.fromStateId).time;
+        start = M.taskWindow(d,t).start;
       b.offsets[j.id] = M.get(d, "state", c.source.id).time + duration - start;
       if (b.offsets[j.id] < 0)
         throw new Error("作用の到達は対象活動の開始以降にしてください。");
@@ -327,7 +363,7 @@
       throw new Error("所要時間は0以上にしてください。");
     let from = M.get(d, "state", fromStateId);
     if (!from) {
-      from = { id: M.id("state"), actorId, name: "開始", time: start };
+      from = { id: M.id("state"), actorId, name: "開始", time: start, timing:{mode:"fixed",at:start} };
       d.states.push(from);
     }
     if (from.actorId !== actorId)
@@ -337,6 +373,7 @@
         actorId,
         name: result,
         time: round(from.time + duration),
+        timing: {mode:"relative"},
       },
       task = {
         id: M.id("task"),
@@ -344,6 +381,7 @@
         toStateId: to.id,
         label: name,
         simulation: { enabled: false },
+        timing: {duration},
       };
     d.states.push(to);
     d.tasks.push(task);
@@ -386,6 +424,7 @@
       time,
     };
     const tail = clone(t);
+    if(t.timing){t.timing.duration=time-w.start;tail.timing.duration=w.end-time;s.timing={mode:"relative"};}
     tail.id = M.id("task");
     tail.fromStateId = s.id;
     tail.label = t.label + "（継続）";
@@ -436,8 +475,9 @@
     // Sub-second grids must stay representable after conversions.
     if (d.time.duration < 1e-9 || d.time.duration > 1e6 || d.time.snap < 1e-9)
       throw new Error("換算後の全期間・スナップが保存範囲外です。");
-    for (const s of d.states) s.time = scale(s.time);
+    for (const s of d.states) {s.time = scale(s.time);if(s.timing?.mode==="fixed")s.timing.at=scale(s.timing.at);}
     for (const t of d.tasks) {
+      if(t.timing)t.timing.duration=scale(t.timing.duration);
       cdf(t.simulation?.performanceModel);
       for (const j of t.junctions || []) {
         j.time = scale(j.time);
@@ -480,6 +520,7 @@
         id: s.id,
         actorId: s.actorId,
         time: s.time,
+        timing:s.timing,
         simulation: {
           q: s.simulation?.q ?? 1,
           join: s.simulation?.join || "all",
@@ -489,6 +530,7 @@
         id: t.id,
         fromStateId: t.fromStateId,
         toStateId: t.toStateId,
+        timing:t.timing,
         junctions: (t.junctions || []).map((j) => ({
           id: j.id,
           time: j.time,
@@ -609,6 +651,8 @@
     changes,
     reconcile,
     moveState,
+    incomingRelations,
+    setNodeTiming,
     moveSelection,
     propagation,
     activity,

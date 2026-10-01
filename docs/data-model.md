@@ -10,20 +10,28 @@ Stateは成立した条件・事実、Taskは同Actor内の時間を要する状
 
 ## State
 
-`{id,actorId,name,time,simulation?:{q,join}}`。`time`は図の基準成立時刻。初期Stateはその時刻に外生的に成立します。生成元のあるStateは実到達時刻で成立し、図の時刻に固定しません。
+`{id,actorId,name,time,timing?,simulation?:{q,join}}`。`time`は図の基準成立時刻。初期Stateはその時刻に外生的に成立します。生成元のあるStateは実到達時刻で成立し、図の時刻に固定しません。
 
 - `q`は初期Stateの品質（既定1）。到達した品質を固定値で上書きしません。
 - `join:"all"`（既定）: すべての生成元Task/作用線の到達を待ち、最小q。
 - `join:"any"`: 最初の到達時点で成立し、同時刻までに到達済みの最大q。後着入力は成立済みの品質を変更しません。
 - Stateの固定q=0と不達は異なります。
 
+### 時間種別（任意拡張）
+
+`timing:{mode:"relative"}`は入力到達と開始依存から基準`time`を導く。実到達時刻は試行ごとに分布し得る。入力のない明示Relativeは作成途中として保存できるが、Simulation実行前にFixed開始点か生成元が必要。
+
+`timing:{mode:"fixed",at:30}`はH+30の厳密な予定イベント。`time`は`at`と一致する。条件が先に揃ったら待機し、指定時刻までに揃わなければ未成立。入力のないFixedはその時刻の外生イベント。待機中の品質は条件が揃った時点の値を保持する。
+
+`timing`未指定の既存文書は従来動作。入力のない・開始依存のない外生Stateは意味に合わせて▼、生成元・開始依存があるStateは●で描くが、読み込みで厳密予定イベントへ変換しない。
+
 ## Task
 
-`{id,fromStateId,toStateId?,label,kind?,junctions?,simulation?}`。接続先は同Actorの別State。Taskは各試行1回実行し、実行中の入力qは変更しません。途中出力には結果Stateを設けてTaskを分けます。`toStateId`がない場合は結果分岐が必要です。
+`{id,fromStateId,toStateId?,label,kind?,timing?:{duration},junctions?,simulation?}`。接続先は同Actorの別State。Taskは各試行1回実行し、実行中の入力qは変更しません。途中出力には結果Stateを設けてTaskを分けます。`toStateId`がない場合は結果分岐が必要です。
 
 `simulation`:
 
-- `enabled`: trueならCDF、false/省略なら図のState間の固定所要時間。
+- `enabled`: trueならCDF、false/省略なら固定所要時間。`timing.duration`があればその値を使用し、なければ従来どおり図のState間の差から取得。
 - `qualityRetention`: 固定時間処理の品質保持率、既定1。
 - `performanceModel`: 下記のCDF。
 - `qInput:{stateIds,mode:"all"|"any"}`: 指定Stateを品質入力とする。ANDはすべてを待ち最小q、ORは到達済みの最大q。省略/空配列なら接続元Stateのq。
@@ -171,3 +179,11 @@ Actorは`{id,name,side,parentId?,isGroup?,color?}`。技術の定義と関連付
 文書一覧・保存時点はシナリオJSONと別のブラウザ内保存です。計算結果の有効性は、時刻・接続・品質・CDF・分岐・成功条件などの計算設定で判定します。名前・備考・色・技術・表示の変更では既存結果を保持します。旧結果は当時の入力スナップショットへ紐付けます。
 
 Relative / Fixed-time Node・直交線・図上CDFは [検討中の設計案](time-axis-design.md) です。現行version 3にノード種別は追加していません。
+
+## 共通時間軸の表示設定
+
+`views.main.cdfMode`: `off` / `config` / `results`（既定config）。`cdfScope`: `selected` / `all`（既定selected）。`cdfQ`: 0〜1（既定1、表示用）。CDFの裾を含む表示範囲は作成期間を越えて指定できる。Simulation条件やState時刻は変更しない。
+
+Taskに`timing.duration`を指定した場合、基準開始は開始State、追加待機、品質入力を含む条件成立時刻。FIXの実所要時間とCDFの基準所要時間を保存する。CDFの抽選時間にdurationを加算しない。Relativeのtimeは基準到達のAND最大／OR最小と必須開始依存を反映する。説明専用の作用は明示Relativeの生成元に含めない。Fixedへ早く到達するTaskの終点は受領マーカーとし、予定時刻までを破線で表示する。
+
+出力結果の`eventDistributions`は`{type,id,event,count,total,step,points:[{t,p}]}`。eventは`completed`、`arrived`、`accepted`、`established`。countは実件数、totalは全試行、stepは時間格子幅（Fixedは0）。未達の残余確率を保持する。acceptedは入力受領であり、対象State成立とは区別する。

@@ -188,6 +188,28 @@ async function main() {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     );
+    await page.setViewportSize({width:1440,height:1000});
+    await page.evaluate(d=>window.IMEE.loadJSON(JSON.stringify(d)),require('../js/time-axis-sample')());
+    if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
+    assert.equal(await page.locator('#timeline .fixed-time-node').count(),2);
+    assert.equal(await page.locator('#timeline .axis-cdf').count(),2);
+    await page.screenshot({path:path.join(output,'08-time-axis-config.png')});
+    const cursor=await page.evaluate(()=>{const svg=document.querySelector('#timeline'),line=svg.querySelector('.cdf-axis'),b=line.getBBox(),m=svg.getScreenCTM();return {x:m.a*(b.x+b.width/2)+m.e,y:m.d*(b.y-20)+m.f};});
+    await page.mouse.move(cursor.x,cursor.y);
+    assert.equal(await page.locator('#axis-cdf-cursor').count(),1);
+    const goal=page.locator('.state[data-id="decision"] .body');await goal.scrollIntoViewIfNeeded();
+    const node=await goal.boundingBox(),delta=await page.evaluate(()=>{const svg=document.querySelector('#timeline'),m=svg.getScreenCTM();return 2*(+svg.getAttribute('width')-166-36)/40*m.a;});
+    await page.mouse.move(node.x+node.width/2,node.y+node.height/2);await page.mouse.down();await page.mouse.move(node.x+node.width/2+delta,node.y+node.height/2,{steps:4});await page.mouse.up();
+    const shifted=await document();assert.equal(shifted.states.find(s=>s.id==='decision').timing.at,32);assert.equal(shifted.tasks[1].timing.duration,6);
+    await page.locator('#simulation-btn').click();await page.locator('#simulation-run').click();await page.waitForFunction(()=>!document.querySelector('#simulation-export').disabled);await page.locator('#simulation-close').click();
+    await page.locator('#axis-cdf-mode').selectOption('results');
+    assert.equal(await page.locator('#timeline .axis-cdf[data-cdf-kind="results"]').count(),7);
+    assert(await page.locator('#axis-cdf-q').isDisabled());
+    if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
+    await page.screenshot({path:path.join(output,'09-time-axis-results.png')});
+    await page.setViewportSize({width:640,height:800});
+    await page.screenshot({path:path.join(output,'10-time-axis-narrow.png')});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     assert.deepEqual(errors, []);
     console.log("Browser authoring workflow passed; screenshots: " + output);
   } finally {

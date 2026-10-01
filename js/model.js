@@ -65,6 +65,10 @@
     return d;
   }
   function taskWindow(d, t) {
+    if (t.timing) {
+      const start = nominalStart(d, t);
+      return { start, end: start + t.timing.duration };
+    }
     const start = get(d, "state", t.fromStateId)?.time;
     return {
       start,
@@ -90,6 +94,12 @@
     const base=Math.max(...startStateIds(t).map(id=>get(d,"state",id).time));
     const qi=t.simulation?.qInput, qs=qi?.stateIds || [];
     return qs.length ? Math.max(base,(qi.mode === "any" ? Math.min : Math.max)(...qs.map(id=>get(d,"state",id).time))) : base;
+  }
+  function nodeTiming(d,s){
+    if(s.timing)return s.timing;
+    const produced=d.tasks.some(t=>t.toStateId===s.id||t.junctions?.some(j=>j.outcomes.some(o=>o.toStateId===s.id)))||d.causalLinks.some(c=>c.simulation?.enabled&&c.target.type==="state"&&c.target.id===s.id);
+    const gated=d.causalLinks.some(c=>c.simulation?.enabled&&c.target.type==="junction"&&c.source.id===s.id);
+    return produced||gated?{mode:"relative",legacy:true}:{mode:"fixed",at:s.time,legacy:true};
   }
   function implicitDependencies(d) {
     return d.causalLinks.filter(c=>c.target.type==="junction").map(c=>({
@@ -209,6 +219,13 @@
       str(s.name, "State名");
       if (!get(d, "actor", s.actorId)) fail("StateのActorが存在しません。");
       num(s.time, "State.time");
+      if (s.timing !== undefined) {
+        if (!s.timing || !["relative", "fixed"].includes(s.timing.mode)) fail("ノードの時間種別が不正です。");
+        if (s.timing.mode === "fixed") {
+          num(s.timing.at, "固定時刻");
+          if (Math.abs(s.time-s.timing.at)>1e-9) fail("Fixed-time Nodeの位置は指定時刻と一致させてください。");
+        }
+      }
       if ("start" in s || "end" in s)
         fail("Stateはtimeの一点です。start / endは使用できません。");
       status(s);
@@ -242,6 +259,10 @@
            t.simulation.waitForStateIds.some(sid => !get(d, "state", sid))))
         fail("Taskの追加依存State参照が不正です。");
       str(t.label, "Task名");
+      if (t.timing !== undefined) {
+        if (!t.timing || typeof t.timing !== "object") fail("Task.timingが不正です。");
+        P.number(t.timing.duration, "Task所要時間", 0, 1e9);
+      }
       const s = get(d, "state", t.fromStateId);
       if (!s) fail("Taskの接続元が存在しません。");
       if (!t.toStateId && !t.junctions?.length)
@@ -253,12 +274,13 @@
         fail("junctionsが不正です。");
       const dest = (sid, time) => {
         const e = get(d, "state", sid);
-        if (!e || e.id === s.id || e.actorId !== s.actorId || e.time < time)
+        if (!e || e.id === s.id || e.actorId !== s.actorId || (e.timing?.mode !== "fixed" && e.time < time))
           fail(
             "Taskの接続先は同一Actor・開始時刻以降の別Stateにしてください。",
           );
       };
       if (t.toStateId) dest(t.toStateId, s.time);
+      if(t.timing && taskWindow(d,t).end>d.time.duration)fail("Taskの基準終了が表示期間外です。");
       const times = new Set();
       for (const j of t.junctions || []) {
         register(j);
@@ -266,7 +288,7 @@
         if (times.has(j.time))
           fail("同一Task・同一時刻のジャンクションは1つにまとめてください。");
         times.add(j.time);
-        if (t.toStateId && j.time > get(d, "state", t.toStateId).time)
+        if (j.time > taskWindow(d,t).end)
           fail("ジャンクションはTask期間内に置いてください。");
         if (
           !Array.isArray(j.outcomes) ||
@@ -310,7 +332,7 @@
         const t=get(d,"task",target.taskId), j=get(d,"junction",target.id);
         if(!j.outcomes.some(o=>o.toStateId===target.outcomeStateId))fail("分岐点の結果Stateをtarget.outcomeStateIdで指定してください。");
         if(j.simulation && j.simulation.mode!=="effect")fail("作用線の到達先は作用分岐点です。");
-        if(get(d,"state",c.source.id).time<nominalStart(d,t))fail("作用発生Stateの基準時刻は対象Taskの開始条件成立以降にしてください。実行時は暗黙の開始依存を適用します。");
+        if(get(d,"state",c.source.id).timing?.mode!=="fixed" && get(d,"state",c.source.id).time<nominalStart(d,t))fail("作用発生Stateの基準時刻は対象Taskの開始条件成立以降にしてください。実行時は暗黙の開始依存を適用します。");
       }
       if(c.simulation!==undefined){
         const sim=c.simulation;
@@ -321,15 +343,17 @@
     }
     // Individual receipts may precede or follow the State's nominal establishment.
     for(const [i,st] of d.states.entries()) {
-      const links=d.causalLinks.filter(c=>c.target.type==="state" && c.target.id===st.id);
-      if(!links.length)continue;
+      const links=d.causalLinks.filter(c=>c.target.type==="state" && c.target.id===st.id && (st.timing?.mode!=="relative" || c.simulation?.enabled));
+      if(st.timing?.mode === "fixed")continue;
+      if(!links.length && st.timing?.mode!=="relative")continue;
       const arrivals=links.map(c=>causalArrivalTime(d,c));
       for(const t of d.tasks){
-        if(t.toStateId===st.id)arrivals.push(st.time);
+        if(t.toStateId===st.id)arrivals.push(t.timing?taskWindow(d,t).end:st.time);
         for(const j of t.junctions || [])for(const o of j.outcomes)
           if(o.toStateId===st.id)arrivals.push(j.time+(o.delay ?? st.time-j.time));
       }
       const mode=st.simulation?.join || "all";
+      if(!arrivals.length)continue;
       let expected=(mode==="any"?Math.min:Math.max)(...arrivals);
       const gates=d.causalLinks.filter(c=>c.target.type==="junction" && c.source.id===st.id);
       if(gates.length)expected=Math.max(expected,...gates.map(c=>nominalStart(d,get(d,"task",c.target.taskId))));
@@ -374,11 +398,14 @@
       const v = d.views.main;
       opt(v.mode, ["mission", "technology", "gap", "causality"], "View");
       opt(v.collapsedLayout, ["compact", "single", "spaced"], "折りたたみ表示");
+      opt(v.cdfMode,["off","config","results"],"図上CDFモード");
+      opt(v.cdfScope,["selected","all"],"図上CDF対象");
+      if(v.cdfQ!==undefined)P.number(v.cdfQ,"図上CDF入力q",0,1);
       if (v.laneHeight !== undefined) num(v.laneHeight, "レーン高さ", 52, 160);
       if (v.zoom !== undefined) num(v.zoom, "倍率", 1, 1000);
       if (v.visibleTimeRange) {
-        num(v.visibleTimeRange.start, "表示開始");
-        num(v.visibleTimeRange.end, "表示終了", v.visibleTimeRange.start);
+        num(v.visibleTimeRange.start, "表示開始",0,1e15);
+        num(v.visibleTimeRange.end, "表示終了", v.visibleTimeRange.start,1e15);
         if (v.visibleTimeRange.end <= v.visibleTimeRange.start)
           fail("表示範囲には長さが必要です。");
       }
@@ -550,6 +577,7 @@
       s.id = ref(s.id);
       s.actorId = ref(s.actorId);
       s.time += delta;
+      if(s.timing?.mode==="fixed")s.timing.at+=delta;
     }
     for (const t of f.tasks) {
       t.id = ref(t.id);
@@ -906,6 +934,7 @@
     validate,
     parse,
     taskWindow,
+    nodeTiming,
     startStateIds, nominalStart, implicitDependencies, dependencyGraph,
     endpoint,
     endpointActor,

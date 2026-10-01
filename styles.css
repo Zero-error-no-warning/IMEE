@@ -1234,3 +1234,4 @@ dialog > .dialog-heading {flex-shrink:0;}
 #timeline .connect-unavailable.edge .line {opacity:.35;}
 .selection-scope {padding:8px;background:#eef5f4;border:1px solid var(--border);border-radius:6px;}
 @media(max-width:760px){#editor-form{padding:14px;}dialog{padding:16px;}}
+.time-axis-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #dfe8eb;background:#f8fbfb;font-size:11px}.time-axis-controls label{display:flex;align-items:center;gap:6px}.time-axis-controls select{padding:4px 6px;font:inherit}.time-axis-controls input{width:92px}.time-axis-controls output{min-width:28px;font-variant-numeric:tabular-nums}#axis-cdf-status{color:#6d8187}.axis-cdf{cursor:pointer}.axis-cdf:focus .cdf-curve{stroke-width:3}.fixed-time-node{stroke-linejoin:round}

@@ -14,11 +14,13 @@
     <script defer src="js/simulation.js"></script>
     <script defer src="js/sensitivity.js"></script>
     <script defer src="js/simulation-overlay.js"></script>
+    <script defer src="js/time-axis.js"></script>
     <script defer src="js/layout.js"></script>
     <script defer src="js/render.js"></script>
     <script defer src="js/simulation-ui.js"></script>
     <script defer src="js/sample.js"></script>
     <script defer src="js/simulation-sample.js"></script>
+    <script defer src="js/time-axis-sample.js"></script>
     <script defer src="js/tutorial-sample.js"></script>
     <script defer src="js/all-cdf-ui.js"></script>
     <script defer src="js/authoring-ui.js"></script>
@@ -94,9 +96,10 @@
             ><strong>Taskと因果のタイムライン</strong><span id="counts"></span>
           </div>
           <div class="legend">
-            <span>● State</span><span title="Taskの所要時間・作用線の伝搬時間と未達をCDFで抽選します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,7 L34,7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>CDF Task・作用</span><span title="Task所要時間・作用線の伝搬時間・分岐後の遅延は固定です。発生時刻は依存条件で変動します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,5.5 L34,5.5 M1,8.5 L34,8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>FIX Task・作用・分岐</span><span>○ 分岐点</span>
+            <span>● Relative Node</span><span>▼ Fixed-time Node</span><span title="Taskの所要時間・作用線の伝搬時間と未達をCDFで抽選します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,7 L34,7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>CDF Task・作用</span><span title="Task所要時間・作用線の伝搬時間・分岐後の遅延は固定です。発生時刻は依存条件で変動します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,5.5 L34,5.5 M1,8.5 L34,8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>FIX Task・作用・分岐</span><span>○ 分岐点</span>
           </div>
         </div>
+        <div class="time-axis-controls" aria-label="図上CDF"><label>CDF <select id="axis-cdf-mode"><option value="off">非表示</option><option value="config">設定CDF（所要時間）</option><option value="results">結果CDF（絶対時刻）</option></select></label><label>対象 <select id="axis-cdf-scope"><option value="selected">選択中</option><option value="all">すべて</option></select></label><label>入力q <input id="axis-cdf-q" type="range" min="0" max="1" step="0.01" value="1"><output id="axis-cdf-q-value">1.00</output></label><button id="axis-cdf-fit" type="button">CDF全期間</button><span id="axis-cdf-status">横＝時間 / 縦＝主体・接続</span></div>
         <div
           id="canvas-scroll"
           tabindex="0"

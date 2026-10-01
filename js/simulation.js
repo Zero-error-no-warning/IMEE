@@ -15,6 +15,7 @@
     if(!Number.isInteger(config.seed) || config.seed<0 || config.seed>4294967295)fail("Seedが範囲外です。");
     if(config.deadline!=null)P.number(config.deadline,"期限",0,1e9);
     const links=d.causalLinks.filter(l=>l.simulation?.enabled), graph=M.dependencyGraph(d,true), {nodes,order}=graph;
+    for(const n of order)if(n.type==="state" && n.item.timing?.mode==="relative" && !n.dependencies.some(id=>nodes.get(id).type!=="start"))fail("Relative Node「"+n.item.name+"」には時刻を決める入力が必要です。開始点はFixed-time Nodeにしてください。");
     const overrides=config.taskOverrides || {};
     for(const [id,o] of Object.entries(overrides)){
       if(!M.get(d,"task",id) || !o || typeof o!=="object")fail("Task性能変更が不正です。");
@@ -64,6 +65,7 @@
   }
   function trial(c,rng) {
     const events=new Events(),times=new Map([...c.nodes.keys()].map(id=>[id,Infinity])),taskTimes=new Map(),stateQ=new Map(),causes=new Map(),stopped=new Set(),arrivals=new Map(),draws=new Map(),branchEvents=[],signalEvents=[];
+    const ready=new Map();
     const graph=(id,time,parents=[],taskId=null,linkId=null)=>{causes.set(id,{time,parents,taskId,linkId});return id;};
     for(const n of c.order)if(n.type==="task"){
       draws.set(n.id,{duration:rng(),branches:n.junctions.map(()=>rng())});
@@ -74,12 +76,16 @@
     function cancel(id,time){const r=taskTimes.get(id);if(["pending","running"].includes(r.status)){r.status="cancelled";r.stop=time;}}
     function state(id,producer,time,q,cause,force=false){
       if(finite(times.get(id)))return false;
+      const timing=c.nodes.get(id).item.timing;
+      if(timing?.mode==="fixed" && time>timing.at)return false;
       let a=arrivals.get(id);if(!a)arrivals.set(id,a=new Map());a.set(producer,{time,q,cause,force});
       events.add(time,20,()=>resolveState(id,time));return true;
     }
     function resolveState(id,time){
       if(finite(times.get(id)))return;
       const n=c.nodes.get(id),a=arrivals.get(id);if(!a?.size)return;
+      const fixed=n.item.timing?.mode==="fixed",at=n.item.timing?.at;
+      if(fixed && time>at)return;
       const gates=[...(c.gates.get(id) || [])];
       if(gates.some(tid=>!finite(taskTimes.get(tid).start)))return;
       const producers=n.dependencies.filter(pid=>c.nodes.get(pid).type!=="start");
@@ -87,11 +93,14 @@
       if(all && producers.some(pid=>!a.has(pid)))return;
       const values=[...a.values()].filter(x=>x.time<=time);
       if(!values.length || (stopped.has(n.item.actorId) && !values.some(x=>x.force)))return;
-      const inputQ=(all?Math.min:Math.max)(...values.map(x=>x.q));
+      if(fixed && !ready.has(id))ready.set(id,{values:[...values],time});
+      if(fixed && time<at)return;
+      const settled=fixed?ready.get(id).values:values;
+      const inputQ=(all?Math.min:Math.max)(...settled.map(x=>x.q));
       // A fixed q only supplies quality for exogenous/root States, never resets a received result.
       const q=producers.length?inputQ:(n.item.simulation?.q ?? inputQ);
       times.set(id,time);stateQ.set(id,q);
-      graph(id,time,unique([...values.filter(x=>x.time===time).map(x=>x.cause),...gates.filter(tid=>taskTimes.get(tid).start===time).map(tid=>"start:"+tid)]));
+      graph(id,time,unique([...settled.filter(x=>fixed || x.time===time).map(x=>x.cause),...gates.filter(tid=>taskTimes.get(tid).start===time).map(tid=>"start:"+tid)]));
       for(const t of c.document.tasks)if(t.simulation?.cancelOnStateIds?.includes(id))cancel(t.id,time);
       for(const l of c.links)if(l.source.id===id)emit(l,time,q,id);
       scheduleStarts(time);
@@ -152,6 +161,9 @@
     }
     function scheduleStarts(time){events.add(time,1000000,()=>{for(const n of c.order)if(n.type==="task")start(n,time);});}
     for(const n of c.order)if(n.type==="state" && !n.dependencies.some(pid=>c.nodes.get(pid).type!=="start"))events.add(n.item.time,0,()=>state(n.id,"root",n.item.time,n.item.simulation?.q ?? 1,n.id));
+    // Deadline events run after the same-time task/start closure. A later
+    // fixed-to-fixed receipt at exactly F can still resolve the waiting node.
+    for(const n of c.order)if(n.type==="state" && n.item.timing?.mode==="fixed")events.add(n.item.timing.at,2000000,()=>resolveState(n.id,n.item.timing.at));
     while(events.heap.length){const e=events.pop();e.fn();}
     for(const r of taskTimes.values())if(r.status==="pending")r.status="blocked";else if(r.status==="running")r.status="failed";
     const goals=c.config.successStateIds.map(id=>times.get(id)),completion=(c.config.successMode==="any"?Math.min:Math.max)(...goals),reached=finite(completion),success=reached && (c.config.deadline==null || completion<=c.config.deadline),critical=new Set(),criticalLinks=new Set();
@@ -182,11 +194,28 @@
     }]));
     const branches = new Map(), signals = new Map(c.links.map(l => [l.id,{id:l.id,label:l.label,propagation:l.propagation?.performanceModel?"cdf":"fixed",accepted:0,late:0,failed:0,unavailable:0,criticalCount:0,successfulCriticalCount:0,delays:[],qs:[]} ]));
     let trace = null;
+    const distributions=new Map();
+    function record(type,id,event,time){
+      const key=type+":"+id+":"+event;
+      let h=distributions.get(key);
+      if(!h){const state=type==="state"?M.get(c.document,"state",id):null;h={type,id,event,count:0,exact:!!state&&M.nodeTiming(c.document,state).mode==="fixed",step:c.document.time.duration/512,bins:new Map()};distributions.set(key,h);}
+      if(!finite(time))return;
+      h.count++;
+      const bucket=h.exact?time:Math.ceil(time/h.step-1e-10);
+      h.bins.set(bucket,(h.bins.get(bucket)||0)+1);
+      while(h.bins.size>1024){const bins=new Map();for(const [k,n]of h.bins){const b=Math.ceil(k/2);bins.set(b,(bins.get(b)||0)+n);}h.step*=2;h.bins=bins;}
+    }
+    for(const s of c.document.states)record("state",s.id,"established",Infinity);
+    for(const t of c.document.tasks)record("task",t.id,"completed",Infinity);
+    for(const l of c.links)for(const event of ["arrived","accepted"])record("causalLink",l.id,event,Infinity);
     function step(batch = 100) {
       if (!Number.isInteger(batch) || batch < 1) fail("バッチサイズは正の整数です。");
       const stop = Math.min(c.config.iterations, completed+batch);
       for (; completed < stop; completed++) {
         const r = trial(c, rng);
+        for(const [id,time] of r.times)if(c.nodes.get(id)?.type==="state")record("state",id,"established",time);
+        for(const [id,t]of r.taskTimes)if(t.status==="completed")record("task",id,"completed",t.end);
+        for(const e of r.signalEvents)if(e.time!==null){record("causalLink",e.linkId,"arrived",e.time);if(e.status==="accepted")record("causalLink",e.linkId,"accepted",e.time);}
         if (!trace) trace = { success:r.success, completion:Number.isFinite(r.completion)?r.completion:null,
           states:[...r.times].filter(([id,time]) => c.nodes.get(id).type === "state" && Number.isFinite(time)).map(([id,time]) => ({id,time,q:r.stateQ.get(id)})),
           tasks:[...r.taskTimes].map(([id,t]) => ({id,...Object.fromEntries(Object.entries(t).map(([k,v]) => [k,typeof v === "number" && !Number.isFinite(v)?null:v]))})),
@@ -227,6 +256,7 @@
         config: c.config, iterations: completed, successes, reached,
         successProbability: successes/completed, successInterval95: wilson(successes, completed),
         reachProbability: reached/completed, completion, cdf, warnings: c.warnings,
+        eventDistributions:[...distributions.values()].map(h=>{let count=0;return {type:h.type,id:h.id,event:h.event,count:h.count,total:completed,step:h.exact?0:h.step,points:h.bins.size?[...h.bins].sort((a,b)=>a[0]-b[0]).map(([t,n])=>({t:h.exact?t:t*h.step,p:(count+=n)/completed})):[{t:h.exact?M.nodeTiming(c.document,M.get(c.document,"state",h.id)).at:c.document.time.duration,p:0}]};}),
         branches: [...branches.values()].map(({time,...b}) => b),
         signals:[...signals.values()].map(({delays,qs,successfulCriticalCount,...s}) => ({...s,
           delay:percentiles(delays),q:percentiles(qs),criticality:s.criticalCount/completed,

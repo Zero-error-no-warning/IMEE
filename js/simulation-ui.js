@@ -426,7 +426,7 @@
       setTimeout(tick,0);
     };
     analysisExport.onclick=()=>{if(analysisResult && signature===fingerprint(getDocument()))download(new Blob([JSON.stringify({mission:analysisSnapshot,sensitivity:analysisResult},null,2)],{type:"application/json"}),"mission-sensitivity.json");};
-    return {open,invalidate,getOverlayResult:()=>overlayVisible?result:null};
+    return {open,invalidate,getResult:()=>result,getOverlayResult:()=>overlayVisible?result:null};
   }
   root.MESimulationUI={performanceFields,readPerformance,bindPerformance,hoverPreview,stateFields,bindState,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
 })(globalThis);

@@ -18,7 +18,7 @@ test("State circles have exact time X and no duration or resize handles", () => 
   assert.equal(s.r, 7);
   assert.equal(
     xml.querySelectorAll(".state circle.body").length,
-    d.states.length,
+    d.states.filter(s=>M.nodeTiming(d,s).mode!=="fixed").length,
   );
   assert.equal(
     xml.querySelectorAll(".state rect,.resize,.handle-line").length,

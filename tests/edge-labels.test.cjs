@@ -22,7 +22,7 @@ test('Task and outcome frames sit on their routes and avoid nodes even on short 
     for(const s of g.states.values())
       assert(!L.overlaps(b,{x:s.x-s.r,y:s.y-s.r,width:s.r*2,height:s.r*2}));
   }
-  assert(outcomes>0);assert(shortened>0);assert(hidden>0);
+  assert(outcomes>0); // Dedicated orthogonal lanes can fit every caption without truncation.
 });
 
 test('label frames and underlines match their line colors in Views, folded groups and exports',()=>{

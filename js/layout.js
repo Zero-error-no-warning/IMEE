@@ -7,6 +7,8 @@
       : root.ME;
   const O = typeof module !== "undefined" && module.exports
     ? require("./simulation-overlay.js") : root.MESimulationOverlay;
+  const T = typeof module !== "undefined" && module.exports
+    ? require("./time-axis.js") : root.METimeAxis;
   function routeSegments(points) {
     return points
       .slice(1)
@@ -384,9 +386,11 @@
   }
   function layout(doc, widthValue = 1050, options = {}) {
     const resultOverlay = O.create(doc, options.simulationResult);
+    const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
+    const axis=T.prepare(doc,options,displayActor);
     const v = doc.views.main,
       range = options.full
-        ? { start: 0, end: doc.time.duration }
+        ? { start: 0, end: Math.max(doc.time.duration,...axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0))) }
         : v.visibleTimeRange,
       vp = viewport(doc.time.duration, widthValue, range.start, range.end),
       filters = options.full
@@ -401,7 +405,6 @@
       occupied = [],
       nodeBodies = [];
     let y = 54;
-    const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
     const folded = new Set(options.full ? [] : v.collapsedActors);
     const internal = c => {
       const source = displayActor(M.endpoint(doc, c.source).actorId);
@@ -471,7 +474,8 @@
         collapseMode === "single" ? 48 : collapseMode === "compact"
           ? 42 + Math.max(0,lanes.length-1)*spacing
           : Math.max(1,lanes.length)*spacing+6;
-      const rowHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
+      const nodeHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
+      const rowHeight=nodeHeight+T.position(axis,actor.id,top+nodeHeight);
       rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode});
       y += rowHeight;
     }
@@ -487,12 +491,15 @@
         { x: b.x, y: b.y - (direction ? direction * (b.r || 0) : 0) },
       ];
     }
-    function route(a, b, timeAxis = false) {
+    const horizontal=[];
+    function route(a, b, timeAxis = false, key) {
       const [s, e] = facing(a, b);
-      return router([s, e], {
-        axis: Math.abs(a.y - b.y) < 1 ? "horizontal" : "vertical",
-        timeAxis,
-      });
+      if(Math.abs(s.x-e.x)<1e-9)return [s,e];
+      let cy=axis.specs.get(key)?.y??Math.max(s.y,e.y)+18;
+      while(horizontal.some(h=>Math.abs(h.y-cy)<8&&Math.max(h.start,Math.min(s.x,e.x))<Math.min(h.end,Math.max(s.x,e.x))))cy+=12;
+      horizontal.push({y:cy,start:Math.min(s.x,e.x),end:Math.max(s.x,e.x)});
+      height=Math.max(height,cy+28);
+      return [s,{x:s.x,y:cy},{x:e.x,y:cy},e];
     }
     for (const t of doc.tasks) {
       if (!visible(t) || !states.has(t.fromStateId)) continue;
@@ -500,9 +507,9 @@
         w = M.taskWindow(doc, t),
         to = t.toStateId ? states.get(t.toStateId) : null;
       if (t.toStateId && !to) continue;
-      const end = to || { x: vp.x(w.end), y: from.y, r: 4 };
-      const points = from.collapseMode === "single"
-        ? [{x:from.x,y:from.y},{x:end.x,y:end.y}] : route(from,end,true);
+      const start=w.start===from.time?from:{...from,x:vp.x(w.start),r:3};
+      const end = to&&Math.abs(to.time-w.end)<1e-9?to:{ x: vp.x(w.end), y: to?.y??from.y, r: 3 };
+      const points = route(start,end,true,"task:"+t.id);
       const e = {
         id: t.id,
         type: "task",
@@ -527,12 +534,14 @@
       occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
       return j;
     };
+    const stateReceipts=[];
     for (const t of doc.tasks)
       if (tasks.has(t.id))
         for (const j of t.junctions || []) {
           const p = ensure(t.id, j.time, j.id);
           for (const [i, o] of j.outcomes.entries()) {
-            const to = states.get(o.toStateId);
+            const to = states.get(o.toStateId),at=j.time+(o.delay??to?.time-j.time),receipt=to&&Math.abs(at-to.time)>1e-9?{...to,x:vp.x(at),r:3}:to;
+            if(to&&receipt!==to)stateReceipts.push({stateId:to.id,time:at,x:receipt.x,y:receipt.y,stateX:to.x,late:at>to.time,points:at<to.time?route(receipt,to,true,"receipt:"+j.id+":"+i):null});
             if (to)
               edges.push({
                 id: t.id,
@@ -541,13 +550,18 @@
                 junctionId: j.id,
                 outcomeIndex: i,
                 performance: "fixed",
-                points: to.collapseMode === "single" ? [{x:p.x,y:p.y},{x:to.x,y:to.y}] : route(p,to,true),
+                points: route(p,receipt,true,"outcome:"+j.id+":"+i),
                 label: o.label,
                 actorId: states.get(t.fromStateId).displayActorId,
               });
           }
         }
-    const stateReceipts=[];
+    for(const t of doc.tasks){
+      const task=tasks.get(t.id);if(!task)continue;
+      const to=states.get(t.toStateId),w=task.window;
+      if(w.start>task.from.time)stateReceipts.push({stateId:t.fromStateId,time:task.from.time,x:task.from.x,y:task.from.y,stateX:vp.x(w.start),kind:"start-wait",points:route(task.from,{...task.from,x:vp.x(w.start)},true,"wait:"+t.id)});
+      if(to&&Math.abs(to.time-w.end)>1e-9)stateReceipts.push({stateId:to.id,time:w.end,x:task.end.x,y:task.end.y,stateX:to.x,late:w.end>to.time,points:w.end<to.time?route(task.end,to,true,"receipt:"+t.id):null});
+    }
     function anchor(p, c = null, side = "source") {
       const ep = side === "target" && c ? M.causalEndpoint(doc, c, "target") : M.endpoint(doc, p);
       if (!ep) return null;
@@ -559,7 +573,7 @@
         const st=states.get(p.id);
         if(st && side==="target" && Math.abs(ep.time-M.get(doc,"state",p.id).time)>1e-9){
           const receipt={...st,x:vp.x(ep.time),r:3};
-          stateReceipts.push({linkId:c.id,stateId:p.id,time:ep.time,x:receipt.x,y:st.y,stateX:st.x,late:ep.time>M.get(doc,"state",p.id).time});
+          stateReceipts.push({linkId:c.id,stateId:p.id,time:ep.time,x:receipt.x,y:st.y,stateX:st.x,late:ep.time>M.get(doc,"state",p.id).time,points:ep.time<st.time?route(receipt,st,true,"receipt:"+c.id):null});
           return receipt;
         }
         return st;
@@ -573,7 +587,7 @@
         if (internal(c)) continue;
         const a=anchor(c.source,c,"source"), b=anchor(c.target,c,"target");
         if (!a || !b) continue;
-        edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
+        edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b,true,"causalLink:"+c.id),
           label:c.label,actorId:displayActor(sourceActorId),
           performance:c.simulation?.enabled ? c.propagation?.performanceModel ? "cdf" : "fixed" : null});
       }
@@ -604,10 +618,12 @@
         label:[...new Set(interval.labels)].filter(Boolean).join(" / "),hideLabel:true,
       });
     }
+    const cdfCharts=axis.curves.filter(c=>c.type==="state"?states.has(c.id):edges.some(e=>e.type===c.type&&e.id===c.id&&!e.summaryActorId)).map(c=>T.chart(c,vp));
     const lineSegments = edges.flatMap(e => routeSegments(e.points));
     // Reflow State text after routing. Text collisions never feed back into geometry.
     occupied.length = 0;
     occupied.push(...nodeBodies);
+    for(const c of cdfCharts)occupied.push({x:c.startX,y:c.y-c.height-12,width:Math.max(32,c.endX-c.startX),height:c.height+26});
     for (const j of junctions.values()) occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
     const technologyTags = [], technologyGroups = [], attachments = new Map();
     for (const {binding,actorId} of technologyBindings) {
@@ -672,6 +688,13 @@
         else addTechnologyGroup(e,e.labelInfo,attachment);
       }
       e.path = path(e.points);
+      const inline=cdfCharts.find(c=>c.type===e.type&&c.id===e.id&&e.part!=="outcome");
+      if(inline&&!attachment){
+        const horizontal=routeSegments(e.points).find(s=>s.a.y===s.b.y),anchor=horizontal?{x:(horizontal.a.x+horizontal.b.x)/2,y:horizontal.a.y}:null;
+        if(anchor){const text=textLines(e.label,150,11,1)[0],w=width(text)+10;
+          e.labelInfo={x:anchor.x-w/2,y:anchor.y+5,width:w,height:18,anchor,text,fullText:e.label,leader:true};occupied.push(e.labelInfo);
+        }
+      }
     }
     function addTechnologyGroup(e,caption,attachment,detached=false) {
       const boxes=attachedBoxes(caption,attachment),tags=[];
@@ -735,6 +758,8 @@
       resultOverlay.legendY = height+8;
       height += resultOverlay.legend.length*15+20;
     }
+    const timeLegendY=height;
+    if(options.full)height+=42;
     return {
       vp,
       rows,
@@ -749,6 +774,9 @@
       technologyGroups,
       occupied,
       resultOverlay,
+      cdfCharts,
+      axis,
+      timeLegendY,
     };
   }
   const api = {

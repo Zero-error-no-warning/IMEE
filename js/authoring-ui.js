@@ -540,7 +540,7 @@
       const html =
         field("quickName", "名前", x.name || x.label) +
         (s.type === "state"
-          ? field("quickTime", "基準時刻", x.time, "number") +
+          ? choices("quickTiming","時間種別",[["relative","● Relative Node"],["fixed","▼ Fixed-time Node"]],M.nodeTiming(doc(),x).mode) + field("quickTime", "基準時刻 / H+", x.time, "number") +
             choices(
               "quickPolicy",
               "後続の扱い",
@@ -586,7 +586,8 @@
           if ("name" in xx) xx.name = v.quickName;
           else xx.label = v.quickName;
           if (s.type === "state") {
-            if (+v.quickTime !== xx.time)
+            if(v.quickTiming!==(M.nodeTiming(d,xx).mode))A.setNodeTiming(d,x.id,v.quickTiming,+v.quickTime);
+            else if (+v.quickTime !== xx.time)
               A.moveState(d, x.id, +v.quickTime, v.quickPolicy);
             const oldJoin = xx.simulation?.join || "all",
               before = M.clone(d);

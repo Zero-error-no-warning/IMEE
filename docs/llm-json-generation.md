@@ -388,3 +388,7 @@ JSONだけを求められた場合は説明なしで1オブジェクトを返す
   }
 }
 ```
+
+## 共通時間軸の任意拡張
+
+新しいシナリオでは開始点に`timing:{mode:"fixed",at:0}`、成果に`timing:{mode:"relative"}`、Taskに`timing:{duration:所要時間}`を指定できます。timeは描画の基準値で、Fixedはatと一致、Relativeは基準開始条件と生成元の到達から算出します。Fixedは指定時刻に間に合わない試行を未成立とし、Taskの所要時間を予定時刻から逆算して短縮しません。CDF抽選時間に基準durationを加算しません。[データモデル](data-model.md)と[時間軸の例](../examples/time-axis.json)を参照してください。
