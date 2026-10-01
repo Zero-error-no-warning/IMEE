@@ -500,7 +500,7 @@
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
     if (cause?.target.type === "task")
-      addResult(cause.target.id, {time:cause.target.time,fixedTime:true});
+      addResult(cause.target.id, {time:M.causalArrivalTime(doc(),cause),fixedTime:true});
   }
   function addResult(tid, context = {}) {
     const t = M.get(doc(), "task", tid),
@@ -541,7 +541,7 @@
     );
     const timeInput = $('#dialog-fields [name="time"]');
     const updateRelatedCauses = () => {
-      const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === tid && c.target.time === +timeInput.value),
+      const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === tid && Math.abs(M.causalArrivalTime(doc(),c)-(+timeInput.value))<1e-9),
         summary = $('#branch-related-causes');
       summary.hidden = !causes.length;
       summary.innerHTML = causes.length
@@ -571,19 +571,18 @@
       ...doc().tasks.map((t) => ["task:" + t.id, `Task: ${t.label}`]),
       ...doc().actors.map((a) => ["actor:" + a.id, `Actor: ${a.name}`]),
     ];
-    return (
-      choices(
-        name,
-        "因果の" + (name === "source" ? "作用元" : "到達先"),
-        opts,
-        p.type + ":" + p.id,
-      ) +
-      field(
-        name + "Time",
-        "Task / Actor上の時刻（Stateには適用しません）",
-        M.endpoint(doc(), p).time,
-        "number",
-      )
+    const select = choices(
+      name,
+      "因果の" + (name === "source" ? "作用元" : "到達先"),
+      opts,
+      p.type + ":" + p.id,
+    );
+    if (name === "target") return select;
+    return select + field(
+      "sourceTime",
+      "作用発生時刻（Task / Actorのみ。StateはState.timeを使用）",
+      M.endpoint(doc(), p).time,
+      "number",
     );
   }
   function editCausal(cid) {
@@ -607,17 +606,17 @@
       (v) =>
         applyEdit((d) => {
           const x = M.get(d, "causalLink", cid);
-          for (const name of ["source", "target"]) {
-            const i = v[name].indexOf(":"),
-              type = v[name].slice(0, i),
-              id = v[name].slice(i + 1);
-            x[name] = {
-              type,
-              id,
-              ...(type === "state" ? {} : { time: +v[name + "Time"] }),
-            };
+          {
+            const i = v.source.indexOf(":"), type = v.source.slice(0,i), id = v.source.slice(i+1);
+            x.source = {type,id,...(type === "state" ? {} : {time:+v.sourceTime})};
           }
-          x.simulation=window.MESimulationUI.readCausal($("#editor-form"),c);
+          {
+            const i = v.target.indexOf(":"), type = v.target.slice(0,i), id = v.target.slice(i+1);
+            x.target = {type,id};
+          }
+          const causal = window.MESimulationUI.readCausal($("#editor-form"),c);
+          x.propagation = causal.propagation;
+          x.simulation = causal.simulation;
           Object.assign(x, {
             label: v.label,
             polarity: v.polarity,
@@ -686,7 +685,7 @@
         const actor=M.get(doc(),"actor",M.get(doc(),"state",t.fromStateId).actorId),w=M.taskWindow(doc(),t);
         return ["task:"+t.id,`Task: ${actor.name} / ${t.label} (T+${w.start}〜${w.end})`];
       }),
-      ...doc().causalLinks.map(c=>["causalLink:"+c.id,`作用: ${c.label} (T+${M.endpoint(doc(),c.source).time}→${M.endpoint(doc(),c.target).time})`]),
+      ...doc().causalLinks.map(c=>["causalLink:"+c.id,`作用: ${c.label} (T+${M.endpoint(doc(),c.source).time}→${M.causalArrivalTime(doc(),c)})`]),
       ...doc().actors.map(a=>["actor:"+a.id,`Actor: ${a.name}`])];
     dialog("技術の付け先変更",`<p class="dialog-summary">${esc(tech.name)}</p>`+
       choices("target","付け先",[["","選択してください"],...targets],
