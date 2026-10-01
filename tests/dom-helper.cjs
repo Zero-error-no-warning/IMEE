@@ -66,6 +66,7 @@ async function openApp(saved) {
     "sample.js",
     "simulation-sample.js",
     "tutorial-sample.js",
+    "all-cdf-ui.js",
     "app.js",
   ])
     w.eval(fs.readFileSync(path.join(root, "js", file), "utf8"));

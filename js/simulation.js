@@ -22,6 +22,11 @@
       if(o.duration!==undefined)P.number(o.duration,"変更時間",0,1e9);
       if(o.q!==undefined)P.number(o.q,"変更品質",0,1);
     }
+    const linkOverrides=config.linkOverrides || {};
+    for(const [id,o] of Object.entries(linkOverrides)){
+      if(!links.some(l=>l.id===id)||!o||typeof o!=="object"||Object.keys(o).some(k=>k!=="q"))fail("作用線の品質変更が不正です。");
+      if(o.q!==undefined)P.number(o.q,"変更品質",0,1);
+    }
     for(const n of nodes.values()){
       n.predecessors=n.dependencies;
       if(n.type!=="task")continue;
@@ -49,7 +54,7 @@
     }
     const cost=nodes.size+links.length+d.tasks.reduce((v,t)=>v+(t.junctions?.length || 0),0);
     if(cost*config.iterations>5000000)fail("総処理量を500万以下にしてください。");
-    return {document:d,config,nodes,order,links,gates,cost,overrides,warnings:d.causalLinks.some(l=>!l.simulation?.enabled)?["実行未指定の作用線は表示専用です。"]:[]};
+    return {document:d,config,nodes,order,links,gates,cost,overrides,linkOverrides,warnings:d.causalLinks.some(l=>!l.simulation?.enabled)?["実行未指定の作用線は表示専用です。"]:[]};
   }
   class Events {
     constructor(){this.heap=[];this.serial=0;}
@@ -104,6 +109,7 @@
       events.add(time+delay,0,()=>state(o.toStateId,n.id,time+delay,r.qOut,cause,true));return true;
     }
     function emit(l,time,q,cause){
+      q=c.linkOverrides[l.id]?.q ?? q;
       const p=l.propagation,draw=p.performanceModel?P.outcome(p.performanceModel,q,linkDraws.get(l.id)):{duration:p.duration,qOut:q*(p.qualityRetention ?? 1)};
       const delay=draw.duration,event={linkId:l.id,emittedAt:time,delay:finite(delay)?delay:null,q,qOut:draw.qOut,time:finite(delay)?time+delay:null,status:"failed"};
       if(!finite(delay)){signalEvents.push(event);return;}

@@ -9,6 +9,7 @@
     KEY = "imee.document.v3";
   let importPreview=null;
   const D=window.MEImportDiagnostics;
+  let allCDFPanel=null;
   let history,
     selection = [],
     clipboard = null,
@@ -92,6 +93,7 @@
   function render() {
     cdfHover?.hide();
     simulationPanel?.invalidate();
+    allCDFPanel?.invalidate();
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
     geometry = L.layout(
@@ -127,6 +129,8 @@
     for (const a of [...svg.attributes])
       if (!["id"].includes(a.name)) target.setAttribute(a.name, a.value);
     target.innerHTML = svg.innerHTML;
+    const cdfAnalysis=allCDFPanel?.getState();
+    if(cdfAnalysis?.result)target.insertAdjacentHTML("beforeend",window.MEAllCDFUI.markers(geometry,cdfAnalysis.result,cdfAnalysis.selected));
     if(importPreview){
       target.insertAdjacentHTML("beforeend",D.bubbles(importPreview,geometry,esc));
       const bubbles=[...target.querySelectorAll(".import-error foreignObject")];
@@ -830,7 +834,7 @@
   }
   const canvas = $("#canvas-scroll");
   $("#timeline").addEventListener("pointerdown", (e) => {
-    if(e.target.closest(".import-error"))return;
+    if(e.target.closest(".import-error,.cdf-map-marker"))return;
     if (e.button !== 0) return;
     const p = point(e),
       s = targetInfo(e);
@@ -1000,6 +1004,8 @@
     if (d.kind === "pan") persist();
   });
   $("#timeline").addEventListener("click", async (e) => {
+    const cdfMarker=e.target.closest(".cdf-map-marker");
+    if(cdfMarker){allCDFPanel.focus(cdfMarker.dataset.cdfKey);return;}
     const copyButton=e.target.closest(".copy-import-error");
     if(copyButton){
       const text=copyButton.closest(".import-error").querySelector(".import-error-detail").textContent;
@@ -1049,7 +1055,7 @@
     select(s, e.ctrlKey || e.metaKey);
   });
   function doubleClick(e) {
-    if(e.target.closest(".import-error"))return;
+    if(e.target.closest(".import-error,.cdf-map-marker"))return;
     if (document.querySelector("dialog[open]")) return;
     const summary = e.target.closest("[data-expand-group]");
     if (summary) {
@@ -1087,6 +1093,7 @@
   }
   $("#timeline").addEventListener("contextmenu", (e) => {
     if(e.target.closest(".import-error"))return;
+    if(e.target.closest(".cdf-map-marker")){e.preventDefault();return;}
     e.preventDefault();
     const s = targetInfo(e),
       p = point(e),
@@ -1576,6 +1583,12 @@
     undo,
     redo,
   };
+  allCDFPanel=window.MEAllCDFUI.controller({getDocument:()=>M.clone(doc()),download,onHighlight:render,
+    onShowTarget:t=>{selection=[{type:t.type,id:t.id}];change(d=>{d.views.main.collapsedActors=[];d.views.main.visibleTimeRange={start:0,end:d.time.duration};});
+      const node=[...$("#timeline").querySelectorAll("[data-type][data-id]")].find(e=>e.dataset.type===t.type&&e.dataset.id===t.id);node?.scrollIntoView?.({block:"center",inline:"center"});}
+  });
+  $("#all-cdf-open").onclick=()=>{$("#simulation-dialog").close();allCDFPanel.open();};
+  $("#timeline").addEventListener("keydown",e=>{if(["Enter"," "].includes(e.key)&&e.target.closest(".cdf-map-marker")){e.preventDefault();e.stopPropagation();allCDFPanel.focus(e.target.closest(".cdf-map-marker").dataset.cdfKey);}});
   simulationPanel = window.MESimulationUI.controller({
     getDocument: () => M.clone(doc()), download,onOverlayChange:render,
     configure: () => dialog("Simulation設定", window.MESimulationUI.settingsFields(doc()), () => {

@@ -64,14 +64,53 @@
       if(!done)fail("感度分析が完了していません。");
       if(!cached)cached={version:1,model:"paired-task-intervention",config,baseline,points,requirement:requirement(points,config.targetProbability,config.criterion,config.parameter==="q"?"increasing":"decreasing"),
         probabilityGap:Math.max(0,config.targetProbability-baseline.successProbability),refinements,
-        interpretation:config.parameter==="duration"?"対象Taskの完了をTi=tに固定する介入。他TaskのCDFと構造を保持し、対象Taskの未達確率を除く。実CDFに対する十分条件ではない。":"対象Taskの入力wを固定する介入。入力の到着待ちと他TaskのCDFを保持する。",
+        interpretation:config.parameter==="duration"?"対象Taskの完了をTi=tに固定する介入。他TaskのCDFと構造を保持し、対象Taskの未達確率を除く。実CDFに対する十分条件ではない。":"対象Taskの入力qを固定する介入。入力の到着待ちと他TaskのCDFを保持する。",
         scope:"要求境界は評価範囲内の標本推定。未評価の値・非単調な分岐・実装備の能力は保証しない。"};
       return cached;
     }
     return {step,result,config};
   }
   function run(document,options){const job=createSensitivity(document,options);while(!job.step(256).done){}return job.result();}
-  const api={createSensitivity,run,requirement};
+  function cdfTargets(document){
+    return [
+      ...document.tasks.filter(t=>t.simulation?.enabled&&t.simulation.performanceModel).map(t=>({type:"task",id:t.id,label:t.label})),
+      ...document.causalLinks.filter(l=>l.simulation?.enabled&&l.propagation?.performanceModel).map(l=>({type:"causalLink",id:l.id,label:l.label}))
+    ].map((t,i)=>({...t,key:t.type+":"+t.id,number:i+1}));
+  }
+  function createAllCDF(document,options={}){
+    const config={iterations:500,seed:document.simulation?.seed??1,steps:11,...options};
+    if(!Number.isInteger(config.steps)||config.steps<2||config.steps>25)fail("評価点数は2〜25です。");
+    const targets=cdfTargets(document);if(!targets.length)fail("実行対象のCDFがありません。Taskまたは作用線のCDFを有効にしてください。");
+    const values=Array.from({length:config.steps},(_,i)=>i/(config.steps-1));
+    let job=S.createRun(document,{iterations:config.iterations,seed:config.seed});
+    const total=(1+targets.length*values.length)*config.iterations;
+    if(total*job.compiled.cost>20000000)fail("全CDF分析の処理量が多すぎます。試行数・評価点数を減らしてください（上限2,000万）。");
+    let completed=0,previous=0,index=-1,done=false,baseline=null;
+    const rows=targets.map(t=>({...t,points:[]}));
+    function step(batch=32){
+      if(done)return {done,completed,total};
+      const status=job.step(batch);completed+=status.completed-previous;previous=status.completed;
+      if(status.done){
+        const r=job.result();
+        if(index<0)baseline={probability:r.successProbability,interval95:r.successInterval95};
+        else rows[Math.floor(index/values.length)].points.push({q:values[index%values.length],probability:r.successProbability,interval95:r.successInterval95});
+        index++;
+        if(index>=targets.length*values.length){done=true;}
+        else {
+          const t=targets[Math.floor(index/values.length)],q=values[index%values.length];
+          job=S.createRun(document,{iterations:config.iterations,seed:config.seed,[t.type==="task"?"taskOverrides":"linkOverrides"]:{[t.id]:{q}}});previous=0;
+        }
+      }
+      return {done,completed,total,target:index<0?null:targets[Math.floor(index/values.length)]?.key};
+    }
+    function result(){
+      if(!done)fail("全CDF分析が完了していません。");
+      const assessed=rows.map(t=>({...t,improvement:t.points.at(-1).probability-baseline.probability,degradation:baseline.probability-t.points[0].probability,maxGain:Math.max(...t.points.map(p=>p.probability))-baseline.probability}));
+      return {version:1,model:"all-cdf-input-quality-intervention",config,baseline,targets:assessed,ranking:[...assessed].sort((a,b)=>b.improvement-a.improvement||b.degradation-a.degradation||a.number-b.number).map(t=>t.key),interpretation:"対象CDFへの入力品質qのみを固定。到達・開始条件を維持し、出力品質と時間は後続へ伝搬。全評価で同じSeedを使用。改善はq=1の成功率−基準、劣化は基準−q=0の成功率。単独介入の比較であり、複数CDFの同時改善効果は評価しない。"};
+    }
+    return {step,result,config,targets};
+  }
+  const api={createSensitivity,run,requirement,cdfTargets,createAllCDF};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   root.MESensitivity=api;
 })(globalThis);
