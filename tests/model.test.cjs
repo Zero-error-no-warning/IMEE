@@ -40,7 +40,8 @@ test("different Actor / Task point connections create CausalLinks", () => {
     { type: "task", id: "identify", time: 20 },
   );
   assert.equal(s.type, "causalLink");
-  assert.equal(M.get(d, s.type, s.id).target.time, 20);
+  assert.equal(M.get(d, s.type, s.id).propagation.duration, 4);
+  assert.equal(M.causalArrivalTime(d, M.get(d, s.type, s.id)), 20);
 });
 test("add result preserves normal destination and execution window while sharing the point", () => {
   const d = sample();
@@ -76,14 +77,14 @@ test("validation rejects dangling, backward, cross-Actor Task and duplicate IDs"
 test("causal endpoints preserve explicit late time without a proposed mode", () => {
   const d = sample(),
     c = d.causalLinks[2];
-  c.target.time = 55;
+  c.propagation.duration = 13;
   delete c.proposed;
   M.validate(d);
   assert.equal(M.opportunity(d, c).within, false);
   assert.match(M.opportunity(d, c).message, /遅すぎ/);
   invalid(
     (d) => (d.causalLinks[0].target = { type: "state", id: "s0" }),
-    /逆行/,
+    /基準時刻と伝搬時間が一致/,
   );
   invalid((d) => (d.causalLinks[0].source.time = 16), /重複保存/);
 });
@@ -164,7 +165,8 @@ test("move selected Actor subtree shifts States, junctions and causal Task endpo
   assert.equal(d.states[0].time, 3);
   assert.equal(d.tasks[1].junctions[0].time, 30);
   assert.equal(d.causalLinks[2].source.time, 43);
-  assert.equal(d.causalLinks[2].target.time, 50);
+  assert.equal(d.causalLinks[2].propagation.duration, 7);
+  assert.equal(M.causalArrivalTime(d, d.causalLinks[2]), 50);
 });
 test("delete subtree removes dependent elements and bindings but keeps catalog", () => {
   const d = sample.research();
@@ -213,10 +215,10 @@ test("analysis does not combine roles from disconnected paths", () => {
 test("analysis blocks late and proposed interventions and unbound technologies", () => {
   const d = sample.research();
   const c = M.get(d, "causalLink", "blue-action");
-  c.target.time = 50;
+  c.propagation.duration = 12;
   c.proposed = true;
   assert.equal(M.analyzeTask(d, "jam").some, false);
-  c.target.time = 44;
+  c.propagation.duration = 6;
   c.proposed = false;
   d.bindings = [];
   assert.equal(M.analyzeTask(d, "jam").some, false);
