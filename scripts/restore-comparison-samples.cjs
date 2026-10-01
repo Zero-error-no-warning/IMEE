@@ -69,14 +69,21 @@ function convert(old) {
     if(mapping.type!=='task') throw Error('Cannot attach to terminal hold: '+stateId);
     return {type:'task',id:mapping.id,time};
   }
-  const causalLinks=old.interactions.map(c=>({
-    id:c.id, source:endpoint(c.fromStateId,c.sourceTime),
-    target:c.targetType==='transition'
+  const convertedStateTime = new Map(states.map(s => [s.id, s.time]));
+  const pointTime = p => p.type === 'state' ? convertedStateTime.get(p.id) : p.time;
+  const causalLinks=old.interactions.map(c=>{
+    const source=endpoint(c.fromStateId,c.sourceTime);
+    const targetPoint=c.targetType==='transition'
       ? {type:'task',id:transitionMap[c.targetId].id,time:c.time}
-      : endpoint(c.targetId,c.time),
-    polarity:c.effect==='block'?'negative':'positive',label:c.label,kind:c.kind,
-    ...(c.proposed?{proposed:true}:{}),notes:c.notes || '',
-  }));
+      : endpoint(c.targetId,c.time);
+    const propagation={duration:pointTime(targetPoint)-pointTime(source)};
+    const target={type:targetPoint.type,id:targetPoint.id};
+    return {
+      id:c.id,source,target,propagation,
+      polarity:c.effect==='block'?'negative':'positive',label:c.label,kind:c.kind,
+      ...(c.proposed?{proposed:true}:{}),notes:c.notes || '',
+    };
+  });
   const bindings=(old.bindings || []).map(b=>{
     const mapped=b.targetType==='state'?stateMap[b.targetId]
       :b.targetType==='transition'?transitionMap[b.targetId]
