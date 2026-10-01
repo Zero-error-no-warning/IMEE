@@ -7,7 +7,7 @@ const xml=(d,g,opts={})=>new JSDOM(R.render(d,g,opts),{contentType:'image/svg+xm
 
 test('State, Task, outcome and all causal endpoint types use the originating Actor color',()=>{
   const d=sample();d.actors.forEach((a,i)=>a.color=['#b51f40','#147863','#4b53c1','#975212','#79518b'][i]);
-  d.causalLinks.push({id:'actor-source',source:{type:'actor',id:'enemy',time:40},target:{type:'task',id:'transmit',time:49},polarity:'positive',label:'Actorから'});
+  d.causalLinks.push({id:'actor-source',source:{type:'actor',id:'enemy',time:40},target:{type:'task',id:'transmit'},propagation:{duration:9},polarity:'positive',label:'Actorから'});
   const g=L.layout(d),dom=xml(d,g,{selection:[{type:'task',id:'search'}],gapIds:new Set(['negative'])});
   g.edges.forEach((e,i)=>{
     const owner=e.type==='task'?M.get(d,'state',M.get(d,'task',e.id).fromStateId).actorId:M.endpoint(d,M.get(d,'causalLink',e.id).source).actorId;
@@ -98,7 +98,7 @@ test('dragging an aggregated child State changes time without reparenting it',as
 test('mission status controls are absent, legacy statuses do not affect analysis and timing gaps remain',async t=>{
   const d=sample.research(),c=M.get(d,'causalLink','blue-action');d.technologies.forEach(x=>x.status='existing');
   c.proposed=true;d.tasks.forEach(x=>x.status='proposed');assert(M.analyzeTask(d,'jam').some);
-  c.target.time=50;assert(!M.analyzeTask(d,'jam').some);assert.equal(M.opportunity(d,c).within,false);
+  c.propagation.duration=12;assert(!M.analyzeTask(d,'jam').some);assert.equal(M.opportunity(d,c).within,false);
   const a=await openApp(sample());t.after(()=>a.close());
   for(const id of ['s0','search','negative']) {
     a.event(a.$(`[data-id="${id}"]`),'dblclick');
