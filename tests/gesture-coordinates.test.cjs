@@ -58,7 +58,7 @@ for (const config of cases) {
     [from.x,from.y,end.x,end.y].forEach((value,i)=>near(coordinates[i],value));
     a.event(a.$('[data-id="identify"]'),'pointerup',toScreen(end.x,end.y));
     const link=a.savedDoc().causalLinks.at(-1);
-    assert.equal(link.source.id,'s1'); assert.equal(link.target.id,'identify'); assert.equal(link.target.time,24);
+    assert.equal(link.source.id,'s1'); assert.equal(link.target.id,'identify'); assert.equal(link.propagation.duration,8); assert.equal(a.w.ME.causalArrivalTime(a.savedDoc(),link),24);
     assert.equal(a.$('#gesture-preview'),null); assert.deepEqual(a.errors,[]);
   });
 }
