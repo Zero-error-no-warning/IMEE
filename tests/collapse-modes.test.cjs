@@ -29,7 +29,7 @@ test('single mode draws one parent line and one circle per timestamp, with exact
   for(const e of g.edges.filter(e=>e.type==='causalLink')){
     const c=M.get(d,'causalLink',e.id);
     assert.equal(e.points[0].x,g.vp.x(M.endpoint(d,c.source).time));
-    assert.equal(e.points.at(-1).x,g.vp.x(M.endpoint(d,c.target).time));
+    assert.equal(e.points.at(-1).x,g.vp.x(M.causalArrivalTime(d,c)));
   }
   assert.equal(JSON.stringify(d),before);
 });
