@@ -126,6 +126,13 @@
       "notes": "本例では準備過程自体を評価対象にせず、T+60に成立する外生のReady条件として扱う。"
     },
     {
+      "id": "midcourse-command-received",
+      "actorId": "midcourse",
+      "name": "中間迎撃指令受領",
+      "time": 50,
+      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。"
+    },
+    {
       "id": "midcourse-launched",
       "actorId": "midcourse",
       "name": "迎撃ミサイル発射",
@@ -144,6 +151,13 @@
       "name": "終末迎撃準備完了",
       "time": 120,
       "notes": "本例では準備過程自体を評価対象にせず、T+120に成立する外生のReady条件として扱う。中間撃破時は後続Taskがcancelされる。"
+    },
+    {
+      "id": "terminal-command-received",
+      "actorId": "terminal",
+      "name": "終末迎撃指令受領",
+      "time": 50,
+      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。"
     },
     {
       "id": "terminal-launched",
@@ -294,21 +308,24 @@
     },
     {
       "id": "midcourse-launch",
-      "fromStateId": "midcourse-ready",
+      "fromStateId": "midcourse-command-received",
       "toStateId": "midcourse-launched",
       "label": "発射指示",
       "kind": "command",
       "simulation": {
         "enabled": false,
         "waitForStateIds": [
-          "control-orders",
+          "midcourse-ready",
           "missile-midcourse"
         ],
         "wInput": {
-          "waitForLinks": true
+          "stateIds": [
+            "midcourse-command-received"
+          ],
+          "combine": "max"
         }
       },
-      "notes": "指令・飛行段階への到達・準備完了を待ち、説明用の固定10秒で発射する。入力wを発射Stateへ引き継ぐ。"
+      "notes": "中間迎撃指令受領を因果起点とし、迎撃準備完了とミッドコース段階到達を追加条件として待つ。条件成立後、説明用の固定20秒で発射Stateへ到達する。"
     },
     {
       "id": "midcourse-intercept",
@@ -370,24 +387,27 @@
     },
     {
       "id": "terminal-launch",
-      "fromStateId": "terminal-ready",
+      "fromStateId": "terminal-command-received",
       "toStateId": "terminal-launched",
       "label": "発射指示",
       "kind": "command",
       "simulation": {
         "enabled": false,
         "waitForStateIds": [
-          "control-orders",
+          "terminal-ready",
           "missile-terminal"
         ],
         "wInput": {
-          "waitForLinks": true
+          "stateIds": [
+            "terminal-command-received"
+          ],
+          "combine": "max"
         },
         "cancelOnStateIds": [
           "missile-destroyed-mid"
         ]
       },
-      "notes": "指令・終末軌道への到達・準備完了を待ち、説明用の固定10秒で発射する。中間撃破時は中止する。"
+      "notes": "終末迎撃指令受領を因果起点とし、迎撃準備完了と終末軌道段階到達を追加条件として待つ。中間撃破時は中止する。"
     },
     {
       "id": "terminal-intercept",
@@ -553,15 +573,15 @@
         "id": "control-orders"
       },
       "target": {
-        "type": "task",
-        "id": "midcourse-launch"
+        "type": "state",
+        "id": "midcourse-command-received"
       },
       "polarity": "positive",
       "label": "中間迎撃指令",
       "kind": "command",
       "simulation": {
         "enabled": true,
-        "type": "w"
+        "type": "state"
       },
       "propagation": {
         "duration": 0
@@ -574,15 +594,15 @@
         "id": "control-orders"
       },
       "target": {
-        "type": "task",
-        "id": "terminal-launch"
+        "type": "state",
+        "id": "terminal-command-received"
       },
       "polarity": "positive",
       "label": "終末迎撃指令",
       "kind": "command",
       "simulation": {
         "enabled": true,
-        "type": "w"
+        "type": "state"
       },
       "propagation": {
         "duration": 0
@@ -674,7 +694,7 @@
       "mode": "mission"
     }
   },
-  "notes": "シミュレーション経路に寄与しない形式的な待機State/Taskは置かない。レーダーは弾道ミサイル発射からの探知作用で初めてStateを生成し、中央管制は追尾情報受領Stateから判断を開始する。迎撃ユニットの準備過程そのものは本例の評価対象外とし、準備完了Stateを所定時刻に成立する外生条件として置く。時刻・CDF・wは説明用仮定で、実在装備の性能を表さない。"
+  "notes": "シミュレーション経路に寄与しない形式的な待機State/Taskは置かない。Actor間の情報・指令は、後続行為の因果起点になる意味のある受領Stateを成立させる。迎撃ユニットの準備過程そのものは本例の評価対象外とし、準備完了Stateを所定時刻に成立する外生条件として置く。時刻・CDF・wは説明用仮定で、実在装備の性能を表さない。"
 };
     return M.defaults(M.validate(d));
   }
