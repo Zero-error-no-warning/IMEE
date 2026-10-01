@@ -78,12 +78,6 @@
       "time": 160
     },
     {
-      "id": "radar-ready",
-      "actorId": "radar",
-      "name": "広域監視",
-      "time": 0
-    },
-    {
       "id": "radar-detected",
       "actorId": "radar",
       "name": "目標探知",
@@ -100,10 +94,11 @@
       "notes": "外部解析による抽象的な性能劣化度w=0.25。原因をIMEEでは計算しない。"
     },
     {
-      "id": "control-ready",
+      "id": "control-track-received",
       "actorId": "control",
-      "name": "管制待機",
-      "time": 0
+      "name": "追尾情報受領",
+      "time": 30,
+      "notes": "レーダー追尾情報の到達によって成立する。形式的な管制待機Stateは置かない。"
     },
     {
       "id": "control-decision",
@@ -119,16 +114,11 @@
       "time": 50
     },
     {
-      "id": "midcourse-standby",
-      "actorId": "midcourse",
-      "name": "待機",
-      "time": 0
-    },
-    {
       "id": "midcourse-ready",
       "actorId": "midcourse",
       "name": "中間迎撃準備完了",
-      "time": 60
+      "time": 60,
+      "notes": "本例では準備過程自体を評価対象にせず、T+60に成立する外生のReady条件として扱う。"
     },
     {
       "id": "midcourse-launched",
@@ -144,16 +134,11 @@
       "notes": "迎撃CDFの達成結果。敵ミサイルの撃破までを含む作用が成立した時点を表す。"
     },
     {
-      "id": "terminal-standby",
-      "actorId": "terminal",
-      "name": "待機",
-      "time": 0
-    },
-    {
       "id": "terminal-ready",
       "actorId": "terminal",
       "name": "終末迎撃準備完了",
-      "time": 120
+      "time": 120,
+      "notes": "本例では準備過程自体を評価対象にせず、T+120に成立する外生のReady条件として扱う。中間撃破時は後続Taskがcancelされる。"
     },
     {
       "id": "terminal-launched",
@@ -232,17 +217,17 @@
     },
     {
       "id": "decide",
-      "fromStateId": "control-ready",
+      "fromStateId": "control-track-received",
       "toStateId": "control-decision",
       "label": "脅威評価・迎撃判断",
       "simulation": {
         "enabled": true,
         "w": 0,
-        "waitForStateIds": [
-          "radar-track"
-        ],
         "wInput": {
-          "waitForLinks": true
+          "stateIds": [
+            "control-track-received"
+          ],
+          "combine": "max"
         },
         "performanceModel": {
           "type": "cdf",
@@ -301,12 +286,6 @@
           ]
         }
       }
-    },
-    {
-      "id": "midcourse-prepare",
-      "fromStateId": "midcourse-standby",
-      "toStateId": "midcourse-ready",
-      "label": "中間迎撃準備・待機"
     },
     {
       "id": "midcourse-launch",
@@ -383,18 +362,6 @@
         }
       },
       "notes": "発射から敵ミサイルの撃破達成までの時間CDF。飛翔や交戦の詳細は外部性能に縮約する。w=0時の未達確率20%。"
-    },
-    {
-      "id": "terminal-prepare",
-      "fromStateId": "terminal-standby",
-      "toStateId": "terminal-ready",
-      "label": "終末迎撃準備・待機",
-      "simulation": {
-        "enabled": false,
-        "cancelOnStateIds": [
-          "missile-destroyed-mid"
-        ]
-      }
     },
     {
       "id": "terminal-launch",
@@ -560,15 +527,15 @@
         "id": "radar-track"
       },
       "target": {
-        "type": "task",
-        "id": "decide"
+        "type": "state",
+        "id": "control-track-received"
       },
       "polarity": "positive",
       "label": "追尾情報",
       "kind": "information",
       "simulation": {
         "enabled": true,
-        "type": "w"
+        "type": "state"
       },
       "propagation": {
         "duration": 0
@@ -701,5 +668,6 @@
       "collapsedLayout": "compact",
       "mode": "mission"
     }
-  }
+  },
+  "notes": "シミュレーション経路に寄与しない形式的な待機State/Taskは置かない。レーダーは弾道ミサイル発射からの探知作用で初めてStateを生成し、中央管制は追尾情報受領Stateから判断を開始する。迎撃ユニットの準備過程そのものは本例の評価対象外とし、準備完了Stateを所定時刻に成立する外生条件として置く。時刻・CDF・wは説明用仮定で、実在装備の性能を表さない。"
 }
