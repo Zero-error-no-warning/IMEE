@@ -1147,3 +1147,9 @@ main {
 #timeline .connect-hover.edge .line-arrow {
   stroke: #ee9b18;
 }
+
+#simulation-overlay-toggle[aria-pressed="true"] {
+  color: #086b6f;
+  background: #e4f2ef;
+  border-color: #6cabaa;
+}

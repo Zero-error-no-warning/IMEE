@@ -29,7 +29,7 @@
     unknown: "#687680",
   };
   function render(doc, layout, options = {}) {
-    const { vp, rows, states, edges, junctions, height } = layout,
+    const { vp, rows, states, edges, junctions, height, resultOverlay } = layout,
       v = doc.views.main,
       selection = options.selection || [],
       selected = (id) => selection.some((s) => s.id === id),
@@ -42,7 +42,7 @@
         : ` data-type="${type}" data-id="${esc(id)}" tabindex="0"`;
     const summaryData = (actorId) => data("actor",actorId) +
       (options.export ? "" : ` data-expand-group="${esc(actorId)}"`);
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vp.width}" height="${height}" viewBox="0 0 ${vp.width} ${height}" role="img" aria-label="${esc(doc.title)}" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="11" fill="#243d44" data-view="${v.mode}"><title>${esc(doc.title)}</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><marker id="state-arrow" viewBox="0 0 10 10" refX="19" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><clipPath id="time-clip"><rect x="${vp.left - 14}" y="32" width="${vp.width - vp.left + 14}" height="${height}"/></clipPath></defs><rect width="100%" height="100%" fill="white"/>`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vp.width}" height="${height}" viewBox="0 0 ${vp.width} ${height}" role="img" aria-label="${esc(doc.title)}" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="11" fill="#243d44" data-view="${v.mode}"${resultOverlay ? ` data-result-iterations="${resultOverlay.total}"` : ""}><title>${esc(doc.title)}</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><marker id="state-arrow" viewBox="0 0 10 10" refX="19" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><clipPath id="time-clip"><rect x="${vp.left - 14}" y="32" width="${vp.width - vp.left + 14}" height="${height}"/></clipPath></defs><rect width="100%" height="100%" fill="white"/>`;
     for (const row of rows)
       svg += `<rect x="0" y="${row.y}" width="${vp.width}" height="${row.height}" fill="${rows.indexOf(row) % 2 ? "#fafcfc" : "#ffffff"}"/><path d="M0,${row.y + row.height} H${vp.width}" stroke="#e7edef"/>`;
     const span = vp.end - vp.start,
@@ -70,29 +70,40 @@
         Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
       let marker = centeredEnd ? "state-arrow" : "arrow";
       const performanceTitle = e.type === "causalLink" ? performance === "cdf" ? "CDF：発生から到着までの伝搬時間・未達を抽選" : fixed ? "FIX：伝搬時間は固定、到着時刻は発生時刻で変動" : "表示のみ：シミュレーション実行なし" : performance === "cdf" ? "CDF：所要時間・未達を抽選" : performance === "mixed" ? "CDF / FIXを含む集約線（展開して確認）" : fixed ? e.part === "outcome" ? "FIX：分岐後の遅延は固定" : "FIX：所要時間は固定、開始時刻は依存条件で変動" : "";
-      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${performanceTitle ? " · " + esc(performanceTitle) : ""}</title>`;
+      const resultTitle = e.resultSegments?.map(p=>`${p.metric.label} ${p.metric.text} (${p.metric.count}/${p.metric.total})`).join(" / ");
+      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${performanceTitle ? " · " + esc(performanceTitle) : ""}${resultTitle ? " · " + esc(resultTitle) : resultOverlay && e.summaryActorId ? " · 集約線の割合は展開して確認" : ""}</title>`;
       if (e.type === "causalLink") {
         const segment = L.routeSegments(e.points).at(-1);
         const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
         marker = "causal-arrow-" + edges.indexOf(e);
         // Orient by the routed centerline, never by the final wave sample.
-        svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${color}"/></marker></defs>`;
+        const markerColor=e.resultSegments?.[0]?.metric.ratio === 0 ? "#aebbc0" : color;
+        svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${markerColor}"/></marker></defs>`;
       }
       if (!options.export)
         svg += `<path class="hit" d="${L.path(e.points)}" fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke"/>`;
       if (chosen || gap)
-        svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="7" opacity=".25" pointer-events="none"/>`;
-      if (fixed) {
-        const rowIndex = rows.findIndex(row => row.actor.id === e.actorId), background = rowIndex % 2 ? "#fafcfc" : "#ffffff";
-        // Hollow stroke gives parallel rails without moving the routed time anchors.
-        // Draw the arrow last so the central gap never cuts through its head.
-        const join=e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round";
-        svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 6.6 : 4.8}" stroke-linejoin="${join}"/>
-          <path class="line-gap" d="${e.path}" fill="none" stroke="${background}" stroke-width="1.6" stroke-linejoin="${join}" pointer-events="none"/>
-          <path class="line-arrow" d="${e.path}" fill="none" stroke="${color}" stroke-width="0" marker-end="url(#${marker})" pointer-events="none"/></g></g>`;
-      } else {
-        svg += `<path class="line${performance ? " line-cdf" : ""}" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}" marker-end="url(#${marker})"/></g>`;
+        svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="${e.resultSegments?.length ? 12 : 7}" opacity=".25" pointer-events="none"/>`;
+      const pieces = e.resultSegments?.length ? e.resultSegments : [{path:e.path}];
+      for (const [i,piece] of pieces.entries()) {
+        const m=piece.metric,stroke=m?.ratio===0?"#aebbc0":color,
+          strokeWidth=m?m.width:fixed?(chosen?6.6:4.8):(chosen?2.5:1.6),
+          endMarker=i===pieces.length-1?` marker-end="url(#${marker})"`:"";
+        if(m) svg+=`<g class="simulation-result-segment" data-result-rate="${m.ratio}" data-result-count="${m.count}" data-result-kind="${esc(m.label)}"${piece.start!==undefined?` data-start="${piece.start}" data-end="${piece.end}"`:""}>`;
+        if (fixed) {
+          const rowIndex = rows.findIndex(row => row.actor.id === e.actorId), background = rowIndex % 2 ? "#fafcfc" : "#ffffff";
+          // Hollow stroke gives parallel rails without moving the routed time anchors.
+          // Draw the arrow last so the central gap never cuts through its head.
+          const join=e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round";
+          svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" data-polarity="${e.polarity || "positive"}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} stroke-linejoin="${join}"/>
+          <path class="line-gap" d="${piece.path}" fill="none" stroke="${background}" stroke-width="${m?strokeWidth*.4:1.6}" stroke-linejoin="${join}" pointer-events="none"/>
+          <path class="line-arrow" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="0"${endMarker} pointer-events="none"/></g>`;
+        } else {
+          svg += `<path class="line${performance ? " line-cdf" : ""}" data-polarity="${e.polarity || "positive"}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}"${endMarker}/>`;
+        }
+        if(m)svg+="</g>";
       }
+      svg+="</g>";
     }
     const summaryJunctions = new Set();
     for (const j of junctions.values()) {
@@ -129,6 +140,12 @@
         svg += `<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
       svg += `<text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
     }
+    for (const e of edges) for (const part of e.resultSegments || []) {
+      const b=part.labelInfo,m=part.metric;
+      if(!b)continue;
+      const color=m.ratio===0?"#62777d":M.actorColor(doc,M.get(doc,"actor",e.actorId));
+      svg+=`<g class="edge-label simulation-rate-label"${data(e.type,e.id)}${emphasis(e.id)} data-result-rate="${m.ratio}"><title>${esc(e.label)} · ${esc(m.label)} ${esc(m.text)} (${m.count}/${m.total}試行、分母は全試行)</title><path d="M${b.anchor.x},${b.anchor.y} L${b.x+b.width/2},${b.y+b.height/2}" fill="none" stroke="${color}" stroke-width=".6" pointer-events="none"/><rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="white" stroke="${color}" stroke-width=".8"/><text x="${b.x+b.width/2}" y="${b.y+12}" text-anchor="middle" fill="${color}">${esc(m.text)}</text></g>`;
+    }
     for (const group of layout.technologyGroups || []) {
       const e=group.edge,color=M.actorColor(doc,M.get(doc,"actor",e.actorId));
       if(group.compact) {
@@ -159,6 +176,7 @@
       svg += `<text x="${x + 16}" y="${row.center + 4}" font-weight="600" font-size="11">${esc(name)}</text><title>${esc(a.name)}</title>`;
       svg += "</g>";
     }
+    if(resultOverlay) svg+=`<g class="simulation-result-legend">${resultOverlay.legend.map((text,i)=>`<text x="12" y="${resultOverlay.legendY+i*15}" font-size="11" fill="#536e75">${esc(text)}</text>`).join("")}</g>`;
     return svg + "</svg>";
   }
   const api = { render, esc, techColors };

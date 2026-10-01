@@ -10,6 +10,7 @@
     <script defer src="js/model.js"></script>
     <script defer src="js/simulation.js"></script>
     <script defer src="js/sensitivity.js"></script>
+    <script defer src="js/simulation-overlay.js"></script>
     <script defer src="js/layout.js"></script>
     <script defer src="js/render.js"></script>
     <script defer src="js/simulation-ui.js"></script>
@@ -59,6 +60,7 @@
           <option value="gap">Gap View</option>
           <option value="causality">Causality View</option></select
         ><button id="simulation-btn">Simulation</button
+        ><button id="simulation-overlay-toggle" disabled aria-pressed="false">結果表示</button
         ><button id="view-settings">表示設定</button
         ><button id="group-selected" title="Ctrl / ⌘ + G">まとめる</button>
         <label class="snap-label"
@@ -203,7 +205,7 @@
     <dialog id="simulation-dialog" aria-labelledby="simulation-title">
       <div class="dialog-heading"><h2 id="simulation-title">Mission Simulation</h2><button id="simulation-close" aria-label="閉じる">×</button></div>
       <div id="simulation-setup"></div>
-      <div class="simulation-actions"><button id="simulation-configure">成功条件・実行設定</button><button id="simulation-demo">シミュレーション例を開く</button><button id="simulation-run" class="primary">Monte Carlo実行</button><button id="simulation-stop" hidden>中断</button><button id="simulation-export" disabled>結果JSON保存</button></div>
+      <div class="simulation-actions"><button id="simulation-configure">成功条件・実行設定</button><button id="simulation-demo">シミュレーション例を開く</button><button id="simulation-run" class="primary">Monte Carlo実行</button><button id="simulation-stop" hidden>中断</button><button id="simulation-apply" disabled>結果をシナリオ図に反映</button><button id="simulation-export" disabled>結果JSON保存</button></div>
       <p id="simulation-error" role="alert"></p><p id="simulation-progress" role="status"></p>
       <div id="simulation-results"></div>
       <details id="sensitivity-section"><summary>感度分析 / 要求逆算</summary>

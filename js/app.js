@@ -83,6 +83,7 @@
     geometry = L.layout(
       d,
       Math.max(320, $("#canvas-scroll").clientWidth || window.innerWidth - 48),
+      {simulationResult:simulationPanel?.getOverlayResult()},
     );
     const current = selected();
     chain = null;
@@ -108,6 +109,7 @@
     });
     const svg = holder.firstChild;
     const target = $("#timeline");
+    if(!svg.hasAttribute("data-result-iterations")) target.removeAttribute("data-result-iterations");
     for (const a of [...svg.attributes])
       if (!["id"].includes(a.name)) target.setAttribute(a.name, a.value);
     target.innerHTML = svg.innerHTML;
@@ -1298,7 +1300,8 @@
   function exportSource() {
     const d = M.clone(doc());
     d.views.main.mode = "mission";
-    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true });
+    simulationPanel?.invalidate();
+    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true, simulationResult:simulationPanel?.getOverlayResult() });
     return {
       svg: R.render(d, g, { export: true, full: true }),
       width: g.vp.width,
@@ -1558,7 +1561,7 @@
     redo,
   };
   simulationPanel = window.MESimulationUI.controller({
-    getDocument: () => M.clone(doc()), download,
+    getDocument: () => M.clone(doc()), download,onOverlayChange:render,
     configure: () => dialog("Simulation設定", window.MESimulationUI.settingsFields(doc()), () => {
       applyEdit(d => {
         d.simulation = window.MESimulationUI.readSettings($("#editor-form"));

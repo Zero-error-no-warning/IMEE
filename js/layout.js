@@ -5,6 +5,8 @@
     typeof module !== "undefined" && module.exports
       ? require("./model.js")
       : root.ME;
+  const O = typeof module !== "undefined" && module.exports
+    ? require("./simulation-overlay.js") : root.MESimulationOverlay;
   function routeSegments(points) {
     return points
       .slice(1)
@@ -380,6 +382,7 @@
     };
   }
   function layout(doc, widthValue = 1050, options = {}) {
+    const resultOverlay = O.create(doc, options.simulationResult);
     const v = doc.views.main,
       range = options.full
         ? { start: 0, end: doc.time.duration }
@@ -689,6 +692,36 @@
       const marker=e.labelInfo ? {x:e.labelInfo.x+e.labelInfo.width+12,y:e.labelInfo.y-4} : anchor;
       technologyGroups.push({edge:e,anchor:marker,items:attachment.items,compact:true});
     }
+    if (resultOverlay) {
+      for (const e of edges) {
+        e.resultSegments = resultOverlay.segments(e,vp);
+        for (const part of e.resultSegments) {
+          part.path = e.type === "causalLink" ? e.path : path(part.points);
+          const a=part.points[0], b=part.points.at(-1), lo=Math.max(vp.left-14,Math.min(a.x,b.x)), hi=Math.min(vp.right,Math.max(a.x,b.x));
+          if (hi < lo) continue;
+          const text=part.metric.text,w=width(text)+12,h=18,choices=[];
+          for (const t of [.5,.25,.75,.1,.9]) {
+            const anchor=pointOnRoute(part.points,lo+(hi-lo)*t,(a.y+b.y)/2);
+            for (const dy of [-26,8,-44,26]) for (const dx of [0,-w/2-10,w/2+10]) {
+              const box={x:Math.max(vp.left+2,Math.min(vp.width-w-6,anchor.x-w/2+dx)),y:anchor.y+dy,width:w,height:h};
+              if(box.y<34 || box.y+h>height-8) continue;
+              const score=occupied.reduce((n,o)=>n+(overlaps(box,o)?1000:0),0)+
+                lineSegments.reduce((n,l)=>n+segmentInsideBox(l,box),0)*12+Math.abs(dx)+Math.abs(dy+26)+Math.abs(t-.5)*12;
+              choices.push({...box,anchor,score,text});
+            }
+          }
+          choices.sort((a,b)=>a.score-b.score);
+          if (choices[0]) {part.labelInfo=choices[0];occupied.push(choices[0]);}
+        }
+      }
+      resultOverlay.legend = [
+        `結果：全${resultOverlay.total.toLocaleString()}試行 / Seed ${resultOverlay.seed ?? "—"}${Number.isFinite(resultOverlay.successProbability)?" / Mission成功 "+O.percent(resultOverlay.successProbability):""}`,
+        "太さ・%：Task経路通過/正常完了、分岐選択、作用適用（分母：全試行）",
+        "横位置：基準時刻。集約線は展開して割合を確認。"
+      ].flatMap(text=>textLines(text,vp.width-24,11,3));
+      resultOverlay.legendY = height+8;
+      height += resultOverlay.legend.length*15+20;
+    }
     return {
       vp,
       rows,
@@ -701,6 +734,7 @@
       technologyTags,
       technologyGroups,
       occupied,
+      resultOverlay,
     };
   }
   const api = {

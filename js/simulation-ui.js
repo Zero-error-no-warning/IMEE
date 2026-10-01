@@ -304,10 +304,23 @@
       <div class="simulation-table-scroll"><table class="simulation-table"><thead><tr><th>${esc(axis)}</th><th>Mission成功率</th><th>95%区間</th><th>要求達成</th></tr></thead><tbody>${r.points.map(p=>`<tr><td>${fmt(p.value)}</td><td>${pct(p.probability)}</td><td>${pct(p.interval95.low)}〜${pct(p.interval95.high)}</td><td>${(r.config.criterion==="lower95"?p.interval95.low:p.probability)>=r.config.targetProbability?"達成":"未達"}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted">${esc(r.interpretation)} ${esc(r.scope)} グラフの線は評価点を結んだ表示です。評価点間の確率を保証しません。達成した評価点の範囲：${r.requirement.ranges.length?r.requirement.ranges.map(x=>`${fmt(x.min)}〜${fmt(x.max)}`).join("、"):"なし"}。各点 ${r.config.iterations.toLocaleString()}試行 / Seed ${r.config.seed}。</p>`;
   }
-  function controller({getDocument,configure,loadDemo,download}) {
+  function controller({getDocument,configure,loadDemo,download,onOverlayChange=()=>{}}) {
     const dialog=document.querySelector("#simulation-dialog"), setup=document.querySelector("#simulation-setup"), output=document.querySelector("#simulation-results"), error=document.querySelector("#simulation-error"), progress=document.querySelector("#simulation-progress"), runButton=document.querySelector("#simulation-run"), exportButton=document.querySelector("#simulation-export");
     const analysisForm=document.querySelector("#sensitivity-form"), analysisOutput=document.querySelector("#sensitivity-results"),analysisError=document.querySelector("#sensitivity-error"),analysisProgress=document.querySelector("#sensitivity-progress"),analysisRun=document.querySelector("#sensitivity-run"),analysisExport=document.querySelector("#sensitivity-export");
-    let token=0, result=null, snapshot=null, signature=null, running=false,analysisToken=0,analysisResult=null,analysisSnapshot=null;
+    const overlayToggle=document.querySelector("#simulation-overlay-toggle"),applyButton=document.querySelector("#simulation-apply");
+    let token=0, result=null, snapshot=null, signature=null, running=false,analysisToken=0,analysisResult=null,analysisSnapshot=null,overlayVisible=false;
+    function syncOverlay() {
+      overlayToggle.disabled=applyButton.disabled=!result;
+      overlayToggle.setAttribute("aria-pressed",String(overlayVisible));
+      overlayToggle.textContent=overlayVisible?"結果表示 ON":"結果表示";
+      overlayToggle.title=result?"全試行を分母に線幅と割合を表示／解除":"Monte Carlo実行後に結果を図へ反映できます";
+    }
+    function showOverlay(value) {
+      invalidate();overlayVisible=!!value && !!result;syncOverlay();onOverlayChange();
+    }
+    overlayToggle.onclick=()=>showOverlay(!overlayVisible);
+    applyButton.onclick=()=>{showOverlay(true);dialog.close();};
+    syncOverlay();
     function stopAnalysis(){analysisToken++;analysisRun.disabled=false;document.querySelector("#sensitivity-stop").hidden=true;}
     const fingerprint=d=>JSON.stringify({...d,views:undefined});
     function stop() { stopAnalysis(); token++; running=false; runButton.disabled=false; document.querySelector("#simulation-stop").hidden=true; }
@@ -324,7 +337,7 @@
     function invalidate() {
       const next=fingerprint(getDocument());
       if (signature!==null && signature!==next) {
-        stop(); result=null; snapshot=null; exportButton.disabled=true; analysisResult=null;analysisSnapshot=null;analysisExport.disabled=true;analysisOutput.innerHTML="";analysisProgress.textContent="文書が変わりました。再実行してください。";
+        stop(); result=null; snapshot=null; exportButton.disabled=true; overlayVisible=false;syncOverlay(); analysisResult=null;analysisSnapshot=null;analysisExport.disabled=true;analysisOutput.innerHTML="";analysisProgress.textContent="文書が変わりました。再実行してください。";
         output.innerHTML=""; progress.textContent="文書が変わりました。再実行してください。";
         if(dialog.open) setupHTML();
       }
@@ -339,6 +352,7 @@
     document.querySelector("#simulation-stop").onclick=()=>{stop();progress.textContent="実行を中断しました。";};
     runButton.onclick=()=>{
       stop(); result=null; output.innerHTML=""; exportButton.disabled=true; snapshot=getDocument(); signature=fingerprint(snapshot);
+      overlayVisible=false;syncOverlay();onOverlayChange();
       let job;
       try { job=S.createRun(snapshot); error.textContent=job.compiled.warnings.join("\n"); }
       catch(e) { error.textContent=e.message; return; }
@@ -350,7 +364,7 @@
         try {
           const status=job.step(batch); progress.textContent=`${status.completed.toLocaleString()} / ${status.total.toLocaleString()} 試行`;
           if(!status.done) {setTimeout(tick,0);return;}
-          result=job.result(); stop(); output.innerHTML=resultHTML(result); exportButton.disabled=false;
+          result=job.result(); stop(); output.innerHTML=resultHTML(result); exportButton.disabled=false;syncOverlay();
         } catch(e) {stop();error.textContent=e.message;}
       }
       setTimeout(tick,0);
@@ -384,7 +398,7 @@
       setTimeout(tick,0);
     };
     analysisExport.onclick=()=>{if(analysisResult && signature===fingerprint(getDocument()))download(new Blob([JSON.stringify({mission:analysisSnapshot,sensitivity:analysisResult},null,2)],{type:"application/json"}),"mission-sensitivity.json");};
-    return {open,invalidate};
+    return {open,invalidate,getOverlayResult:()=>overlayVisible?result:null};
   }
   root.MESimulationUI={performanceFields,readPerformance,bindPerformance,hoverPreview,stateFields,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
 })(globalThis);
