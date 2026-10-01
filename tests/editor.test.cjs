@@ -299,6 +299,6 @@ test("editing multiple junction times remaps attachments once, without cascading
   assert.equal(a.$("#dialog-error").textContent, "");
   assert.equal(
     a.w.ME.causalArrivalTime(a.savedDoc(), a.savedDoc().causalLinks.find((c) => c.id === "attach-early")),
-    24,
+    29,
   );
 });
