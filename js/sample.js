@@ -2008,9 +2008,19 @@
     }
   }
 };
-  const sample = () => JSON.parse(JSON.stringify(data.coastal));
-  const grouped = () => JSON.parse(JSON.stringify(data.submarine));
-  const research = () => JSON.parse(JSON.stringify(data.research));
+  function migrate(doc) {
+    const states = new Map(doc.states.map(s => [s.id, s]));
+    const time = p => p.type === "state" ? states.get(p.id)?.time : p.time;
+    for (const c of doc.causalLinks) {
+      const sourceTime = time(c.source), targetTime = time(c.target);
+      c.propagation = { duration: targetTime - sourceTime };
+      if (c.target && "time" in c.target) delete c.target.time;
+    }
+    return doc;
+  }
+  const sample = () => migrate(JSON.parse(JSON.stringify(data.coastal)));
+  const grouped = () => migrate(JSON.parse(JSON.stringify(data.submarine)));
+  const research = () => migrate(JSON.parse(JSON.stringify(data.research)));
   if (typeof module !== "undefined" && module.exports) {
     module.exports = sample; module.exports.grouped = grouped; module.exports.research = research;
   } else { root.createSample = sample; root.createGroupedSample = grouped; root.createResearchSample = research; }
