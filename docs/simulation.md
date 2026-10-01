@@ -99,8 +99,10 @@ CDFは `F(t|w)=P(T≤t)`。時間単位は文書のtime.unit。tは非負の狭�
 ```json
 {
   "id": "kill-effect", "source": {"type": "state", "id": "kill-action"},
-  "target": {"type": "task", "id": "flight", "time": 90}, "polarity": "negative", "label": "撃破作用",
-  "simulation": {"enabled": true, "type": "branch", "delay": 0,
+  "target": {"type": "task", "id": "flight"},
+  "propagation": {"duration": 0},
+  "polarity": "negative", "label": "撃破作用",
+  "simulation": {"enabled": true, "type": "branch",
     "junctionId": "effect-port", "outcomeStateId": "destroyed", "stopTargetActor": true, "holdUntilStart": false}
 }
 ```
@@ -108,38 +110,63 @@ CDFは `F(t|w)=P(T≤t)`。時間単位は文書のtime.unit。tは非負の狭�
 - `mode: "effect"`：作用到着時、受け手Taskが実行中なら指定結果へ移り、通常接続先と残りの分岐/出力を取り消します。開始前はearly、完了/中止後はlate。holdUntilStartなら開始前の作用を保持します。stopTargetActorは受け手Actorの他の未開始/実行中Taskも中止します。結果Stateは中止後も指定遅延で到達します。
 - `mode: "probability"`：抽選した所要時間の進捗に応じて分岐点へ到達し、outcomesのprobabilityで結果を1つ選びます。合計≤1、残りは通常経路です。通常接続先がない最終分岐は合計1必須。同一Task内のモードは統一します。∞では進捗0以外の分岐点に到達しません。
 - outcome.delay省略時は図上の結果State時刻−分岐時刻。分岐確率はTask未達確率の代替ではなく、分岐点に到達した条件下の選択確率です。
-- w作用線は `simulation: {enabled:true,type:"w",delay:0,w:0.25}`。w省略なら出力元のwを引き継ぎます。入力先はTask/State、Actorは不可です。
+- w作用線は `propagation: {duration:0}` と `simulation: {enabled:true,type:"w",w:0.25}` のように、伝搬時間と到着後の効果を分離します。w省略なら出力元のwを引き継ぎます。入力先はTask/State、Actorは不可です。
 
 新しいState・Junction・作用線参照は読込時に検証します。コピーで内部参照を再マップし、削除時に失われた参照を除去します。作用分岐をTask編集で削除/変更した場合、その分岐を指定した作用線も削除します。Undoで戻せます。
 
-## 作用線の伝搬CDF・State到達
+## 作用線の伝搬時間・CDF・State到達
 
-作用の実行タイプと、到着までの時間モデルを分離します。`simulation.propagation.enabled: true` なら `performanceModel` にTaskと同じCDF形式を指定します。w伝播・作用分岐・State到達のすべてに使用できます。
+作用線は到達絶対時刻を保存せず、`source` とトップレベルの `propagation` から到着を決めます。
+
+固定伝搬:
+
+```json
+{
+  "id": "track-report",
+  "label": "追尾情報",
+  "polarity": "positive",
+  "source": {"type": "state", "id": "track-ready"},
+  "target": {"type": "task", "id": "decide"},
+  "propagation": {"duration": 4},
+  "simulation": {"enabled": true, "type": "w"}
+}
+```
+
+図上の基準到達時刻は `source基準時刻 + propagation.duration` です。`target.time` は保存しません。
+
+CDF伝搬:
 
 ```json
 {
   "id": "observation", "label": "探知", "polarity": "positive",
   "source": {"type": "state", "id": "launched"},
   "target": {"type": "state", "id": "detected"},
+  "propagation": {
+    "duration": 20,
+    "w": 0,
+    "performanceModel": {"type": "cdf", "curves": [
+      {"w": 0, "points": [{"t": 5, "p": 0.2}, {"t": 20, "p": 0.9}], "pInfinity": 0.1}
+    ]}
+  },
   "simulation": {
-    "enabled": true, "type": "state",
-    "propagation": {
-      "enabled": true, "w": 0,
-      "performanceModel": {"type": "cdf", "curves": [
-        {"w": 0, "points": [{"t": 5, "p": 0.2}, {"t": 20, "p": 0.9}], "pInfinity": 0.1}
-      ]}
-    }
+    "enabled": true,
+    "type": "state"
   }
 }
 ```
 
-- CDFのtは作用の発生から到着までの**経過時間**。実到着時刻 = 実発生時刻 + 抽選時間です。CDFで∞なら到着せず、受け手のw更新・分岐・State成立は起こりません。図上の入力端点時刻にクランプしません。
-- `propagation.w` があればCDFの固定入力、なければ発生元の出力wを使います。`simulation.w` は受け手への固定出力wで、CDF入力とは別です（Actor出力には自身のwがないため、その固定simulation.wまたは0を使います）。伝搬CDFのw入力は発生時に確定します。
-- `type: "state"` は入力先State専用。有限の到着でStateの生成元として通知し、Stateの出力w・後続Task・中止条件・後続作用線に接続します。複数Task/State到達作用線のANDはすべて、ORは最初の入力を採用し、Stateは1回だけ成立します。到達済み/停止Actorへの後着作用はlateです。
-- `type: "w"` のState入力は従来どおりw更新だけで、Stateを成立させません。Taskの到着待ち設定がある場合は抽選した実到着を待ちます。未達なら待ち続けて開始不能になります。
-- `type: "branch"` は到着時の受け手Taskの実行状態で判定します。CDFが有限でも時間窓後ならlateで未適用です。到着後の結果Stateまでのoutcome.delayは別の固定遅延です。
-- CDFを無効にしても保存済み曲線は保持します。固定delayまたは図上の端点差で実行し、二重線で描画します。表示のみの作用線は実行せず、CDF/FIXの分類を付けません。
-- 読込時にCDFの妥当性、実行前に発生元から伝わりうるwの曲線範囲とState到達作用を含む依存循環を検証します。作用線の感度分析・要求逆算は現段階では未対応です（既存の分析対象はTask）。
+- `propagation.duration` は必須の非負値で、図上の基準到達位置を決めます。
+- CDFのtは作用発生から到着までの**経過時間そのもの**です。実到着時刻 = 実発生時刻 + 抽選時間。
+- CDFを使う場合、抽選時間を `duration` に加算しません。`duration` は表示・基準整合用です。
+- CDFで∞なら到着せず、受け手のw更新・分岐・State成立は起こりません。
+- `propagation.w` があればCDFの固定入力、なければ発生元の出力wを使います。`simulation.w` は受け手へ渡す固定wで、CDF入力とは別です。
+- `type: "state"` は入力先State専用。State targetでは、基準整合のため `target State.time = source基準時刻 + propagation.duration` を要求します。
+- `type: "w"` のState入力はw更新だけで、Stateを成立させません。
+- `type: "branch"` は到着時の受け手Taskの実行状態で判定します。effect分岐では、基準到達時刻を指定junction.timeへ一致させます。
+- 結果Stateまでの `outcome.delay` は分岐後の別工程として残ります。
+- 表示のみの作用線でも `propagation.duration` は持ちます。ただし `simulation.enabled` がfalse/未設定なら実行依存には使いません。
+- 旧 `simulation.delay` / `simulation.propagation` / `target.time` は使用しません。
+- 読込時に伝搬時間・CDF・参照を検証し、実行前にw範囲と依存循環を追加確認します。作用線の感度分析・要求逆算は現段階では未対応です。
 
 ## Mission統計・Criticality
 
