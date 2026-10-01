@@ -483,7 +483,10 @@
       "polarity": "positive",
       "label": "発見",
       "kind": "detection",
-      "notes": ""
+      "notes": "",
+      "propagation": {
+        "duration": 0
+      }
     },
     {
       "id": "report",
@@ -499,7 +502,10 @@
       "polarity": "positive",
       "label": "探知情報",
       "kind": "information",
-      "notes": ""
+      "notes": "",
+      "propagation": {
+        "duration": 1
+      }
     },
     {
       "id": "order",
@@ -515,7 +521,10 @@
       "polarity": "positive",
       "label": "接敵指示",
       "kind": "command",
-      "notes": ""
+      "notes": "",
+      "propagation": {
+        "duration": 1
+      }
     },
     {
       "id": "launch",
@@ -530,7 +539,10 @@
       "polarity": "positive",
       "label": "発射",
       "kind": "attack",
-      "notes": ""
+      "notes": "",
+      "propagation": {
+        "duration": 0
+      }
     },
     {
       "id": "hit",
@@ -540,13 +552,15 @@
       },
       "target": {
         "type": "task",
-        "id": "escape",
-        "time": 46
+        "id": "escape"
       },
       "polarity": "negative",
       "label": "命中・離脱阻止",
       "kind": "attack",
-      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。"
+      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。",
+      "propagation": {
+        "duration": 0
+      }
     }
   ],
   "technologies": [],
