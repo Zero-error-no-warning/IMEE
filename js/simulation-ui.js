@@ -112,7 +112,7 @@
     function show() {
       if(!current?.isConnected || !canShow()) {hide();return;}
       const d=getDocument(),type=current.dataset.type,id=current.dataset.id,item=M.get(d,type,id);
-      const sim=type==="task" ? item?.simulation : type==="causalLink" && item?.simulation?.enabled ? item.simulation.propagation : null;
+      const sim=type==="task" ? item?.simulation : type==="causalLink" ? (item?.propagation?.performanceModel ? {enabled:true,w:item.propagation.w,performanceModel:item.propagation.performanceModel} : null) : null;
       if(!sim?.enabled || !sim.performanceModel) {hide();return;}
       const inherit=type==="causalLink" ? sim.w===undefined : !!item.simulation.wInput?.stateIds?.length || d.causalLinks.some(l=>l.simulation?.enabled && l.simulation.type==="w" && l.target.id===id);
       try {
@@ -124,7 +124,7 @@
     function enter(e,focus=false) {
       const el=eligible(e.target);
       if(e.pointerType==="touch" || e.buttons || !el || !canShow()) {hide();return;}
-      const item=M.get(getDocument(),el.dataset.type,el.dataset.id),sim=el.dataset.type==="task" ? item?.simulation : el.dataset.type==="causalLink" && item?.simulation?.enabled ? item.simulation.propagation : null;
+      const item=M.get(getDocument(),el.dataset.type,el.dataset.id),sim=el.dataset.type==="task" ? item?.simulation : el.dataset.type==="causalLink" && item?.propagation?.performanceModel ? {enabled:true,w:item.propagation.w,performanceModel:item.propagation.performanceModel} : null;
       if(!sim?.enabled || !sim.performanceModel) {hide();return;}
       if(focus){const rect=el.getBoundingClientRect();point={x:rect.right,y:rect.bottom};}
       else point={x:e.clientX,y:e.clientY};
@@ -216,15 +216,16 @@
       ${j.outcomes.map((o,n)=>`<div class="field-row"><label class="field"><span>${esc(o.label)} · 選択確率</span>${input(`branchP-${i}-${n}`,o.probability??"","分岐確率",0,1)}</label><label class="field"><span>結果到達までの遅延</span>${input(`branchDelay-${i}-${n}`,o.delay??"","分岐遅延")}</label></div>`).join("")}</details>`).join("");
   }
   function causalFields(d,c) {
-    const sim=c.simulation || {}, p=sim.propagation || {}, duration=M.endpoint(d,c.target).time-M.endpoint(d,c.source).time;
-    return `<details class="simulation-causal"><summary>Simulation / 作用線</summary><p class="muted">作用の実行タイプと伝搬時間を別々に設定します。Task出力端点は抽選したTask時間に比例して到達します。State到達作用は入力先Stateを成立させ、その後続Taskを開始できます。</p>
-      <label class="field"><span>実行タイプ</span><select name="causalSimulationType"><option value="">表示のみ</option><option value="w" ${sim.enabled&&sim.type==="w"?"selected":""}>w伝播</option><option value="branch" ${sim.enabled&&sim.type==="branch"?"selected":""}>作用分岐</option><option value="state" ${sim.enabled&&sim.type==="state"?"selected":""}>State到達</option></select></label>
-      <label class="field"><span>伝搬時間</span><select name="causalPropagationType"><option value="fixed">固定（FIX・二重線）</option><option value="cdf" ${p.enabled?"selected":""}>CDF（時間と未達を抽選・実線）</option></select></label>
-      <label class="field"><span>固定の伝搬遅延（空欄なら図上の端点時刻の差）</span>${input("causalDelay",sim.delay??"","伝搬遅延")}</label>
-      <fieldset id="performance-cdf-fields"><p class="muted">CDFのtは作用の発生から到着までの経過時間です。CDF使用時は固定遅延を加算しません。T=∞なら作用は届きません。時間単位：${unit(d)}。</p>
+    const sim=c.simulation || {}, p=c.propagation || {}, duration=p.duration ?? 0;
+    return `<details class="simulation-causal"><summary>作用線 / Propagation</summary>
+      <p class="muted">到達時刻は保存しません。図上の基準到達時刻は「作用発生時刻 + 基準伝搬時間」から導出します。CDFを使う場合も基準伝搬時間は表示位置として残り、実行時の到着時間だけCDFから抽選します。</p>
+      <label class="field"><span>基準伝搬時間（必須）</span>${input("causalDelay",duration,"伝搬時間")}</label>
+      <label class="field"><span>伝搬モデル</span><select name="causalPropagationType"><option value="fixed">固定（FIX・二重線）</option><option value="cdf" ${p.performanceModel?"selected":""}>CDF（時間と未達を抽選・実線）</option></select></label>
+      <fieldset id="performance-cdf-fields"><p class="muted">CDFのtは作用発生から到着までの経過時間です。T=∞なら作用は届きません。基準伝搬時間へ加算する値ではありません。時間単位：${unit(d)}。</p>
       <label class="field"><span>CDF入力w（空欄で発生元のwを引き継ぐ）</span>${input("causalPropagationW",p.w??"","伝搬CDFのw",0,1)}</label><p class="muted">入力wが空欄のプレビューはw=0。実行時は発生元のwで曲線を補間します。</p>
       <div id="cdf-curves">${curveFields(p.performanceModel?.curves || durationCurves(duration))}</div>
       <button type="button" id="add-cdf-curve">＋ wの曲線</button><div id="cdf-preview"></div><p id="cdf-preview-error" role="status"></p></fieldset>
+      <label class="field"><span>実行タイプ</span><select name="causalSimulationType"><option value="">表示のみ</option><option value="w" ${sim.enabled&&sim.type==="w"?"selected":""}>w伝播</option><option value="branch" ${sim.enabled&&sim.type==="branch"?"selected":""}>作用分岐</option><option value="state" ${sim.enabled&&sim.type==="state"?"selected":""}>State到達</option></select></label>
       <label class="field"><span>受け手へ渡すw（空欄で発生元から引き継ぐ）</span>${input("causalW",sim.w??"","作用線w",0,1)}</label>
       <fieldset id="causal-branch-fields"><label class="field"><span>作用分岐の結果（入力先Taskの分岐）</span><select name="causalOutcome"></select></label>
       <label class="simulation-check"><input type="checkbox" name="stopTargetActor" ${sim.stopTargetActor?"checked":""}>分岐後、入力先Actorの他Taskを中止する</label>
@@ -239,32 +240,35 @@
       })).join("");
       form.elements.causalOutcome.value=selected || JSON.stringify([c.simulation?.junctionId,c.simulation?.outcomeStateId]);
       const type=form.elements.causalSimulationType.value, cdf=form.elements.causalPropagationType.value==="cdf";
-      form.elements.causalPropagationType.disabled=!type;
-      form.elements.causalDelay.disabled=!type || cdf;form.elements.causalDelay.closest("label").hidden=cdf;
+      form.elements.causalDelay.disabled=false;form.elements.causalDelay.closest("label").hidden=false;
       form.elements.causalW.disabled=!["w","state"].includes(type);
       form.querySelector("#causal-branch-fields").hidden=type!=="branch";
       form.querySelector("#causal-branch-fields").disabled=type!=="branch";
     }
     for(const name of ["target","causalSimulationType","causalPropagationType"])form.elements[name].addEventListener("change",update);update();
-    bindPerformance(form,d,{enabled:()=>!!form.elements.causalSimulationType.value && form.elements.causalPropagationType.value==="cdf",wName:"causalPropagationW",inheritW:true,section:".simulation-causal"});
+    bindPerformance(form,d,{enabled:()=>form.elements.causalPropagationType.value==="cdf",wName:"causalPropagationW",inheritW:true,section:".simulation-causal"});
   }
   function readCausal(form,c) {
-    const type=form.elements.causalSimulationType.value;
-    if(!type)return {...M.clone(c.simulation || {}),enabled:false};
-    const sim={enabled:true,type};
-    if(form.elements.causalDelay.value!=="")sim.delay=Number(form.elements.causalDelay.value);
-    if(["w","state"].includes(type) && form.elements.causalW.value!=="")sim.w=Number(form.elements.causalW.value);
+    const duration=Number(form.elements.causalDelay.value);
+    const propagation={duration};
     if(form.elements.causalPropagationType.value==="cdf") {
-      sim.propagation={enabled:true,performanceModel:{type:"cdf",degradationInput:"w",curves:readCurves(form)}};
-      if(form.elements.causalPropagationW.value!=="")sim.propagation.w=Number(form.elements.causalPropagationW.value);
-      P.validateTask(sim.propagation,"作用線の伝搬CDF");
-    } else if(c.simulation?.propagation) sim.propagation={...M.clone(c.simulation.propagation),enabled:false};
+      propagation.performanceModel={type:"cdf",degradationInput:"w",curves:readCurves(form)};
+      if(form.elements.causalPropagationW.value!=="")propagation.w=Number(form.elements.causalPropagationW.value);
+      P.validateTask({enabled:true,w:propagation.w,performanceModel:propagation.performanceModel},"作用線の伝搬CDF");
+    }
+    const type=form.elements.causalSimulationType.value;
+    const sim=type?{enabled:true,type}:{...M.clone(c.simulation || {}),enabled:false};
+    delete sim.delay; delete sim.propagation;
+    if(type && ["w","state"].includes(type) && form.elements.causalW.value!=="")sim.w=Number(form.elements.causalW.value);
+    else if(type) delete sim.w;
     if(type==="branch") {
       if(!form.elements.causalOutcome.value)throw new Error("入力先Taskの作用分岐の結果を選んでください。");
       [sim.junctionId,sim.outcomeStateId]=JSON.parse(form.elements.causalOutcome.value);
       sim.stopTargetActor=form.elements.stopTargetActor.checked;sim.holdUntilStart=form.elements.holdUntilStart.checked;
+    } else {
+      delete sim.junctionId; delete sim.outcomeStateId; delete sim.stopTargetActor; delete sim.holdUntilStart;
     }
-    return sim;
+    return {propagation,simulation:sim};
   }
   function settingsFields(d) {
     const sim=d.simulation || {};
