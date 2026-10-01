@@ -56,6 +56,7 @@ async function openApp(saved) {
   for (const file of [
     "performance.js",
     "model.js",
+    "import-diagnostics.js",
     "simulation.js",
     "sensitivity.js",
     "simulation-overlay.js",

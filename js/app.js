@@ -7,6 +7,8 @@
     $ = (s) => document.querySelector(s),
     esc = R.esc,
     KEY = "imee.document.v3";
+  let importPreview=null;
+  const D=window.MEImportDiagnostics;
   let history,
     selection = [],
     clipboard = null,
@@ -21,16 +23,15 @@
     simulationPanel = null,
     cdfHover = null;
   try {
-    history = new M.History(
-      localStorage.getItem(KEY)
-        ? M.parse(localStorage.getItem(KEY))
-        : createSample(),
-    );
+    const saved=localStorage.getItem(KEY);
+    const inspected=saved?D.inspect(saved):null;
+    if(inspected?.errors.length)importPreview=inspected;
+    history=new M.History(inspected&&!inspected.errors.length?inspected.document:createSample());
   } catch (e) {
     history = new M.History(createSample());
     setTimeout(() => toast("保存データを読み込めません:\n" + errorText(e)), 0);
   }
-  const doc = () => history.doc;
+  const doc = () => importPreview?.document || history.doc;
   function errorText(error) {
     let text = error?.message || String(error);
     if (error?.validationPath) text += "\nJSON path: " + error.validationPath;
@@ -50,6 +51,7 @@
     $("#status").textContent = message;
   }
   function persist() {
+    if(importPreview)return;
     try {
       localStorage.setItem(KEY, JSON.stringify(doc()));
       $("#save-status").textContent = "このブラウザに保存";
@@ -58,6 +60,7 @@
     }
   }
   function change(fn) {
+    if(importPreview){toast("エラーのある文書は診断表示中です。元JSONを修正して再読み込みしてください。Undoで前の文書に戻れます。");return false;}
     const next = M.clone(doc());
     try {
       const result = fn(next);
@@ -124,10 +127,18 @@
     for (const a of [...svg.attributes])
       if (!["id"].includes(a.name)) target.setAttribute(a.name, a.value);
     target.innerHTML = svg.innerHTML;
+    if(importPreview){
+      target.insertAdjacentHTML("beforeend",D.bubbles(importPreview,geometry,esc));
+      const bubbles=[...target.querySelectorAll(".import-error foreignObject")];
+      const bottom=Math.max(geometry.height,...bubbles.map(b=>+b.getAttribute("y")+110));
+      target.setAttribute("viewBox",`0 0 ${geometry.vp.width} ${bottom}`);target.setAttribute("height",bottom);
+      $("#status").textContent=`読み込みエラー ${importPreview.errors.length}件：図は診断表示中。元JSONを修正して再読み込みしてください。`;
+    }
     $("#document-title").textContent = d.title;
     $("#counts").textContent =
       `${d.actors.length} Actor / ${d.states.length} State / ${d.tasks.length} Task`;
-    $("#undo").disabled = !history.past.length;
+    $("#undo").disabled = !importPreview && !history.past.length;
+    $("#simulation-btn").disabled=!!importPreview;
     $("#redo").disabled = !history.future.length;
     $("#view-mode").value = d.views.main.mode;
     const v = d.views.main,
@@ -327,6 +338,7 @@
     $("#dialog-fields input")?.focus();
   }
   function applyEdit(fn) {
+    if(importPreview)throw new Error("診断表示中は編集できません。元JSONを修正して再読み込みしてください。");
     const next = M.clone(doc());
     const result = fn(next);
     history.commit(next);
@@ -1121,12 +1133,13 @@
       );
   }
   function undo() {
-    history.undo();
+    if(importPreview)importPreview=null;else history.undo();
     selection = [];
     render();
     persist();
   }
   function redo() {
+    if(importPreview)return;
     history.redo();
     selection = [];
     render();
@@ -1268,8 +1281,8 @@
   }
   function saveJSON() {
     download(
-      new Blob([JSON.stringify(doc(), null, 2)], { type: "application/json" }),
-      "mission-v2.json",
+      new Blob([JSON.stringify(importPreview?.original || doc(), null, 2)], { type: "application/json" }),
+      "mission-v3.json",
     );
   }
   function exportSource() {
@@ -1338,8 +1351,9 @@
     }
   }
   function loadJSON(text) {
-    const d = M.parse(text);
-    history.commit(d);
+    const inspected=D.inspect(text);
+    if(inspected.errors.length)importPreview=inspected;
+    else {history.commit(inspected.document);importPreview=null;}
     selection = [];
     connecting = null;
     render();
@@ -1359,7 +1373,7 @@
       if (file.size > 8 * 1024 * 1024)
         throw new Error("JSONは8MiB以下にしてください。");
       const text = await file.text();
-      M.parse(text);
+      D.inspect(text);
       confirmReplace("JSONを読み込む", () => loadJSON(text));
     } catch (e) {
       toast(errorText(e));
@@ -1527,7 +1541,8 @@
   window.addEventListener("resize", render);
   // Small public integration surface for embedding, importers, and deterministic tests.
   window.IMEE = {
-    getDocument: () => M.clone(doc()),
+    getDocument: () => M.clone(importPreview?.original || doc()),
+    getImportErrors: () => M.clone(importPreview?.errors || []),
     loadJSON,
     exportSource,
     exportSVG,
