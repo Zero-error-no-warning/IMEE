@@ -320,7 +320,7 @@
         apply(values);
         $("#editor-dialog").close();
       } catch (error) {
-        $("#dialog-error").textContent = error.message;
+        $("#dialog-error").textContent = errorText(error);
       }
     };
     $("#editor-dialog").showModal();
