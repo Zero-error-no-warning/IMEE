@@ -55,7 +55,7 @@ test('shipped scenarios are distinct, synchronized, time ordered and omit missio
     signatures.add(d.tasks.map(t=>t.label).join('|'));
     for(const t of d.tasks) for(const j of t.junctions||[]) for(const o of j.outcomes)
       assert.equal(M.get(d,'state',o.toStateId).status,undefined);
-    for(const c of d.causalLinks) assert(M.endpoint(d,c.source).time<=M.endpoint(d,c.target).time);
+    for(const c of d.causalLinks) assert(M.endpoint(d,c.source).time<=M.causalArrivalTime(d,c));
   }
   assert.equal(signatures.size,3);
 });
