@@ -20,9 +20,19 @@
     "gap",
     "unknown",
   ];
-  const fail = (s) => {
-    throw new Error(s);
+  let validationContext = null;
+  const fail = (message, path, fragment) => {
+    const error = new Error(message);
+    error.name = "MissionValidationError";
+    const context = path ? { path, fragment } : validationContext;
+    if (context) {
+      error.validationPath = context.path;
+      try { error.validationFragment = clone(context.fragment); }
+      catch (_) { error.validationFragment = context.fragment; }
+    }
+    throw error;
   };
+  const context = (path, fragment) => { validationContext = { path, fragment }; };
   const get = (d, type, id) => d[collections[type]]?.find((x) => x.id === id);
   const snap = (n, step) => Math.round(n / step) * step;
   const actorPalette = ["#a75353", "#236d78", "#8061a8", "#a56c24", "#397aa0", "#538447", "#a55387", "#596a86"];
@@ -50,6 +60,7 @@
     v.laneHeight ??= 64;
     v.collapsedLayout ??= "compact";
     v.mode ??= "mission";
+    validationContext = null;
     return d;
   }
   function taskWindow(d, t) {
@@ -62,20 +73,41 @@
     };
   }
   function endpoint(d, p) {
+    if (!p) return;
     if (p.type === "state") {
       const s = get(d, "state", p.id);
       return s && { actorId: s.actorId, time: s.time };
     }
     if (p.type === "task") {
       const t = get(d, "task", p.id);
-      return (
-        t && { actorId: get(d, "state", t.fromStateId)?.actorId, time: p.time }
-      );
+      return t && { actorId: get(d, "state", t.fromStateId)?.actorId, time: p.time };
     }
     if (p.type === "actor")
       return get(d, "actor", p.id) && { actorId: p.id, time: p.time };
   }
+  function endpointActor(d, p) {
+    if (!p) return;
+    if (p.type === "state") return get(d, "state", p.id)?.actorId;
+    if (p.type === "task") {
+      const t = get(d, "task", p.id);
+      return t && get(d, "state", t.fromStateId)?.actorId;
+    }
+    if (p.type === "actor") return get(d, "actor", p.id)?.id;
+  }
+  function causalEndpoint(d, c, side = "target") {
+    const source = endpoint(d, c.source);
+    if (!source) return;
+    if (side === "source") return source;
+    const actorId = endpointActor(d, c.target);
+    const duration = c.propagation?.duration;
+    if (!actorId || !Number.isFinite(duration)) return;
+    return { actorId, time: source.time + duration };
+  }
+  function causalArrivalTime(d, c) {
+    return causalEndpoint(d, c, "target")?.time;
+  }
   function validate(d) {
+    validationContext = { path: "$", fragment: d };
     if (!d || d.version !== 2)
       fail(
         "version: 2 のJSONが必要です。旧version 1の期間Stateは読み込めません。",
@@ -118,7 +150,8 @@
         fail(k + "は10,000件以下の配列です。");
       d[k].forEach(register);
     }
-    for (const a of d.actors) {
+    for (const [i, a] of d.actors.entries()) {
+      context(`$.actors[${i}]`, a);
       str(a.name, "Actor名");
       opt(a.side, ["friendly", "hostile", "neutral"], "所属");
       if (!a.side) fail("所属が必要です。");
@@ -142,7 +175,8 @@
         fail("proposedは真偽値です。");
       if (x.kind !== undefined) str(x.kind, "分類", true);
     };
-    for (const s of d.states) {
+    for (const [i, s] of d.states.entries()) {
+      context(`$.states[${i}]`, s);
       str(s.name, "State名");
       if (!get(d, "actor", s.actorId)) fail("StateのActorが存在しません。");
       num(s.time, "State.time");
@@ -157,7 +191,8 @@
         opt(s.simulation.join, ["all", "any"], "State合流モード");
       }
     }
-    for (const t of d.tasks) {
+    for (const [i, t] of d.tasks.entries()) {
+      context(`$.tasks[${i}]`, t);
       status(t);
       P.validateTask(t.simulation, t.label || t.id);
       const refs = (ids, label) => {
@@ -225,45 +260,69 @@
         }
       }
     }
-    for (const c of d.causalLinks) {
+    for (const [i, c] of d.causalLinks.entries()) {
+      context(`$.causalLinks[${i}]`, c);
       str(c.label, "因果ラベル");
       opt(c.polarity, ["positive", "negative"], "極性");
       if (!c.polarity) fail("polarityが必要です。");
       status(c);
-      for (const p of [c.source, c.target]) {
-        if (
-          !p ||
-          !["state", "task", "actor"].includes(p.type) ||
-          !endpoint(d, p)
-        )
-          fail("因果リンクの端点が不正です。");
-        if (p.type !== "state") num(p.time, "端点の時刻");
-        else if ("time" in p)
-          fail("State端点に時刻を重複保存しないでください。");
-        // Out-of-window attachments remain representable; opportunity() reports
-        // the actual timing gap without a planned/proposed mode.
+
+      const source = c.source;
+      if (!source || !["state", "task", "actor"].includes(source.type) || !endpoint(d, source))
+        fail("因果リンクのsource参照が不正です。");
+      if (source.type === "state") {
+        if ("time" in source) fail("sourceがStateの場合、timeを重複保存しないでください。State.timeから発生時刻を導出します。");
+      } else num(source.time, "source.time");
+
+      const target = c.target;
+      if (!target || !["state", "task", "actor"].includes(target.type) || !endpointActor(d, target))
+        fail("因果リンクのtarget参照が不正です。");
+      if ("time" in target)
+        fail("target.timeは廃止されました。到達時刻はsource時刻 + propagation.durationから導出してください。");
+
+      if (!c.propagation || typeof c.propagation !== "object" || Array.isArray(c.propagation))
+        fail("CausalLink.propagationが必要です。{duration: 非負の時間}を指定してください。");
+      P.number(c.propagation.duration, "propagation.duration", 0, 1e9);
+      const arrival = causalArrivalTime(d, c);
+      if (!Number.isFinite(arrival) || arrival > d.time.duration)
+        fail("作用線の基準到達時刻が表示期間外です。source時刻 + propagation.durationをtime.duration以内にしてください。");
+      if (target.type === "state") {
+        const stateTime = get(d, "state", target.id).time;
+        if (Math.abs(stateTime - arrival) > 1e-9)
+          fail(`State到達先の基準時刻と伝搬時間が一致しません。target State.time=${stateTime}, source+duration=${arrival}`);
       }
-      if (endpoint(d, c.source).time > endpoint(d, c.target).time)
-        fail("因果リンクは時間を逆行できません。");
+      if (c.propagation.w !== undefined) P.number(c.propagation.w, "propagation.w", 0, 1);
+      if (c.propagation.performanceModel) {
+        P.validateTask({enabled:true,w:c.propagation.w,performanceModel:c.propagation.performanceModel},
+          "作用線「" + c.label + "」の伝搬CDF");
+      }
+
       if (c.simulation !== undefined) {
         const sim = c.simulation;
-        if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean") fail("作用線simulation.enabledは真偽値です。");
+        if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean")
+          fail("作用線simulation.enabledは真偽値です。");
+        if ("delay" in sim || "propagation" in sim)
+          fail("simulation.delay / simulation.propagationは廃止されました。伝搬時間・CDFはCausalLink.propagationへ移してください。");
         opt(sim.type, ["w", "branch", "state"], "作用線実行タイプ");
         if (sim.enabled && !sim.type) fail("作用線の実行タイプが必要です。");
-        if (sim.delay !== undefined) P.number(sim.delay, "作用線遅延", 0, 1e9);
         if (sim.w !== undefined) P.number(sim.w, "作用線w", 0, 1);
-        P.validateTask(sim.propagation, "作用線「" + c.label + "」の伝搬CDF");
-        for (const k of ["stopTargetActor", "holdUntilStart"]) if (sim[k] !== undefined && typeof sim[k] !== "boolean") fail(k + "は真偽値です。");
-        if (sim.enabled && sim.type === "w" && c.target.type === "actor") fail("w入力先はTaskまたはStateです。");
-        if (sim.enabled && sim.type === "w" && c.source.type === "actor" && sim.w === undefined) fail("Actor出力には固定wが必要です。");
-        if (sim.enabled && sim.type === "state" && c.target.type !== "state") fail("State到達作用の入力先はStateです。");
+        for (const k of ["stopTargetActor", "holdUntilStart"])
+          if (sim[k] !== undefined && typeof sim[k] !== "boolean") fail(k + "は真偽値です。");
+        if (sim.enabled && sim.type === "w" && target.type === "actor") fail("w入力先はTaskまたはStateです。");
+        if (sim.enabled && sim.type === "w" && source.type === "actor" && sim.w === undefined) fail("Actor出力には固定wが必要です。");
+        if (sim.enabled && sim.type === "state" && target.type !== "state") fail("State到達作用の入力先はStateです。");
         if (sim.enabled && sim.type === "branch") {
-          const task = get(d, "task", c.target.id), junction = task?.junctions?.find(j => j.id === sim.junctionId);
-          if (c.target.type !== "task" || junction?.simulation?.mode !== "effect" || !junction.outcomes.some(o => o.toStateId === sim.outcomeStateId)) fail("作用分岐のJunction・結果State参照が不正です。");
+          const task = get(d, "task", target.id), junction = task?.junctions?.find(j => j.id === sim.junctionId);
+          if (target.type !== "task" || junction?.simulation?.mode !== "effect" ||
+              !junction.outcomes.some(o => o.toStateId === sim.outcomeStateId))
+            fail("作用分岐のJunction・結果State参照が不正です。");
+          if (Math.abs(arrival - junction.time) > 1e-9)
+            fail(`作用分岐の基準到達時刻は指定Junction時刻に一致させてください。arrival=${arrival}, junction.time=${junction.time}`);
         }
       }
     }
-    for (const t of d.technologies || []) {
+    for (const [i, t] of (d.technologies || []).entries()) {
+      context(`$.technologies[${i}]`, t);
       str(t.name, "技術名");
       opt(t.status, technologyStatuses, "技術区分");
       if (!t.status) fail("技術区分が必要です。");
@@ -272,7 +331,8 @@
         if (!Number.isInteger(t.trl)) fail("TRLは整数です。");
       }
     }
-    for (const b of d.bindings || []) {
+    for (const [i, b] of (d.bindings || []).entries()) {
+      context(`$.bindings[${i}]`, b);
       if (
         !["actor", "state", "task", "causalLink"].includes(b.targetType) ||
         !get(d, b.targetType, b.targetId) ||
@@ -281,6 +341,7 @@
         fail("Technology Bindingの参照が不正です。");
     }
     if (d.simulation !== undefined) {
+      context("$.simulation", d.simulation);
       const sim = d.simulation;
       if (!sim || typeof sim !== "object" || Array.isArray(sim) ||
           !Array.isArray(sim.successStateIds) || sim.successStateIds.length > 10000 ||
@@ -294,6 +355,7 @@
           fail("simulation." + key + "が不正です。");
     }
     if (d.views?.main) {
+      context("$.views.main", d.views.main);
       const v = d.views.main;
       opt(v.mode, ["mission", "technology", "gap", "causality"], "View");
       opt(v.collapsedLayout, ["compact", "single", "spaced"], "折りたたみ表示");
@@ -377,10 +439,16 @@
       validate(d);
       return { type: "task", id: t.id };
     }
+    const sourcePoint = endpoint(d, source), targetPoint = endpoint(d, target);
+    if (!sourcePoint || !targetPoint) fail("作用線の端点が不正です。");
+    const duration = targetPoint.time - sourcePoint.time;
+    if (duration < 0)
+      fail("作用線は時間を逆行できません。到達位置は発生位置以降にしてください。");
     const c = {
       id: id("cause"),
       source: clone(source),
-      target: clone(target),
+      target: { type: target.type, id: target.id },
+      propagation: { duration },
       polarity: "positive",
       label: "作用",
       kind: "",
@@ -485,10 +553,9 @@
       c.id = ref(c.id);
       if (c.simulation?.junctionId) c.simulation.junctionId = ref(c.simulation.junctionId);
       if (c.simulation?.outcomeStateId) c.simulation.outcomeStateId = ref(c.simulation.outcomeStateId);
-      for (const p of [c.source, c.target]) {
-        p.id = ref(p.id);
-        if (p.type !== "state") p.time += delta;
-      }
+      c.source.id = ref(c.source.id);
+      c.target.id = ref(c.target.id);
+      if (c.source.type !== "state") c.source.time += delta;
     }
     for (const b of f.bindings) {
       b.id = ref(b.id);
@@ -607,8 +674,7 @@
     for (const t of d.tasks)
       if (set.has(t.id)) for (const j of t.junctions || []) j.time += delta;
     for (const c of d.causalLinks)
-      for (const p of [c.source, c.target])
-        if (p.type !== "state" && set.has(p.id)) p.time += delta;
+      if (c.source.type !== "state" && set.has(c.source.id)) c.source.time += delta;
     validate(d);
   }
   function technologyFor(d, type, tid) {
@@ -631,7 +697,7 @@
   function opportunity(d, c) {
     if (c.target.type !== "task") return null;
     const w = taskWindow(d, get(d, "task", c.target.id));
-    const at = endpoint(d, c.target).time;
+    const at = causalArrivalTime(d, c);
     return {
       ...w,
       at,
@@ -747,7 +813,7 @@
           link.id !== c.id &&
           link.target.type === p.type &&
           link.target.id === p.id &&
-          endpoint(d, link.target).time <= deadline &&
+          causalArrivalTime(d, link) <= deadline &&
           link.polarity === "positive"
         )
           incoming.push({ link });
@@ -829,6 +895,9 @@
     parse,
     taskWindow,
     endpoint,
+    endpointActor,
+    causalEndpoint,
+    causalArrivalTime,
     descendants,
     hierarchy,
     visibleActor,
