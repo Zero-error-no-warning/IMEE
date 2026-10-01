@@ -1,5 +1,5 @@
 module.exports = () => ({
-  version: 2, title: "Task performance demo", time: { unit: "seconds", duration: 100, snap: 1 },
+  version: 3, title: "Task performance demo", time: { unit: "seconds", duration: 100, snap: 1 },
   actors: [{ id: "sensor", name: "観測", side: "friendly" }, { id: "command", name: "管制", side: "friendly" }],
   states: [
     { id: "s0", actorId: "sensor", name: "観測開始", time: 0 },
@@ -9,9 +9,9 @@ module.exports = () => ({
   ],
   tasks: [
     { id: "detect", fromStateId: "s0", toStateId: "s1", label: "検出",
-      simulation: { enabled: true, w: 0, performanceModel: { type: "cdf", degradationInput: "w", curves: [
-        { w: 0, points: [{ t: 5, p: .2 }, { t: 10, p: .6 }, { t: 20, p: .9 }], pInfinity: .1 },
-        { w: 1, points: [{ t: 5, p: .05 }, { t: 10, p: .2 }, { t: 20, p: .55 }], pInfinity: .45 },
+      simulation: { enabled: true, performanceModel: { type: "cdf", qualityInput: "q", curves: [
+        { q: 0, points: [{ t: 5, p: .05, q:1 }, { t: 10, p: .2, q:1 }, { t: 20, p: .55, q:1 }] },
+        { q: 1, points: [{ t: 5, p: .2, q:1 }, { t: 10, p: .6, q:1 }, { t: 20, p: .9, q:1 }] },
       ] } } },
     { id: "act", fromStateId: "c0", toStateId: "c1", label: "判断・実行",
       simulation: { enabled: false, waitForStateIds: ["s1"] } },

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "title": "Simulation — 弾道ミサイルの二段階迎撃",
   "time": {
     "unit": "seconds",
@@ -89,7 +89,7 @@
       "name": "追尾確立",
       "time": 30,
       "simulation": {
-        "w": 0.25
+        "q": 0.75
       },
       "notes": "外部解析による抽象的な性能劣化度w=0.25。原因をIMEEでは計算しない。"
     },
@@ -114,18 +114,14 @@
       "time": 50
     },
     {
-      "id": "midcourse-ready",
-      "actorId": "midcourse",
-      "name": "中間迎撃準備完了",
-      "time": 60,
-      "notes": "本例では準備過程自体を評価対象にせず、T+60に成立する外生のReady条件として扱う。"
-    },
-    {
       "id": "midcourse-command-received",
       "actorId": "midcourse",
-      "name": "中間迎撃指令受領",
-      "time": 50,
-      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。"
+      "name": "指令受領・中間軌道条件成立",
+      "time": 60,
+      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。",
+      "simulation": {
+        "join": "all"
+      }
     },
     {
       "id": "midcourse-launched",
@@ -141,18 +137,14 @@
       "notes": "迎撃CDFの達成結果。敵ミサイルの撃破までを含む作用が成立した時点を表す。"
     },
     {
-      "id": "terminal-ready",
-      "actorId": "terminal",
-      "name": "終末迎撃準備完了",
-      "time": 120,
-      "notes": "本例では準備過程自体を評価対象にせず、T+120に成立する外生のReady条件として扱う。中間撃破時は後続Taskがcancelされる。"
-    },
-    {
       "id": "terminal-command-received",
       "actorId": "terminal",
-      "name": "終末迎撃指令受領",
-      "time": 50,
-      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。"
+      "name": "指令受領・終末軌道条件成立",
+      "time": 120,
+      "notes": "中央管制の指令作用が到達して成立するState。形式的な待機Stateではなく、発射Taskの因果起点。",
+      "simulation": {
+        "join": "all"
+      }
     },
     {
       "id": "terminal-launched",
@@ -236,53 +228,57 @@
       "label": "脅威評価・迎撃判断",
       "simulation": {
         "enabled": true,
-        "w": 0,
-        "wInput": {
-          "stateIds": [
-            "control-track-received"
-          ],
-          "combine": "max"
-        },
         "performanceModel": {
           "type": "cdf",
           "curves": [
             {
-              "w": 0,
               "points": [
                 {
                   "t": 3,
-                  "p": 0.3
+                  "p": 0.3,
+                  "q": 1.0
                 },
                 {
                   "t": 8,
-                  "p": 0.85
+                  "p": 0.85,
+                  "q": 0.925
                 },
                 {
                   "t": 15,
-                  "p": 1
+                  "p": 1,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0
+              "q": 0
             },
             {
-              "w": 1,
               "points": [
                 {
                   "t": 3,
-                  "p": 0.3
+                  "p": 0.3,
+                  "q": 1.0
                 },
                 {
                   "t": 8,
-                  "p": 0.85
+                  "p": 0.85,
+                  "q": 0.925
                 },
                 {
                   "t": 15,
-                  "p": 1
+                  "p": 1,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0
+              "q": 1
             }
-          ]
+          ],
+          "qualityInput": "q"
+        },
+        "qInput": {
+          "stateIds": [
+            "control-track-received"
+          ],
+          "mode": "all"
         }
       }
     },
@@ -294,10 +290,11 @@
       "kind": "command",
       "simulation": {
         "enabled": false,
-        "wInput": {
+        "qInput": {
           "stateIds": [
             "control-decision"
-          ]
+          ],
+          "mode": "all"
         }
       }
     },
@@ -309,15 +306,11 @@
       "kind": "command",
       "simulation": {
         "enabled": false,
-        "waitForStateIds": [
-          "midcourse-ready",
-          "missile-midcourse"
-        ],
-        "wInput": {
+        "qInput": {
           "stateIds": [
             "midcourse-command-received"
           ],
-          "combine": "max"
+          "mode": "all"
         }
       },
       "notes": "中間迎撃指令受領を因果起点とし、迎撃準備完了とミッドコース段階到達を追加条件として待つ。条件成立後、説明用の固定20秒で発射Stateへ到達する。"
@@ -330,52 +323,57 @@
       "kind": "attack",
       "simulation": {
         "enabled": true,
-        "w": 0,
-        "wInput": {
-          "stateIds": [
-            "midcourse-launched"
-          ]
-        },
         "performanceModel": {
           "type": "cdf",
           "curves": [
             {
-              "w": 0,
               "points": [
                 {
                   "t": 10,
-                  "p": 0.3
+                  "p": 0.1,
+                  "q": 1.0
                 },
                 {
                   "t": 20,
-                  "p": 0.65
+                  "p": 0.35,
+                  "q": 0.925
                 },
                 {
                   "t": 30,
-                  "p": 0.8
+                  "p": 0.55,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0.2
+              "q": 0
             },
             {
-              "w": 1,
               "points": [
                 {
                   "t": 10,
-                  "p": 0.1
+                  "p": 0.3,
+                  "q": 1.0
                 },
                 {
                   "t": 20,
-                  "p": 0.35
+                  "p": 0.65,
+                  "q": 0.925
                 },
                 {
                   "t": 30,
-                  "p": 0.55
+                  "p": 0.8,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0.45
+              "q": 1
             }
-          ]
+          ],
+          "qualityInput": "q"
+        },
+        "qInput": {
+          "stateIds": [
+            "midcourse-launched"
+          ],
+          "mode": "all"
         }
       },
       "notes": "発射から敵ミサイルの撃破達成までの時間CDF。飛翔や交戦の詳細は外部性能に縮約する。w=0時の未達確率20%。"
@@ -388,19 +386,15 @@
       "kind": "command",
       "simulation": {
         "enabled": false,
-        "waitForStateIds": [
-          "terminal-ready",
-          "missile-terminal"
+        "cancelOnStateIds": [
+          "missile-destroyed-mid"
         ],
-        "wInput": {
+        "qInput": {
           "stateIds": [
             "terminal-command-received"
           ],
-          "combine": "max"
-        },
-        "cancelOnStateIds": [
-          "missile-destroyed-mid"
-        ]
+          "mode": "all"
+        }
       },
       "notes": "終末迎撃指令受領を因果起点とし、迎撃準備完了と終末軌道段階到達を追加条件として待つ。中間撃破時は中止する。"
     },
@@ -412,12 +406,6 @@
       "kind": "attack",
       "simulation": {
         "enabled": true,
-        "w": 0,
-        "wInput": {
-          "stateIds": [
-            "terminal-launched"
-          ]
-        },
         "cancelOnStateIds": [
           "missile-destroyed-mid"
         ],
@@ -425,42 +413,53 @@
           "type": "cdf",
           "curves": [
             {
-              "w": 0,
               "points": [
                 {
                   "t": 5,
-                  "p": 0.25
+                  "p": 0.1,
+                  "q": 1.0
                 },
                 {
                   "t": 15,
-                  "p": 0.6
+                  "p": 0.35,
+                  "q": 0.925
                 },
                 {
                   "t": 30,
-                  "p": 0.85
+                  "p": 0.6,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0.15
+              "q": 0
             },
             {
-              "w": 1,
               "points": [
                 {
                   "t": 5,
-                  "p": 0.1
+                  "p": 0.25,
+                  "q": 1.0
                 },
                 {
                   "t": 15,
-                  "p": 0.35
+                  "p": 0.6,
+                  "q": 0.925
                 },
                 {
                   "t": 30,
-                  "p": 0.6
+                  "p": 0.85,
+                  "q": 0.85
                 }
               ],
-              "pInfinity": 0.4
+              "q": 1
             }
-          ]
+          ],
+          "qualityInput": "q"
+        },
+        "qInput": {
+          "stateIds": [
+            "terminal-launched"
+          ],
+          "mode": "all"
         }
       },
       "notes": "発射から敵ミサイルの撃破達成までの時間CDF。中間撃破時は実行しない。w=0時の未達確率15%。"
@@ -477,67 +476,71 @@
         "type": "state",
         "id": "radar-detected"
       },
-      "polarity": "positive",
       "label": "探知",
       "kind": "observation",
       "notes": "発射から目標探知成立までを作用線の伝搬CDFで表す。未達確率2%。説明用の外部性能入力であり、伝搬の物理計算は行わない。",
       "simulation": {
-        "enabled": true,
-        "type": "state"
+        "enabled": true
       },
       "propagation": {
         "duration": 20,
-        "w": 0,
         "performanceModel": {
           "type": "cdf",
-          "degradationInput": "w",
           "curves": [
             {
-              "w": 0,
               "points": [
                 {
                   "t": 5,
-                  "p": 0.1
+                  "p": 0.02,
+                  "q": 1
                 },
                 {
                   "t": 15,
-                  "p": 0.6
+                  "p": 0.2,
+                  "q": 1
                 },
                 {
                   "t": 30,
-                  "p": 0.9
+                  "p": 0.6,
+                  "q": 1
                 },
                 {
                   "t": 40,
-                  "p": 0.98
+                  "p": 0.85,
+                  "q": 1
                 }
               ],
-              "pInfinity": 0.02
+              "q": 0
             },
             {
-              "w": 1,
               "points": [
                 {
                   "t": 5,
-                  "p": 0.02
+                  "p": 0.1,
+                  "q": 1
                 },
                 {
                   "t": 15,
-                  "p": 0.2
+                  "p": 0.6,
+                  "q": 1
                 },
                 {
                   "t": 30,
-                  "p": 0.6
+                  "p": 0.9,
+                  "q": 1
                 },
                 {
                   "t": 40,
-                  "p": 0.85
+                  "p": 0.98,
+                  "q": 1
                 }
               ],
-              "pInfinity": 0.15
+              "q": 1
             }
-          ]
-        }
+          ],
+          "qualityInput": "q"
+        },
+        "qualityRetention": 1
       }
     },
     {
@@ -550,15 +553,14 @@
         "type": "state",
         "id": "control-track-received"
       },
-      "polarity": "positive",
       "label": "追尾情報",
       "kind": "information",
       "simulation": {
-        "enabled": true,
-        "type": "state"
+        "enabled": true
       },
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
       }
     },
     {
@@ -571,15 +573,14 @@
         "type": "state",
         "id": "midcourse-command-received"
       },
-      "polarity": "positive",
       "label": "中間迎撃指令",
       "kind": "command",
       "simulation": {
-        "enabled": true,
-        "type": "state"
+        "enabled": true
       },
       "propagation": {
-        "duration": 0
+        "duration": 10,
+        "qualityRetention": 1
       }
     },
     {
@@ -592,15 +593,14 @@
         "type": "state",
         "id": "terminal-command-received"
       },
-      "polarity": "positive",
       "label": "終末迎撃指令",
       "kind": "command",
       "simulation": {
-        "enabled": true,
-        "type": "state"
+        "enabled": true
       },
       "propagation": {
-        "duration": 0
+        "duration": 70,
+        "qualityRetention": 1
       }
     },
     {
@@ -610,21 +610,20 @@
         "id": "midcourse-kill"
       },
       "target": {
-        "type": "task",
-        "id": "midcourse-flight"
+        "type": "junction",
+        "taskId": "midcourse-flight",
+        "id": "mid-effect-junction",
+        "outcomeStateId": "missile-destroyed-mid"
       },
-      "polarity": "negative",
       "label": "中間撃破作用",
       "kind": "attack",
       "simulation": {
         "enabled": true,
-        "type": "branch",
-        "junctionId": "mid-effect-junction",
-        "outcomeStateId": "missile-destroyed-mid",
         "stopTargetActor": true
       },
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
       }
     },
     {
@@ -634,21 +633,60 @@
         "id": "terminal-kill"
       },
       "target": {
-        "type": "task",
-        "id": "terminal-flight"
+        "type": "junction",
+        "taskId": "terminal-flight",
+        "id": "terminal-effect-junction",
+        "outcomeStateId": "missile-destroyed-terminal"
       },
-      "polarity": "negative",
       "label": "終末撃破作用",
       "kind": "attack",
       "simulation": {
         "enabled": true,
-        "type": "branch",
-        "junctionId": "terminal-effect-junction",
-        "outcomeStateId": "missile-destroyed-terminal",
         "stopTargetActor": true
       },
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
+      }
+    },
+    {
+      "id": "midcourse-phase-input",
+      "source": {
+        "type": "state",
+        "id": "missile-midcourse"
+      },
+      "target": {
+        "type": "state",
+        "id": "midcourse-command-received"
+      },
+      "propagation": {
+        "duration": 0,
+        "qualityRetention": 1
+      },
+      "label": "対象軌道条件",
+      "kind": "condition",
+      "simulation": {
+        "enabled": true
+      }
+    },
+    {
+      "id": "terminal-phase-input",
+      "source": {
+        "type": "state",
+        "id": "missile-terminal"
+      },
+      "target": {
+        "type": "state",
+        "id": "terminal-command-received"
+      },
+      "propagation": {
+        "duration": 0,
+        "qualityRetention": 1
+      },
+      "label": "対象軌道条件",
+      "kind": "condition",
+      "simulation": {
+        "enabled": true
       }
     }
   ],
@@ -682,12 +720,13 @@
       "filters": {
         "technology": true,
         "causalLink": true,
-        "quiet": true
+        "quiet": true,
+        "implicitDependencies": false
       },
       "laneHeight": 64,
       "collapsedLayout": "compact",
       "mode": "mission"
     }
   },
-  "notes": "シミュレーション経路に寄与しない形式的な待機State/Taskは置かない。Actor間の情報・指令は、後続行為の因果起点になる意味のある受領Stateを成立させる。迎撃ユニットの準備過程そのものは本例の評価対象外とし、準備完了Stateを所定時刻に成立する外生条件として置く。時刻・CDF・wは説明用仮定で、実在装備の性能を表さない。"
+  "notes": "架空の時間・品質を使うシミュレーション例。情報・指令は受領Stateへ、迎撃は明示的な分岐点へ接続。迎撃条件Stateは指令と対象軌道条件をAND合流する。形式的な待機・準備Taskを置かない。"
 }

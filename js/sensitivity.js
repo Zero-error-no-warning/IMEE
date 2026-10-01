@@ -8,6 +8,12 @@
     const pass=p=>(criterion==="lower95"?p.interval95.low:p.probability)>=target;
     const ranges=[];let start=null;
     for(let i=0;i<points.length;i++){if(pass(points[i]) && start===null)start=points[i].value;if(start!==null && (!pass(points[i]) || i===points.length-1)){ranges.push({min:start,max:pass(points[i])?points[i].value:points[i-1].value});start=null;}}
+    if(arguments[3]==="increasing") {
+      const firstPass=points.findIndex(pass);
+      if(firstPass<0)return {status:"no-passing-sample",ranges,minPassingValue:null,lastFailingValue:points.at(-1).value};
+      if(points.slice(firstPass).some(p=>!pass(p)))return {status:"nonmonotone",ranges,minPassingValue:null,lastFailingValue:null};
+      return {status:firstPass===0?"all-tested-pass":"bracketed",ranges,minPassingValue:points[firstPass].value,lastFailingValue:firstPass?points[firstPass-1].value:null};
+    }
     const firstFail=points.findIndex(p=>!pass(p)), laterPass=firstFail>=0 && points.slice(firstFail+1).some(pass);
     if(laterPass)return {status:"nonmonotone",ranges,maxPassingValue:null,firstFailingValue:null};
     if(firstFail===0)return {status:"no-passing-sample",ranges,maxPassingValue:null,firstFailingValue:points[0].value};
@@ -16,11 +22,11 @@
   }
   function createSensitivity(document,options={}) {
     const config={iterations:1000,seed:document.simulation?.seed??1,targetProbability:.8,criterion:"lower95",refineSteps:6,...options};
-    if(!["duration","w"].includes(config.parameter))fail("感度パラメータはdurationまたはwです。");
+    if(!["duration","q"].includes(config.parameter))fail("感度パラメータはdurationまたはqです。");
     if(!document.tasks.some(t=>t.id===config.taskId))fail("対象Taskが存在しません。");
     if(!Array.isArray(config.values)||config.values.length<2||config.values.length>25)fail("感度評価点は2〜25件です。");
     config.values=[...config.values];
-    config.values.forEach((v,i)=>{P.number(v,"評価値",0,config.parameter==="w"?1:1e9);if(i && v<=config.values[i-1])fail("評価値は重複なく昇順です。");});
+    config.values.forEach((v,i)=>{P.number(v,"評価値",0,config.parameter==="q"?1:1e9);if(i && v<=config.values[i-1])fail("評価値は重複なく昇順です。");});
     P.number(config.targetProbability,"Mission要求成功率",0,1);
     if(!["estimate","lower95"].includes(config.criterion))fail("要求判定方式が不正です。");
     if(!Number.isInteger(config.refineSteps)||config.refineSteps<0||config.refineSteps>8)fail("境界精査は0〜8回です。");
@@ -42,10 +48,11 @@
         else {points.push({value:currentValue,probability:r.successProbability,interval95:r.successInterval95,completion:r.completion,criticality:r.tasks.find(t=>t.id===config.taskId).criticality});points.sort((a,b)=>a.value-b.value);}
         if(index<config.values.length)currentValue=config.values[index++];
         else {
-          const req=requirement(points,config.targetProbability,config.criterion);
+          const req=requirement(points,config.targetProbability,config.criterion,config.parameter==="q"?"increasing":"decreasing");
           if(refinements<config.refineSteps && req.status==="bracketed"){
-            currentValue=(req.maxPassingValue+req.firstFailingValue)/2;
-            if(currentValue===req.maxPassingValue || currentValue===req.firstFailingValue){done=true;return {completed,total:completed,done};}
+            const left=config.parameter==="q"?req.lastFailingValue:req.maxPassingValue,right=config.parameter==="q"?req.minPassingValue:req.firstFailingValue;
+            currentValue=(left+right)/2;
+            if(currentValue===left || currentValue===right){done=true;return {completed,total:completed,done};}
             refinements++;
           }else {done=true;return {completed,total:completed,done};}
         }
@@ -55,7 +62,7 @@
     }
     function result(){
       if(!done)fail("感度分析が完了していません。");
-      if(!cached)cached={version:1,model:"paired-task-intervention",config,baseline,points,requirement:requirement(points,config.targetProbability,config.criterion),
+      if(!cached)cached={version:1,model:"paired-task-intervention",config,baseline,points,requirement:requirement(points,config.targetProbability,config.criterion,config.parameter==="q"?"increasing":"decreasing"),
         probabilityGap:Math.max(0,config.targetProbability-baseline.successProbability),refinements,
         interpretation:config.parameter==="duration"?"対象Taskの完了をTi=tに固定する介入。他TaskのCDFと構造を保持し、対象Taskの未達確率を除く。実CDFに対する十分条件ではない。":"対象Taskの入力wを固定する介入。入力の到着待ちと他TaskのCDFを保持する。",
         scope:"要求境界は評価範囲内の標本推定。未評価の値・非単調な分岐・実装備の能力は保証しない。"};

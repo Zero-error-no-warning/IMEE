@@ -50,15 +50,15 @@ for (const config of cases) {
   test(`connection preview and target time agree under ${config.name}`, async t => {
     const a=await openApp(sample()); t.after(()=>a.close());
     const toScreen=screen(a,config), g=a.w.MELayout.layout(a.savedDoc(),1050);
-    const from=g.states.get('s1'), end={x:g.vp.x(24),y:g.tasks.get('identify').from.y};
-    a.event(a.$('[data-id="s1"]'),'pointerdown',{...toScreen(from.x,from.y),altKey:true});
+    const from=g.states.get('jam-output-42'), end={x:g.vp.x(49),y:g.tasks.get('transmit').from.y};
+    a.event(a.$('[data-id="jam-output-42"]'),'pointerdown',{...toScreen(from.x,from.y),altKey:true});
     a.event(a.w,'pointermove',toScreen(end.x,end.y));
     const line=a.$('#gesture-preview'); assert(line);
     const coordinates=line.getAttribute('d').match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi).map(Number);
     [from.x,from.y,end.x,end.y].forEach((value,i)=>near(coordinates[i],value));
-    a.event(a.$('[data-id="identify"]'),'pointerup',toScreen(end.x,end.y));
+    a.event(a.$('[data-id="transmit"]'),'pointerup',toScreen(end.x,end.y));
     const link=a.savedDoc().causalLinks.at(-1);
-    assert.equal(link.source.id,'s1'); assert.equal(link.target.id,'identify'); assert.equal(link.propagation.duration,8); assert.equal(a.w.ME.causalArrivalTime(a.savedDoc(),link),24);
+    assert.equal(link.source.id,'jam-output-42'); assert.equal(link.target.type,'junction'); assert.equal(link.target.id,'j-transmit'); assert.equal(link.propagation.duration,7); assert.equal(a.w.ME.causalArrivalTime(a.savedDoc(),link),49);
     assert.equal(a.$('#gesture-preview'),null); assert.deepEqual(a.errors,[]);
   });
 }

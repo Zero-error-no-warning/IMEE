@@ -363,6 +363,7 @@
     if(attachment && attachment.items.length>4) return false;
     return attachedBoxes(caption,attachment).every(box =>
       box.x >= attachment.left && box.x+box.width <= attachment.right &&
+      box.y >= attachment.top && box.y+box.height <= attachment.bottom &&
       !occupied.some(o=>overlaps({x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6},o)) &&
       !lines.some(line=>segmentInsideBox(line,{x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6})>0));
   }
@@ -554,7 +555,7 @@
         return row && {x:vp.x(ep.time),y:row.center,r:0};
       }
       if (p.type === "state") return states.get(p.id);
-      if (p.type === "task") return ensure(p.id, ep.time);
+      if(p.type==="junction")return ensure(p.taskId,ep.time,p.id);
     }
     if (filters.causalLink)
       for (const c of doc.causalLinks) {
@@ -564,9 +565,13 @@
         const a=anchor(c.source,c,"source"), b=anchor(c.target,c,"target");
         if (!a || !b) continue;
         edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
-          label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId),
+          label:c.label,actorId:displayActor(sourceActorId),
           performance:c.simulation?.enabled ? c.propagation?.performanceModel ? "cdf" : "fixed" : null});
       }
+    if(filters.implicitDependencies)for(const dep of M.implicitDependencies(doc))for(const sid of dep.startStateIds){
+      const source=states.get(sid),target=states.get(dep.sourceStateId);
+      if(source && target)edges.push({id:"implicit:"+dep.linkId,type:"implicitDependency",part:"implicit",points:route(source,target),label:"開始条件",actorId:source.displayActorId});
+    }
     for (const row of rows.filter(r => r.collapseMode === "single")) {
       const sourceEdges = edges.filter(e => e.type === "task" && e.actorId === row.actor.id);
       const intervals = sourceEdges.map(e => ({start:e.points[0].x,end:e.points.at(-1).x,
@@ -603,7 +608,7 @@
       let text=v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name;
       while(width(text,10)>128 && text.length>1) text=text.slice(0,-1);
       if(width(text,10)<width(v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name,10)) text=text.slice(0,-1)+"…";
-      if(!attachments.has(key)) attachments.set(key,{items:[],left:vp.left+4,right:vp.width-8,actorId});
+      if(!attachments.has(key)) attachments.set(key,{items:[],left:vp.left+4,right:vp.width-8,top:34,bottom:height-8,actorId});
       attachments.get(key).items.push({binding,actorId,tech,text,fullText,width:width(text,10)+12});
     }
     for (const s of states.values()) {
@@ -657,9 +662,7 @@
         if(!e.labelInfo) pending.push({e,attachment});
         else addTechnologyGroup(e,e.labelInfo,attachment);
       }
-      e.path = e.type === "causalLink"
-        ? wave(e.points,2.8,15,{left:vp.left-24,right:vp.width+12},e.polarity === "negative" ? "sine" : "square")
-        : path(e.points);
+      e.path = path(e.points);
     }
     function addTechnologyGroup(e,caption,attachment,detached=false) {
       const boxes=attachedBoxes(caption,attachment),tags=[];

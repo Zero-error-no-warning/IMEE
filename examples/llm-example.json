@@ -1,7 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
   "title": "沿岸監視 — 不明接触の識別と妨害下での通報",
-  "notes": "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。分岐は代替結果を示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
+  "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
   "time": {
     "unit": "minutes",
     "duration": 90,
@@ -162,6 +162,14 @@
       "activity": "active",
       "phase": "other",
       "notes": ""
+    },
+    {
+      "id": "jam-output-49",
+      "actorId": "enemy",
+      "time": 49,
+      "name": "受信を阻害成立",
+      "activity": "active",
+      "phase": "other"
     }
   ],
   "tasks": [
@@ -244,10 +252,20 @@
     {
       "id": "jam",
       "fromStateId": "e0",
-      "toStateId": "e1",
+      "toStateId": "jam-output-49",
       "label": "通信帯域を妨害",
       "kind": "interference",
-      "notes": ""
+      "notes": "",
+      "junctions": []
+    },
+    {
+      "id": "jam-after-49",
+      "fromStateId": "jam-output-49",
+      "toStateId": "e1",
+      "label": "通信帯域を妨害（継続）",
+      "kind": "interference",
+      "notes": "",
+      "junctions": []
     }
   ],
   "causalLinks": [
@@ -263,9 +281,9 @@
       },
       "label": "接触情報",
       "kind": "information",
-      "polarity": "positive",
       "propagation": {
-        "duration": 2
+        "duration": 2,
+        "qualityRetention": 1
       }
     },
     {
@@ -280,27 +298,28 @@
       },
       "label": "通報指示",
       "kind": "command",
-      "polarity": "positive",
       "propagation": {
-        "duration": 3
+        "duration": 3,
+        "qualityRetention": 1
       }
     },
     {
       "id": "negative",
       "source": {
-        "type": "task",
-        "id": "jam",
-        "time": 49
+        "type": "state",
+        "id": "jam-output-49"
       },
       "target": {
-        "type": "task",
-        "id": "transmit"
+        "type": "junction",
+        "taskId": "transmit",
+        "id": "j-transmit",
+        "outcomeStateId": "r2"
       },
       "label": "受信を阻害",
       "kind": "interference",
-      "polarity": "negative",
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
       }
     }
   ],
@@ -324,7 +343,8 @@
       "filters": {
         "technology": false,
         "causalLink": true,
-        "quiet": true
+        "quiet": true,
+        "implicitDependencies": false
       },
       "laneHeight": 64,
       "collapsedLayout": "compact",

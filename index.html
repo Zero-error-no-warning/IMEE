@@ -84,7 +84,7 @@
             ><strong>Taskと因果のタイムライン</strong><span id="counts"></span>
           </div>
           <div class="legend">
-            <span>● State</span><span title="Taskの所要時間・作用線の伝搬時間と未達をCDFで抽選します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,7 L34,7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>CDF Task・作用</span><span title="Task所要時間・作用線の伝搬時間・分岐後の遅延は固定です。発生時刻は依存条件で変動します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,5.5 L34,5.5 M1,8.5 L34,8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>FIX Task・作用・分岐</span><span><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1.00,7.00 L6.00,7.00 L6.00,9.80 L8.50,9.80 L8.50,4.20 L16.00,4.20 L16.00,9.80 L23.50,9.80 L23.50,4.20 L31.00,4.20 L31.00,7.00 L38.00,7.00" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>正の作用</span><span><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1.00,7.00 L1.00,7.00 L2.95,7.79 L4.89,9.18 L6.84,8.79 L8.79,6.66 L10.74,4.74 L12.68,4.25 L14.63,5.48 L16.58,7.67 L18.53,9.44 L20.47,9.67 L22.42,8.22 L24.37,6.00 L26.32,4.58 L28.26,5.60 L30.21,6.86 L32.16,7.00 L34.11,7.00 L36.05,7.00 L38.00,7.00 L38.00,7.00" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>負の作用</span>
+            <span>● State</span><span title="Taskの所要時間・作用線の伝搬時間と未達をCDFで抽選します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,7 L34,7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>CDF Task・作用</span><span title="Task所要時間・作用線の伝搬時間・分岐後の遅延は固定です。発生時刻は依存条件で変動します"><svg width="40" height="14" viewBox="0 0 40 14" aria-hidden="true"><path d="M1,5.5 L34,5.5 M1,8.5 L34,8.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M33,3 L39,7 L33,11 Z" fill="currentColor"/></svg>FIX Task・作用・分岐</span><span>○ 分岐点</span>
           </div>
         </div>
         <div
@@ -158,7 +158,7 @@
         <dt>追加・接続</dt>
         <dd>
           Actor行の空白をダブルクリックしてStateを追加。Alt /
-          Option＋State・Taskのドラッグ、または選択後にCキーで接続。同じActorのState間はTask、それ以外は因果リンクになります。正・負は作成後のポップアップで選びます。
+          Option＋Stateのドラッグ、または選択後にCキーで接続。同じActorのState間はTask、Stateから別ActorのState・既存の分岐点へは作用線になります。
         </dd>
         <dt>分岐</dt>
         <dd>
@@ -193,12 +193,12 @@
         <dt>保存・出力</dt>
         <dd>
           ブラウザ内に自動保存。JSONはversion
-          2専用です。右上メニューから全期間・全階層のSVG /
+          3専用です。右上メニューから全期間・全階層のSVG /
           PNGを出力。読込・サンプル置換もUndoで戻せます。
         </dd>
       </dl>
       <p class="help-note">
-        横位置は常に時刻です。重なるStateは同じActor内で上下に分離します。CDF有効のTask・作用線は実線、所要時間・伝搬時間固定（FIX）のTask・作用線・分岐後の線は二重線です。表示のみの作用線は単線です。正の因果は矩形波、負の因果は滑らかな波線です。Task・分岐のラベルは線上の枠付き、作用ラベルは線と同色の下線付きです。CDF有効Task・作用線をホバーすると、wの変化幅を帯グラフで確認できます。
+        横位置は常に時刻です。重なるStateは同じActor内で上下に分離します。CDF有効のTask・作用線は実線、所要時間・伝搬時間固定（FIX）のTask・作用線・分岐後の線は二重線です。表示のみの作用線は単線です。作用線の起点はState、到達先はStateまたは分岐点です。Task・分岐のラベルは線上の枠付き、作用ラベルは線と同色の下線付きです。CDF有効Task・作用線をホバーすると、入力qの変化幅を帯グラフで確認できます。
       </p>
     </dialog>
     <div id="context-menu" role="menu" hidden></div>
@@ -212,7 +212,7 @@
         <p class="muted">同じSeedで対象Taskの性能だけを変え、Mission成功率への影響を評価します。時間固定はTaskの達成を仮定する介入で、実CDFの未達確率を除きます。要求は評価範囲内での推定です。</p>
         <form id="sensitivity-form">
           <label class="field"><span>対象Task</span><select name="taskId"></select></label>
-          <label class="field"><span>変更する性能</span><select name="parameter"><option value="duration">Task完了時間 Ti=t</option><option value="w">入力劣化度 w</option></select></label>
+          <label class="field"><span>変更する性能</span><select name="parameter"><option value="duration">Task完了時間 Ti=t</option><option value="q">入力品質 q</option></select></label>
           <div class="field-row"><label class="field"><span>最小値</span><input name="minimum" type="number" min="0" step="any" value="0" required></label><label class="field"><span>最大値</span><input name="maximum" type="number" min="0" step="any" value="60" required></label><label class="field"><span>評価点数</span><input name="steps" type="number" min="2" max="25" value="7" required></label></div>
           <div class="field-row"><label class="field"><span>各点の試行数</span><input name="iterations" type="number" min="1" max="100000" value="1000" required></label><label class="field"><span>要求成功率（0〜1）</span><input name="targetProbability" type="number" min="0" max="1" step="any" value="0.8" required></label></div>
           <label class="field"><span>要求の判定方式</span><select name="criterion"><option value="lower95">95%区間の下限で判定</option><option value="estimate">成功率の推定値で判定</option></select></label>

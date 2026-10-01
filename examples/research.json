@@ -1,7 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
   "title": "Technology / Gap — 介入経路の検討",
-  "notes": "旧サンプル（commit 618818426ac7e8e2a4f4ea14af6f0e482c9f8b04）と同じシナリオ。Actor・行動期間・因果時刻・技術評価は比較用に保持。旧期間Stateの行動はTaskへ、到達結果は時点Stateへ変換。変換対応はdocs/sample-migration.mdを参照。",
+  "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
   "time": {
     "unit": "minutes",
     "duration": 60,
@@ -155,19 +155,9 @@
       "notes": ""
     },
     {
-      "id": "c1",
-      "actorId": "control",
-      "name": "待機開始",
-      "time": 0,
-      "status": "actual",
-      "activity": "quiet",
-      "phase": "other",
-      "notes": ""
-    },
-    {
       "id": "c2",
       "actorId": "control",
-      "name": "識別開始",
+      "name": "追尾情報受領",
       "time": 18,
       "status": "actual",
       "activity": "active",
@@ -203,28 +193,9 @@
       "notes": ""
     },
     {
-      "id": "u1",
-      "actorId": "uuv",
-      "name": "哨戒開始",
-      "time": 0,
-      "status": "actual",
-      "activity": "quiet",
-      "phase": "other",
-      "notes": ""
-    },
-    {
-      "id": "end-u1",
-      "actorId": "uuv",
-      "name": "哨戒終了",
-      "time": 29,
-      "status": "actual",
-      "activity": "quiet",
-      "notes": ""
-    },
-    {
       "id": "u2",
       "actorId": "uuv",
-      "name": "接敵開始",
+      "name": "迎撃指令受領",
       "time": 31,
       "status": "actual",
       "activity": "active",
@@ -260,19 +231,9 @@
       "notes": ""
     },
     {
-      "id": "t1",
-      "actorId": "torpedo",
-      "name": "待機開始",
-      "time": 0,
-      "status": "actual",
-      "activity": "quiet",
-      "phase": "other",
-      "notes": ""
-    },
-    {
       "id": "t2",
       "actorId": "torpedo",
-      "name": "誘導開始",
+      "name": "誘導開始指示受領",
       "time": 40,
       "status": "actual",
       "activity": "active",
@@ -287,6 +248,22 @@
       "status": "actual",
       "activity": "active",
       "notes": ""
+    },
+    {
+      "id": "activity-s2-output-17",
+      "actorId": "sensor",
+      "time": 17,
+      "name": "探知情報成立",
+      "activity": "active",
+      "phase": "other"
+    },
+    {
+      "id": "activity-c3-output-30",
+      "actorId": "control",
+      "time": 30,
+      "name": "接敵指示成立",
+      "activity": "active",
+      "phase": "other"
     }
   ],
   "tasks": [
@@ -297,7 +274,8 @@
       "label": "進出",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-e2",
@@ -306,7 +284,8 @@
       "label": "任務遂行",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-e3",
@@ -315,7 +294,8 @@
       "label": "離脱",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-s1",
@@ -324,26 +304,19 @@
       "label": "監視",
       "status": "actual",
       "activity": "quiet",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-s2",
       "fromStateId": "s2",
-      "toStateId": "end-s2",
+      "toStateId": "activity-s2-output-17",
       "label": "探知・追尾",
       "status": "actual",
       "activity": "active",
       "notes": "",
-      "kind": "observation"
-    },
-    {
-      "id": "activity-c1",
-      "fromStateId": "c1",
-      "toStateId": "c2",
-      "label": "待機",
-      "status": "actual",
-      "activity": "quiet",
-      "notes": ""
+      "kind": "observation",
+      "junctions": []
     },
     {
       "id": "activity-c2",
@@ -352,25 +325,18 @@
       "label": "識別",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-c3",
       "fromStateId": "c3",
-      "toStateId": "end-c3",
+      "toStateId": "activity-c3-output-30",
       "label": "交戦判断",
       "status": "actual",
       "activity": "active",
-      "notes": ""
-    },
-    {
-      "id": "activity-u1",
-      "fromStateId": "u1",
-      "toStateId": "end-u1",
-      "label": "哨戒",
-      "status": "actual",
-      "activity": "quiet",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-u2",
@@ -379,7 +345,8 @@
       "label": "接敵",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-u3",
@@ -388,16 +355,8 @@
       "label": "攻撃",
       "status": "actual",
       "activity": "active",
-      "notes": ""
-    },
-    {
-      "id": "activity-t1",
-      "fromStateId": "t1",
-      "toStateId": "t2",
-      "label": "待機",
-      "status": "actual",
-      "activity": "quiet",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "activity-t2",
@@ -406,7 +365,8 @@
       "label": "誘導",
       "status": "actual",
       "activity": "active",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "et1",
@@ -414,7 +374,8 @@
       "toStateId": "e2",
       "label": "移行",
       "status": "actual",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "et2",
@@ -422,7 +383,8 @@
       "toStateId": "e3",
       "label": "移行",
       "status": "actual",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "escape",
@@ -450,15 +412,8 @@
       "toStateId": "c3",
       "label": "移行",
       "status": "actual",
-      "notes": ""
-    },
-    {
-      "id": "ut1",
-      "fromStateId": "end-u1",
-      "toStateId": "u2",
-      "label": "移行",
-      "status": "actual",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "ut2",
@@ -466,7 +421,29 @@
       "toStateId": "u3",
       "label": "移行",
       "status": "actual",
-      "notes": ""
+      "notes": "",
+      "junctions": []
+    },
+    {
+      "id": "activity-s2-after-17",
+      "fromStateId": "activity-s2-output-17",
+      "toStateId": "end-s2",
+      "label": "探知・追尾（継続）",
+      "status": "actual",
+      "activity": "active",
+      "notes": "",
+      "kind": "observation",
+      "junctions": []
+    },
+    {
+      "id": "activity-c3-after-30",
+      "fromStateId": "activity-c3-output-30",
+      "toStateId": "end-c3",
+      "label": "交戦判断（継続）",
+      "status": "actual",
+      "activity": "active",
+      "notes": "",
+      "junctions": []
     }
   ],
   "causalLinks": [
@@ -480,50 +457,48 @@
         "type": "state",
         "id": "s2"
       },
-      "polarity": "positive",
       "label": "発見",
       "kind": "detection",
       "notes": "",
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
       }
     },
     {
       "id": "report",
       "source": {
-        "type": "task",
-        "id": "activity-s2",
-        "time": 17
+        "type": "state",
+        "id": "activity-s2-output-17"
       },
       "target": {
         "type": "state",
         "id": "c2"
       },
-      "polarity": "positive",
       "label": "探知情報",
       "kind": "information",
       "notes": "",
       "propagation": {
-        "duration": 1
+        "duration": 1,
+        "qualityRetention": 1
       }
     },
     {
       "id": "order",
       "source": {
-        "type": "task",
-        "id": "activity-c3",
-        "time": 30
+        "type": "state",
+        "id": "activity-c3-output-30"
       },
       "target": {
         "type": "state",
         "id": "u2"
       },
-      "polarity": "positive",
       "label": "接敵指示",
       "kind": "command",
       "notes": "",
       "propagation": {
-        "duration": 1
+        "duration": 1,
+        "qualityRetention": 1
       }
     },
     {
@@ -536,12 +511,12 @@
         "type": "state",
         "id": "t2"
       },
-      "polarity": "positive",
       "label": "発射",
       "kind": "attack",
       "notes": "",
       "propagation": {
-        "duration": 0
+        "duration": 0,
+        "qualityRetention": 1
       }
     },
     {
@@ -551,34 +526,17 @@
         "id": "end-t2"
       },
       "target": {
-        "type": "task",
-        "id": "escape"
+        "type": "junction",
+        "taskId": "escape",
+        "id": "j-escape-hit",
+        "outcomeStateId": "e5"
       },
-      "polarity": "negative",
       "label": "命中・離脱阻止",
       "kind": "attack",
       "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。",
       "propagation": {
-        "duration": 0
-      }
-    },
-    {
-      "id": "late-hit",
-      "source": {
-        "type": "state",
-        "id": "end-t2"
-      },
-      "target": {
-        "type": "task",
-        "id": "escape"
-      },
-      "polarity": "negative",
-      "label": "遅延する介入案",
-      "kind": "attack",
-      "proposed": true,
-      "notes": "離脱 → 離脱完了という予定遷移を阻止。実際には無力化へ遷移する。",
-      "propagation": {
-        "duration": 8
+        "duration": 0,
+        "qualityRetention": 1
       }
     }
   ],
@@ -679,12 +637,6 @@
       "targetId": "activity-s2"
     },
     {
-      "id": "binding-c1",
-      "technologyId": "tech-existing",
-      "targetType": "task",
-      "targetId": "activity-c1"
-    },
-    {
       "id": "binding-c2",
       "technologyId": "tech-existing",
       "targetType": "task",
@@ -697,12 +649,6 @@
       "targetId": "activity-c3"
     },
     {
-      "id": "binding-u1",
-      "technologyId": "tech-existing",
-      "targetType": "task",
-      "targetId": "activity-u1"
-    },
-    {
       "id": "binding-u2",
       "technologyId": "tech-existing",
       "targetType": "task",
@@ -713,12 +659,6 @@
       "technologyId": "tech-existing",
       "targetType": "task",
       "targetId": "activity-u3"
-    },
-    {
-      "id": "binding-t1",
-      "technologyId": "tech-existing",
-      "targetType": "task",
-      "targetId": "activity-t1"
     },
     {
       "id": "binding-t2",
@@ -767,12 +707,6 @@
       "technologyId": "tech-existing",
       "targetType": "task",
       "targetId": "ct2"
-    },
-    {
-      "id": "binding-ut1",
-      "technologyId": "tech-existing",
-      "targetType": "task",
-      "targetId": "ut1"
     },
     {
       "id": "binding-ut2",
@@ -827,12 +761,6 @@
       "technologyId": "tech-link",
       "targetType": "causalLink",
       "targetId": "order"
-    },
-    {
-      "id": "binding-late",
-      "technologyId": "tech-existing",
-      "targetType": "causalLink",
-      "targetId": "late-hit"
     }
   ],
   "views": {
@@ -854,6 +782,7 @@
         "technology": false,
         "causalLink": true,
         "quiet": true,
+        "implicitDependencies": false,
         "planned": true
       },
       "laneHeight": 64,
