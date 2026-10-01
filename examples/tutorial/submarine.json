@@ -1,7 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
   "title": "海底調査 — 2機のUUVと母船による確認・回収",
-  "notes": "架空の検討例。A機が候補を探知し、B機が近接確認、母船が報告を照合して回収を指示する。水中調査班を折りたたむと母船との報告・指令が残る。確認不可の枝では再走査して、未確定であることを報告する。時刻・能力は説明用の仮定。",
+  "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
   "time": {
     "unit": "minutes",
     "duration": 100,
@@ -233,7 +233,10 @@
       },
       "label": "候補座標",
       "kind": "information",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 3,
+        "qualityRetention": 1
+      }
     },
     {
       "id": "confirm-report",
@@ -247,7 +250,10 @@
       },
       "label": "確認画像",
       "kind": "information",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 3,
+        "qualityRetention": 1
+      }
     },
     {
       "id": "incomplete-report",
@@ -261,7 +267,10 @@
       },
       "label": "未確定を報告",
       "kind": "information",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 12,
+        "qualityRetention": 1
+      }
     },
     {
       "id": "recall",
@@ -275,7 +284,10 @@
       },
       "label": "回収指示",
       "kind": "command",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 10,
+        "qualityRetention": 1
+      }
     }
   ],
   "technologies": [],
@@ -298,7 +310,8 @@
       "filters": {
         "technology": false,
         "causalLink": true,
-        "quiet": true
+        "quiet": true,
+        "implicitDependencies": false
       },
       "laneHeight": 64,
       "collapsedLayout": "compact",

@@ -7,7 +7,7 @@ const xml=(d,g,opts={})=>new JSDOM(R.render(d,g,opts),{contentType:'image/svg+xm
 
 test('State, Task, outcome and all causal endpoint types use the originating Actor color',()=>{
   const d=sample();d.actors.forEach((a,i)=>a.color=['#b51f40','#147863','#4b53c1','#975212','#79518b'][i]);
-  d.causalLinks.push({id:'actor-source',source:{type:'actor',id:'enemy',time:40},target:{type:'task',id:'transmit',time:49},polarity:'positive',label:'Actorから'});
+  d.causalLinks.push({id:'actor-source',source:{type:'state',id:'jam-output-42'},target:{type:'junction',taskId:'transmit',id:'j-transmit',outcomeStateId:'r1'},propagation:{duration:7},label:'Actorから'});
   const g=L.layout(d),dom=xml(d,g,{selection:[{type:'task',id:'search'}],gapIds:new Set(['negative'])});
   g.edges.forEach((e,i)=>{
     const owner=e.type==='task'?M.get(d,'state',M.get(d,'task',e.id).fromStateId).actorId:M.endpoint(d,M.get(d,'causalLink',e.id).source).actorId;
@@ -77,7 +77,7 @@ test('nested collapse projects children to parent color and hides internal cause
   const d=sample(),before=M.clone(d);
   d.actors.push({id:'external',name:'外部',side:'neutral',color:'#888888'});d.views.main.actorOrder.push('external');
   d.states.push({id:'ext',actorId:'external',name:'外部State',time:46});
-  d.causalLinks.push({id:'unrelated',source:{type:'state',id:'e0'},target:{type:'state',id:'ext'},polarity:'positive',label:'外部因果'});
+  d.causalLinks.push({id:'unrelated',source:{type:'state',id:'e0'},target:{type:'state',id:'ext'},propagation:{duration:22},polarity:'positive',label:'外部因果'});
   const subgroup=M.groupActors(d,['sensor','control'],'内側');
   d.views.main.collapsedActors=['group',subgroup];
   const g=L.layout(d);assert.equal(g.states.size,d.states.length);assert.equal(g.tasks.size,d.tasks.length);
@@ -97,8 +97,8 @@ test('dragging an aggregated child State changes time without reparenting it',as
 });
 test('mission status controls are absent, legacy statuses do not affect analysis and timing gaps remain',async t=>{
   const d=sample.research(),c=M.get(d,'causalLink','blue-action');d.technologies.forEach(x=>x.status='existing');
-  c.proposed=true;d.tasks.forEach(x=>x.status='proposed');assert(M.analyzeTask(d,'jam').some);
-  c.target.time=50;assert(!M.analyzeTask(d,'jam').some);assert.equal(M.opportunity(d,c).within,false);
+  c.proposed=true;d.tasks.forEach(x=>x.status='proposed');assert(M.analyzeTask(d,c.target.taskId).some);
+  c.propagation.duration=12;assert(!M.analyzeTask(d,c.target.taskId).some);assert.equal(M.opportunity(d,c).within,false);
   const a=await openApp(sample());t.after(()=>a.close());
   for(const id of ['s0','search','negative']) {
     a.event(a.$(`[data-id="${id}"]`),'dblclick');

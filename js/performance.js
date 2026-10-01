@@ -6,43 +6,36 @@
     if (!Number.isFinite(value) || value < min || value > max)
       fail(label + "が範囲外です。");
   }
-  function validateTask(sim, label = "Task") {
+  function validateTask(sim, label = "処理") {
     if (sim === undefined) return;
-    if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean")
-      fail(label + ": simulation.enabledは真偽値です。");
-    if (sim.w !== undefined) number(sim.w, label + ": w", 0, 1);
+    if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean") fail(label + ": simulation.enabledは真偽値です。");
+    for (const key of ["w", "outputW", "wInput"]) if (key in sim) fail(label + ": " + key + "は廃止されました。品質qを使用してください。");
+    if (sim.q !== undefined) number(sim.q, label + ": q", 0, 1);
+    if (sim.qualityRetention !== undefined) number(sim.qualityRetention, label + ": 品質保持率", 0, 1);
     const model = sim.performanceModel;
     if (sim.enabled && !model) fail(label + ": CDFが必要です。");
     if (!model) return;
-    if (model.type !== "cdf" || (model.degradationInput !== undefined && model.degradationInput !== "w"))
-      fail(label + ": performanceModelはcdf / wを指定してください。");
-    if (!Array.isArray(model.curves) || !model.curves.length || model.curves.length > 100)
-      fail(label + ": CDF曲線は1〜100件です。");
-    let previousW = -1;
+    if (model.type !== "cdf" || model.degradationInput !== undefined || (model.qualityInput !== undefined && model.qualityInput !== "q")) fail(label + ": performanceModelはcdf / qualityInput:qです。");
+    if (!Array.isArray(model.curves) || !model.curves.length || model.curves.length > 100) fail(label + ": CDF曲線は1〜100件です。");
+    let previousQ = -1;
     for (const curve of model.curves) {
-      if (!curve || typeof curve !== "object") fail(label + ": CDF曲線が不正です。");
-      number(curve.w, label + ": 曲線のw", 0, 1);
-      if (curve.w <= previousW) fail(label + ": 曲線のwは重複なく昇順にしてください。");
-      previousW = curve.w;
-      number(curve.pInfinity, label + ": 未達確率", 0, 1);
-      if (!Array.isArray(curve.points) || !curve.points.length || curve.points.length > 1000)
-        fail(label + ": CDF点は1〜1,000件です。");
+      if (!curve || typeof curve !== "object" || "w" in curve || "pInfinity" in curve) fail(label + ": 曲線にはqとpointsを指定します。未達確率は最終pから導出します。");
+      number(curve.q, label + ": 曲線の入力q", 0, 1);
+      if (curve.q <= previousQ) fail(label + ": 曲線のqは重複なく昇順です。");
+      previousQ = curve.q;
+      if (!Array.isArray(curve.points) || !curve.points.length || curve.points.length > 1000) fail(label + ": CDF点は1〜1,000件です。");
       let previousT = -1, previousP = 0;
       for (const point of curve.points) {
         if (!point || typeof point !== "object") fail(label + ": CDF点が不正です。");
-        number(point.t, label + ": CDF時間", 0, 1e9);
+        number(point.t, label + ": 所要時間", 0, 1e9);
         number(point.p, label + ": 累積確率", 0, 1);
-        if (point.t <= previousT || point.p < previousP)
-          fail(label + ": CDF時間は昇順、累積確率は単調非減少にしてください。");
-        previousT = point.t;
-        previousP = point.p;
+        number(point.q, label + ": 品質保持率q", 0, 1);
+        if (point.t <= previousT || point.p < previousP) fail(label + ": 時間は昇順、累積確率は単調非減少です。");
+        previousT=point.t; previousP=point.p;
       }
-      if (Math.abs(previousP + curve.pInfinity - 1) > 1e-10)
-        fail(label + ": 最終累積確率 + 未達確率は1にしてください。");
     }
-    const w = sim.w ?? 0;
-    if (w < model.curves[0].w || w > model.curves.at(-1).w)
-      fail(label + ": 入力wを含むCDF曲線が必要です。");
+    // One curve is independent of input quality. Multiple curves cover every reachable q.
+    if (model.curves.length > 1 && (model.curves[0].q !== 0 || model.curves.at(-1).q !== 1)) fail(label + ": 複数曲線は入力q=0〜1を覆ってください。");
   }
   // Origin is (0,0), unless the first point declares an atom at t=0.
   // Beyond the last point the CDF is flat; missing mass means T=Infinity.
@@ -55,13 +48,13 @@
     }
     return left.p;
   }
-  function distribution(model, w = 0) {
+  function distribution(model, q = 1) {
     const curves = model.curves;
-    if (!Number.isFinite(w) || w < curves[0].w || w > curves.at(-1).w)
-      fail("入力wがCDF曲線の範囲外です。");
-    const upper = curves.find(c => c.w >= w);
-    const lower = [...curves].reverse().find(c => c.w <= w);
-    const ratio = lower === upper ? 0 : (w - lower.w) / (upper.w - lower.w);
+    if (!Number.isFinite(q) || q < 0 || q > 1 || (curves.length > 1 && (q < curves[0].q || q > curves.at(-1).q)))
+      fail("入力qがCDF曲線の範囲外です。");
+    const upper = curves.length===1 ? curves[0] : curves.find(c => c.q >= q);
+    const lower = curves.length===1 ? curves[0] : [...curves].reverse().find(c => c.q <= q);
+    const ratio = lower === upper ? 0 : (q - lower.q) / (upper.q - lower.q);
     const times = [...new Set([0, ...lower.points.map(p => p.t), ...upper.points.map(p => p.t)])].sort((a,b) => a-b);
     return times.map(t => ({ t, p: curveCDF(lower, t) * (1-ratio) + curveCDF(upper, t) * ratio }));
   }
@@ -101,7 +94,7 @@
       return merge(bounds(list.slice(0,mid),choose),bounds(list.slice(mid),choose),choose);
     }
     return {lower:bounds(lines,Math.min),upper:bounds(lines,Math.max),
-      minW:curves[0].w,maxW:curves.at(-1).w,maxTime};
+      minQ:curves[0].q,maxQ:curves.at(-1).q,maxTime};
   }
   function sample(points, u) {
     if (!Number.isFinite(u) || u < 0 || u >= 1) fail("抽選値は0以上1未満です。");
@@ -113,6 +106,27 @@
     }
     return Infinity;
   }
+  function retention(curve, t) {
+    let left={t:0,q:curve.points[0].q};
+    for (const right of curve.points) {
+      if (t < right.t) return left.q+(right.q-left.q)*(t-left.t)/(right.t-left.t);
+      left=right;
+    }
+    return left.q;
+  }
+  function quality(model, inputQ, t) {
+    const curves=model.curves;
+    const lower=curves.length===1 ? curves[0] : [...curves].reverse().find(c=>c.q<=inputQ);
+    const upper=curves.length===1 ? curves[0] : curves.find(c=>c.q>=inputQ);
+    if (!lower || !upper) fail("入力qがCDF曲線の範囲外です。");
+    const ratio=lower===upper ? 0 : (inputQ-lower.q)/(upper.q-lower.q);
+    return retention(lower,t)*(1-ratio)+retention(upper,t)*ratio;
+  }
+  function outcome(model, inputQ, u) {
+    const duration=sample(distribution(model,inputQ),u);
+    return {duration, qualityRetention:Number.isFinite(duration)?quality(model,inputQ,duration):null,
+      qOut:Number.isFinite(duration)?inputQ*quality(model,inputQ,duration):null};
+  }
   function random(seed) {
     let state = seed >>> 0;
     return () => {
@@ -123,7 +137,7 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
-  const api = { validateTask, curveCDF, distribution, envelope, sample, random, number };
+  const api = { validateTask, curveCDF, distribution, envelope, sample, quality, outcome, random, number };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.MEPerformance = api;
 })(globalThis);

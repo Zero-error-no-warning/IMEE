@@ -6,7 +6,10 @@
     R = window.MERender,
     $ = (s) => document.querySelector(s),
     esc = R.esc,
-    KEY = "imee.document.v2";
+    KEY = "imee.document.v3";
+  let importPreview=null;
+  const D=window.MEImportDiagnostics;
+  let allCDFPanel=null;
   let history,
     selection = [],
     clipboard = null,
@@ -21,16 +24,26 @@
     simulationPanel = null,
     cdfHover = null;
   try {
-    history = new M.History(
-      localStorage.getItem(KEY)
-        ? M.parse(localStorage.getItem(KEY))
-        : createSample(),
-    );
+    const saved=localStorage.getItem(KEY);
+    const inspected=saved?D.inspect(saved):null;
+    if(inspected?.errors.length)importPreview=inspected;
+    history=new M.History(inspected&&!inspected.errors.length?inspected.document:createSample());
   } catch (e) {
     history = new M.History(createSample());
-    setTimeout(() => toast("保存データを読み込めません: " + e.message), 0);
+    setTimeout(() => toast("保存データを読み込めません:\n" + errorText(e)), 0);
   }
-  const doc = () => history.doc;
+  const doc = () => importPreview?.document || history.doc;
+  function errorText(error) {
+    let text = error?.message || String(error);
+    if (error?.validationPath) text += "\nJSON path: " + error.validationPath;
+    if (error?.validationFragment !== undefined) {
+      let fragment;
+      try { fragment = JSON.stringify(error.validationFragment, null, 2); }
+      catch (_) { fragment = String(error.validationFragment); }
+      text += "\nProblem JSON:\n" + fragment;
+    }
+    return text;
+  }
   function toast(message) {
     $("#toast").textContent = message;
     $("#toast").hidden = false;
@@ -39,6 +52,7 @@
     $("#status").textContent = message;
   }
   function persist() {
+    if(importPreview)return;
     try {
       localStorage.setItem(KEY, JSON.stringify(doc()));
       $("#save-status").textContent = "このブラウザに保存";
@@ -47,6 +61,7 @@
     }
   }
   function change(fn) {
+    if(importPreview){toast("エラーのある文書は診断表示中です。元JSONを修正して再読み込みしてください。Undoで前の文書に戻れます。");return false;}
     const next = M.clone(doc());
     try {
       const result = fn(next);
@@ -55,7 +70,7 @@
       persist();
       return result;
     } catch (e) {
-      toast(e.message);
+      toast(errorText(e));
       return false;
     }
   }
@@ -78,6 +93,7 @@
   function render() {
     cdfHover?.hide();
     simulationPanel?.invalidate();
+    allCDFPanel?.invalidate();
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
     geometry = L.layout(
@@ -113,10 +129,20 @@
     for (const a of [...svg.attributes])
       if (!["id"].includes(a.name)) target.setAttribute(a.name, a.value);
     target.innerHTML = svg.innerHTML;
+    const cdfAnalysis=allCDFPanel?.getState();
+    if(cdfAnalysis?.result)target.insertAdjacentHTML("beforeend",window.MEAllCDFUI.markers(geometry,cdfAnalysis.result,cdfAnalysis.selected));
+    if(importPreview){
+      target.insertAdjacentHTML("beforeend",D.bubbles(importPreview,geometry,esc));
+      const bubbles=[...target.querySelectorAll(".import-error foreignObject")];
+      const bottom=Math.max(geometry.height,...bubbles.map(b=>+b.getAttribute("y")+110));
+      target.setAttribute("viewBox",`0 0 ${geometry.vp.width} ${bottom}`);target.setAttribute("height",bottom);
+      $("#status").textContent=`読み込みエラー ${importPreview.errors.length}件：図は診断表示中。元JSONを修正して再読み込みしてください。`;
+    }
     $("#document-title").textContent = d.title;
     $("#counts").textContent =
       `${d.actors.length} Actor / ${d.states.length} State / ${d.tasks.length} Task`;
-    $("#undo").disabled = !history.past.length;
+    $("#undo").disabled = !importPreview && !history.past.length;
+    $("#simulation-btn").disabled=!!importPreview;
     $("#redo").disabled = !history.future.length;
     $("#view-mode").value = d.views.main.mode;
     const v = d.views.main,
@@ -170,7 +196,7 @@
     if (!x) {
       panel.insertAdjacentHTML(
         "beforeend",
-        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。CDF有効Taskは実線、固定所要時間（FIX）のTask・分岐後の線は二重線です。正の因果は矩形波、負の因果は滑らかな波線で接続します。</p>`,
+        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。CDF有効Taskは実線、固定所要時間（FIX）のTask・分岐後の線は二重線です。作用線はStateからStateまたは明示的な分岐点へ接続します。</p>`,
       );
       if (selection.length) {
         panel.append(
@@ -193,8 +219,8 @@
       facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>${x.simulation?.enabled ? "CDF：実線・達成までの所要時間と未達を抽選" : "FIX：二重線・所要時間固定（開始時刻は依存条件で変動）"}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
     }
     if (s.type === "causalLink") {
-      facts = `${x.polarity === "negative" ? "負の因果（滑らかな波線）" : "正の因果（矩形波）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;
-      facts += `<br>${x.simulation?.enabled ? `${({w:"w伝播",branch:"作用分岐",state:"State到達"})[x.simulation.type]} / ${x.simulation.propagation?.enabled ? "CDF：実線・伝搬時間と未達を抽選" : "FIX：二重線・伝搬時間固定"}` : "表示のみ（シミュレーション実行なし）"}`;
+      facts = `作用線<br>発生 ${M.endpoint(doc(), x.source).time} + 伝搬 ${x.propagation.duration} → 基準到達 ${M.causalArrivalTime(doc(), x)}<br>分類: ${esc(x.kind || "未指定")}`;
+      facts += `<br>${x.simulation?.enabled ? `${x.target.type==="junction"?"作用分岐・暗黙の開始依存あり":"State成立・品質伝搬"} / ${x.propagation?.performanceModel ? "CDF：実線・伝搬時間と未達を抽選" : "FIX：二重線・伝搬時間固定"}` : "表示のみ（シミュレーション実行なし）"}`;
       const o = M.opportunity(doc(), x);
       if (o) facts += `<br>介入時間窓 ${o.start}〜${o.end} / ${esc(o.message)}`;
     }
@@ -210,11 +236,11 @@
     );
     if (["actor", "state"].includes(s.type))
       actions.append(button("複製", duplicate));
-    if (["state", "task", "actor"].includes(s.type))
+    if (s.type === "state")
       actions.append(button("ここから接続", () => beginConnection(s)));
     if (s.type === "task")
       actions.append(button("分岐を追加", () => addResult(s.id)));
-    if (s.type === "causalLink" && x.target.type === "task")
+    if (s.type === "causalLink" && x.target.type === "junction")
       actions.append(button("分岐を追加", () => addCausalResult(s.id)));
     if (s.type === "actor") {
       actions.append(
@@ -309,13 +335,14 @@
         apply(values);
         $("#editor-dialog").close();
       } catch (error) {
-        $("#dialog-error").textContent = error.message;
+        $("#dialog-error").textContent = errorText(error);
       }
     };
     $("#editor-dialog").showModal();
     $("#dialog-fields input")?.focus();
   }
   function applyEdit(fn) {
+    if(importPreview)throw new Error("診断表示中は編集できません。元JSONを修正して再読み込みしてください。");
     const next = M.clone(doc());
     const result = fn(next);
     history.commit(next);
@@ -469,10 +496,10 @@
         const changedTimes = new Map(
           (x.junctions || []).map((j, i) => [j.time, +v["j" + i]]),
         );
-        for (const c of d.causalLinks)
-          for (const p of [c.source, c.target])
-            if (p.type === "task" && p.id === tid && changedTimes.has(p.time))
-              p.time = changedTimes.get(p.time);
+        for (const c of d.causalLinks) {
+          const oldArrival = M.causalArrivalTime(d, c);
+          if(c.target.type==="junction" && c.target.taskId===tid && changedTimes.has(oldArrival))c.propagation.duration+=changedTimes.get(oldArrival)-oldArrival;
+        }
         for (const [i, j] of (x.junctions || []).entries()) {
           j.time = +v["j" + i];
           if (v[`branchMode-${i}`]) j.simulation = { mode: v[`branchMode-${i}`] };
@@ -489,9 +516,7 @@
         }
         x.junctions = (x.junctions || []).filter((j) => j.outcomes.length);
         d.causalLinks = d.causalLinks.filter(c =>
-          c.target.id !== tid || !c.simulation?.enabled || c.simulation.type !== "branch" ||
-          x.junctions.some(j => j.id === c.simulation.junctionId && j.simulation?.mode === "effect" &&
-            j.outcomes.some(o => o.toStateId === c.simulation.outcomeStateId)));
+          c.target.taskId !== tid || x.junctions.some(j => j.id === c.target.id && j.outcomes.some(o => o.toStateId === c.target.outcomeStateId)));
         d.bindings = d.bindings.filter(b => M.get(d, b.targetType, b.targetId));
       }),
     );
@@ -499,8 +524,8 @@
   }
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
-    if (cause?.target.type === "task")
-      addResult(cause.target.id, {time:cause.target.time,fixedTime:true});
+    if (cause?.target.type === "junction")
+      addResult(cause.target.taskId, {time:M.causalArrivalTime(doc(),cause),fixedTime:true});
   }
   function addResult(tid, context = {}) {
     const t = M.get(doc(), "task", tid),
@@ -541,7 +566,7 @@
     );
     const timeInput = $('#dialog-fields [name="time"]');
     const updateRelatedCauses = () => {
-      const causes = doc().causalLinks.filter(c => c.target.type === "task" && c.target.id === tid && c.target.time === +timeInput.value),
+      const causes = doc().causalLinks.filter(c => c.target.type === "junction" && c.target.taskId === tid && Math.abs(M.causalArrivalTime(doc(),c)-(+timeInput.value))<1e-9),
         summary = $('#branch-related-causes');
       summary.hidden = !causes.length;
       summary.innerHTML = causes.length
@@ -565,41 +590,16 @@
     $('#dialog-fields [name="name"]').placeholder = "例：無力化、通信回復";
     $('#dialog-fields [name="label"]').focus();
   }
-  function endpointFields(name, p) {
-    const opts = [
-      ...doc().states.map((s) => ["state:" + s.id, `State: ${s.name}`]),
-      ...doc().tasks.map((t) => ["task:" + t.id, `Task: ${t.label}`]),
-      ...doc().actors.map((a) => ["actor:" + a.id, `Actor: ${a.name}`]),
-    ];
-    return (
-      choices(
-        name,
-        "因果の" + (name === "source" ? "作用元" : "到達先"),
-        opts,
-        p.type + ":" + p.id,
-      ) +
-      field(
-        name + "Time",
-        "Task / Actor上の時刻（Stateには適用しません）",
-        M.endpoint(doc(), p).time,
-        "number",
-      )
-    );
+  function endpointFields(name,p){
+    const opts=doc().states.map(s=>["state:"+s.id,`State: ${s.name}`]);
+    if(name==="target")for(const t of doc().tasks)for(const j of t.junctions || [])opts.push(["junction:"+j.id,`分岐点: ${t.label} / T+${j.time}`]);
+    return choices(name,name==="source"?"作用元State":"到達先State・分岐点",opts,p.type+":"+p.id);
   }
   function editCausal(cid) {
     const c = M.get(doc(), "causalLink", cid);
     dialog(
       "因果リンク",
       field("label", "作用のラベル", c.label) +
-        choices(
-          "polarity",
-          "因果の向き",
-          [
-            ["positive", "正の因果 — 矩形波"],
-            ["negative", "負の因果 — 滑らかな波線"],
-          ],
-          c.polarity,
-        ) +
         endpointFields("source", c.source) +
         endpointFields("target", c.target) +
         field("kind", "分析分類", c.kind || "") +
@@ -607,20 +607,20 @@
       (v) =>
         applyEdit((d) => {
           const x = M.get(d, "causalLink", cid);
-          for (const name of ["source", "target"]) {
-            const i = v[name].indexOf(":"),
-              type = v[name].slice(0, i),
-              id = v[name].slice(i + 1);
-            x[name] = {
-              type,
-              id,
-              ...(type === "state" ? {} : { time: +v[name + "Time"] }),
-            };
+          {
+            const i = v.source.indexOf(":"), type = v.source.slice(0,i), id = v.source.slice(i+1);
+            x.source = {type,id};
           }
-          x.simulation=window.MESimulationUI.readCausal($("#editor-form"),c);
+          {
+            const i = v.target.indexOf(":"), type = v.target.slice(0,i), id = v.target.slice(i+1);
+            x.target = {type,id};
+            if(type==="junction"){x.target.taskId=d.tasks.find(t=>t.junctions?.some(j=>j.id===id)).id;x.target.outcomeStateId=v.causalOutcome;}
+          }
+          const causal = window.MESimulationUI.readCausal($("#editor-form"),c);
+          x.propagation = causal.propagation;
+          x.simulation = causal.simulation;
           Object.assign(x, {
             label: v.label,
-            polarity: v.polarity,
             kind: v.kind,
             notes: v.notes,
           });
@@ -686,7 +686,7 @@
         const actor=M.get(doc(),"actor",M.get(doc(),"state",t.fromStateId).actorId),w=M.taskWindow(doc(),t);
         return ["task:"+t.id,`Task: ${actor.name} / ${t.label} (T+${w.start}〜${w.end})`];
       }),
-      ...doc().causalLinks.map(c=>["causalLink:"+c.id,`作用: ${c.label} (T+${M.endpoint(doc(),c.source).time}→${M.endpoint(doc(),c.target).time})`]),
+      ...doc().causalLinks.map(c=>["causalLink:"+c.id,`作用: ${c.label} (T+${M.endpoint(doc(),c.source).time}→${M.causalArrivalTime(doc(),c)})`]),
       ...doc().actors.map(a=>["actor:"+a.id,`Actor: ${a.name}`])];
     dialog("技術の付け先変更",`<p class="dialog-summary">${esc(tech.name)}</p>`+
       choices("target","付け先",[["","選択してください"],...targets],
@@ -770,32 +770,22 @@
     const id = change((d) => M.groupActors(d, ids));
     if (id) select({ type: "actor", id });
   }
-  function asEndpoint(s, time) {
-    if (s.type === "state") return { type: s.type, id: s.id };
-    if (s.type === "task") {
-      const w = M.taskWindow(doc(), item(s));
-      return {
-        type: s.type,
-        id: s.id,
-        time: Math.max(w.start, Math.min(w.end, time ?? (w.start + w.end) / 2)),
-      };
+  function asEndpoint(s,time){
+    if(s.type==="state")return {type:"state",id:s.id};
+    if(s.type==="task"){
+      const t=M.get(doc(),"task",s.id),j=t.junctions?.find(j=>Math.abs(j.time-time)<doc().time.snap/2+1e-7);
+      if(j)return {type:"junction",taskId:t.id,id:j.id,outcomeStateId:j.outcomes[0].toStateId};
     }
-    if (s.type === "actor")
-      return {
-        type: s.type,
-        id: s.id,
-        time: time ?? doc().views.main.visibleTimeRange.start,
-      };
   }
-  function beginConnection(s = selected(), time) {
-    if (!s) return;
-    connecting = asEndpoint(s, time);
-    render();
+  function beginConnection(s=selected()){
+    if(s?.type!=="state"){toast("作用の起点はStateです。途中出力はStateを設けてTaskを分けてください。");return;}
+    connecting={type:"state",id:s.id};render();
   }
   function connect(target, time) {
     const source = connecting,
       end = asEndpoint(target, time);
-    if (!source || !end) return;
+    if(!source)return;
+    if(!end){connecting=null;render();toast("接続先はStateまたは既存の分岐点です。Taskには先に分岐を追加してください。");return;}
     connecting = null;
     let result;
     try {
@@ -844,6 +834,7 @@
   }
   const canvas = $("#canvas-scroll");
   $("#timeline").addEventListener("pointerdown", (e) => {
+    if(e.target.closest(".import-error,.cdf-map-marker"))return;
     if (e.button !== 0) return;
     const p = point(e),
       s = targetInfo(e);
@@ -859,7 +850,7 @@
       e.preventDefault();
       return;
     }
-    if (e.altKey && s && ["state", "task", "actor"].includes(s.type)) {
+    if (e.altKey && s && s.type === "state") {
       beginConnection(s, timeAt(p.x));
       drag = { kind: "connect", start: p };
       e.preventDefault();
@@ -1012,7 +1003,31 @@
     }
     if (d.kind === "pan") persist();
   });
-  $("#timeline").addEventListener("click", (e) => {
+  $("#timeline").addEventListener("click", async (e) => {
+    const cdfMarker=e.target.closest(".cdf-map-marker");
+    if(cdfMarker){allCDFPanel.focus(cdfMarker.dataset.cdfKey);return;}
+    const copyButton=e.target.closest(".copy-import-error");
+    if(copyButton){
+      const text=copyButton.closest(".import-error").querySelector(".import-error-detail").textContent;
+      try {
+        if(!navigator.clipboard?.writeText)throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(text);
+        copyButton.textContent="コピー済み";
+      }catch(_){
+        const field=document.createElement("textarea");field.value=text;field.readOnly=true;
+        field.style.cssText="position:fixed;left:0;top:0;width:1px;height:1px;opacity:0";
+        document.body.append(field);field.select();
+        let copied=false;try{copied=!!document.execCommand?.("copy");}catch(_){}field.remove();
+        if(copied)copyButton.textContent="コピー済み";
+        else {
+          const detail=copyButton.closest(".import-error").querySelector(".import-error-detail"),range=document.createRange();
+          detail.focus();range.selectNodeContents(detail);const selectedText=window.getSelection();selectedText.removeAllRanges();selectedText.addRange(range);
+          toast("自動コピーできませんでした。選択されたエラー詳細をCtrl+C / ⌘Cでコピーしてください。");
+        }
+      }
+      return;
+    }
+    if(e.target.closest(".import-error"))return;
     if (swallowClick) return;
     const toggle = e.target.closest("[data-collapse]");
     if (toggle) {
@@ -1027,7 +1042,7 @@
     }
     const s = targetInfo(e);
     if (connecting && s) {
-      connect(s, timeAt(point(e).x));
+      connect(s,e.target.closest(".junction[data-time]") ? +e.target.closest(".junction[data-time]").dataset.time : timeAt(point(e).x));
       return;
     }
     // Selection redraw can detach the pressed SVG node and suppress the native
@@ -1040,6 +1055,7 @@
     select(s, e.ctrlKey || e.metaKey);
   });
   function doubleClick(e) {
+    if(e.target.closest(".import-error,.cdf-map-marker"))return;
     if (document.querySelector("dialog[open]")) return;
     const summary = e.target.closest("[data-expand-group]");
     if (summary) {
@@ -1076,6 +1092,8 @@
       ) + "px";
   }
   $("#timeline").addEventListener("contextmenu", (e) => {
+    if(e.target.closest(".import-error"))return;
+    if(e.target.closest(".cdf-map-marker")){e.preventDefault();return;}
     e.preventDefault();
     const s = targetInfo(e),
       p = point(e),
@@ -1099,7 +1117,7 @@
         entries.push(["分岐を追加",
           () => addResult(s.id, {time,fixedTime:!!junction})]);
       }
-      if (s.type === "causalLink" && M.get(doc(), "causalLink", s.id).target.type === "task")
+      if (s.type === "causalLink" && M.get(doc(), "causalLink", s.id).target.type === "junction")
         entries.push(["分岐を追加", () => addCausalResult(s.id)]);
       if (s.type === "actor")
         entries.push(
@@ -1147,12 +1165,13 @@
       );
   }
   function undo() {
-    history.undo();
+    if(importPreview)importPreview=null;else history.undo();
     selection = [];
     render();
     persist();
   }
   function redo() {
+    if(importPreview)return;
     history.redo();
     selection = [];
     render();
@@ -1191,7 +1210,8 @@
         '<p class="dialog-summary">コンパクトではState名、1本ではState・Task名をホバーで確認できます。1本の集約表示はダブルクリックで展開して編集できます。</p>' +
         Object.entries({
           technology: "Technology",
-          causalLink: "因果リンク",
+          causalLink: "作用線",
+          implicitDependencies: "暗黙の開始依存（破線）",
           quiet: "控えめなState",
         })
           .map(([key, label]) =>
@@ -1210,7 +1230,7 @@
         applyEdit((d) => {
           d.views.main.laneHeight = +values.laneHeight;
           d.views.main.collapsedLayout = values.collapsedLayout;
-          for (const key of ["technology", "causalLink", "quiet"])
+          for (const key of ["technology", "causalLink", "quiet", "implicitDependencies"])
             d.views.main.filters[key] = values[key] === "true";
         }),
     );
@@ -1293,8 +1313,8 @@
   }
   function saveJSON() {
     download(
-      new Blob([JSON.stringify(doc(), null, 2)], { type: "application/json" }),
-      "mission-v2.json",
+      new Blob([JSON.stringify(importPreview?.original || doc(), null, 2)], { type: "application/json" }),
+      "mission-v3.json",
     );
   }
   function exportSource() {
@@ -1363,8 +1383,9 @@
     }
   }
   function loadJSON(text) {
-    const d = M.parse(text);
-    history.commit(d);
+    const inspected=D.inspect(text);
+    if(inspected.errors.length)importPreview=inspected;
+    else {history.commit(inspected.document);importPreview=null;}
     selection = [];
     connecting = null;
     render();
@@ -1384,10 +1405,10 @@
       if (file.size > 8 * 1024 * 1024)
         throw new Error("JSONは8MiB以下にしてください。");
       const text = await file.text();
-      M.parse(text);
+      D.inspect(text);
       confirmReplace("JSONを読み込む", () => loadJSON(text));
     } catch (e) {
-      toast(e.message);
+      toast(errorText(e));
     }
     e.target.value = "";
   };
@@ -1475,6 +1496,7 @@
     ]);
   window.addEventListener("keydown", (e) => {
     if (
+      e.target.closest(".import-error") ||
       e.target.matches("input,textarea,select") ||
       document.querySelector("dialog[open]")
     )
@@ -1552,7 +1574,8 @@
   window.addEventListener("resize", render);
   // Small public integration surface for embedding, importers, and deterministic tests.
   window.IMEE = {
-    getDocument: () => M.clone(doc()),
+    getDocument: () => M.clone(importPreview?.original || doc()),
+    getImportErrors: () => M.clone(importPreview?.errors || []),
     loadJSON,
     exportSource,
     exportSVG,
@@ -1560,6 +1583,12 @@
     undo,
     redo,
   };
+  allCDFPanel=window.MEAllCDFUI.controller({getDocument:()=>M.clone(doc()),download,onHighlight:render,
+    onShowTarget:t=>{selection=[{type:t.type,id:t.id}];change(d=>{d.views.main.collapsedActors=[];d.views.main.visibleTimeRange={start:0,end:d.time.duration};});
+      const node=[...$("#timeline").querySelectorAll("[data-type][data-id]")].find(e=>e.dataset.type===t.type&&e.dataset.id===t.id);node?.scrollIntoView?.({block:"center",inline:"center"});}
+  });
+  $("#all-cdf-open").onclick=()=>{$("#simulation-dialog").close();allCDFPanel.open();};
+  $("#timeline").addEventListener("keydown",e=>{if(["Enter"," "].includes(e.key)&&e.target.closest(".cdf-map-marker")){e.preventDefault();e.stopPropagation();allCDFPanel.focus(e.target.closest(".cdf-map-marker").dataset.cdfKey);}});
   simulationPanel = window.MESimulationUI.controller({
     getDocument: () => M.clone(doc()), download,onOverlayChange:render,
     configure: () => dialog("Simulation設定", window.MESimulationUI.settingsFields(doc()), () => {

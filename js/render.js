@@ -58,7 +58,11 @@
       svg += `<path d="M${x},32 V${height - 10}" stroke="#eef2f3"/><text x="${x}" y="21" text-anchor="middle" font-size="10" fill="#77868c">${esc(+t.toFixed(4))}</text>`;
     }
     svg += `<text x="12" y="21" font-size="10" fill="#77868c">ACTOR / T+ (${esc(doc.time.unit)})</text><g clip-path="url(#time-clip)">`;
+    for(const r of layout.stateReceipts || []) {
+      svg+=`<g class="state-receipt" pointer-events="none"><title>${esc(r.stateId)}への基準到達 ${r.time}：${r.late?"OR成立後の入力（品質は変更しない）":"成立条件が揃うまで待機"}</title><path d="M${r.x},${r.y} H${r.stateX}" fill="none" stroke="#84979e" stroke-dasharray="3 3" stroke-width="1"/><circle cx="${r.x}" cy="${r.y}" r="3" fill="white" stroke="#84979e"/></g>`;
+    }
     for (const e of edges) {
+      if(e.type==="implicitDependency"){svg+=`<g class="implicit-dependency"><title>品質に影響しない必須の開始依存</title><path d="${e.path}" fill="none" stroke="#84979e" stroke-dasharray="4 4" stroke-width="1.2" marker-end="url(#arrow)" pointer-events="none"/></g>`;continue;}
       const chosen = selected(e.summaryActorId || e.id),
         actor = M.get(doc,"actor",e.actorId),
         color = M.actorColor(doc,actor),
@@ -94,12 +98,12 @@
           const rowIndex = rows.findIndex(row => row.actor.id === e.actorId), background = rowIndex % 2 ? "#fafcfc" : "#ffffff";
           // Hollow stroke gives parallel rails without moving the routed time anchors.
           // Draw the arrow last so the central gap never cuts through its head.
-          const join=e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round";
-          svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" data-polarity="${e.polarity || "positive"}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} stroke-linejoin="${join}"/>
+          const join="round";
+          svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} stroke-linejoin="${join}"/>
           <path class="line-gap" d="${piece.path}" fill="none" stroke="${background}" stroke-width="${m?strokeWidth*.4:1.6}" stroke-linejoin="${join}" pointer-events="none"/>
           <path class="line-arrow" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="0"${endMarker} pointer-events="none"/></g>`;
         } else {
-          svg += `<path class="line${performance ? " line-cdf" : ""}" data-polarity="${e.polarity || "positive"}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}"${endMarker}/>`;
+          svg += `<path class="line${performance ? " line-cdf" : ""}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} opacity="${muted}" stroke-linejoin="round"${endMarker}/>`;
         }
         if(m)svg+="</g>";
       }
@@ -112,7 +116,7 @@
       if (single && summaryJunctions.has(key)) continue;
       if (single) summaryJunctions.add(key);
       const color=M.actorColor(doc,M.get(doc,"actor",j.actorId));
-      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
+      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}" data-junction-id="${esc(j.explicit || "")}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
     }
     for (const s of states.values()) {
       if (s.summaryHidden) continue;
@@ -128,6 +132,7 @@
       svg += "</g>";
     }
     for (const e of edges) {
+      if(e.type==="implicitDependency"){svg+=`<g class="implicit-dependency"><title>品質に影響しない必須の開始依存</title><path d="${e.path}" fill="none" stroke="#84979e" stroke-dasharray="4 4" stroke-width="1.2" marker-end="url(#arrow)" pointer-events="none"/></g>`;continue;}
       const b = e.labelInfo,
         color = M.actorColor(doc,M.get(doc,"actor",e.actorId)),
         isTask = e.type === "task";

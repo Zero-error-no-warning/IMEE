@@ -52,10 +52,11 @@ async function openApp(saved) {
   w.HTMLAnchorElement.prototype.click = function () {
     downloads.push({ name: this.download, blob });
   };
-  if (saved) w.localStorage.setItem("imee.document.v2", JSON.stringify(saved));
+  if (saved) w.localStorage.setItem("imee.document.v3", JSON.stringify(saved));
   for (const file of [
     "performance.js",
     "model.js",
+    "import-diagnostics.js",
     "simulation.js",
     "sensitivity.js",
     "simulation-overlay.js",
@@ -65,6 +66,7 @@ async function openApp(saved) {
     "sample.js",
     "simulation-sample.js",
     "tutorial-sample.js",
+    "all-cdf-ui.js",
     "app.js",
   ])
     w.eval(fs.readFileSync(path.join(root, "js", file), "utf8"));
@@ -101,7 +103,7 @@ async function openApp(saved) {
         ...options,
       }),
     );
-  const savedDoc = () => JSON.parse(w.localStorage.getItem("imee.document.v2"));
+  const savedDoc = () => JSON.parse(w.localStorage.getItem("imee.document.v3"));
   const readBlob = (b) =>
     new Promise((resolve) => {
       const reader = new w.FileReader();

@@ -49,17 +49,19 @@ test('folding projects children to one parent timeline and color, without child-
 test('nested collapsed groups retain external State, Task and Actor causal anchors at exact times',()=>{
   const d=sample();
   const subgroup=M.groupActors(d,['sensor','control'],'内側');
+  d.states.push({id:'control-event',actorId:'control',name:'事象',time:40},{id:'group-start',actorId:'group',name:'開始',time:1});
+  M.get(d,'task','jam').junctions=[{id:'jam-point',time:41,outcomes:[{toStateId:'e1',label:'結果'}]}];
   d.causalLinks.push(
-    {id:'out-state',source:{type:'state',id:'s1'},target:{type:'state',id:'e0'},label:'外部へ',polarity:'positive'},
-    {id:'out-actor',source:{type:'actor',id:'control',time:40},target:{type:'task',id:'jam',time:41},label:'Actorから',polarity:'negative'},
-    {id:'parent-internal',source:{type:'actor',id:'group',time:1},target:{type:'state',id:'s0'},label:'内部',polarity:'positive'});
+    {id:'out-state',source:{type:'state',id:'s1'},target:{type:'state',id:'e0'},propagation:{duration:8},label:'外部へ',},
+    {id:'out-actor',source:{type:'state',id:'control-event'},target:{type:'junction',taskId:'jam',id:'jam-point',outcomeStateId:'e1'},propagation:{duration:1},label:'Actorから',},
+    {id:'parent-internal',source:{type:'state',id:'group-start'},target:{type:'state',id:'s0'},propagation:{duration:1},label:'内部',});
   d.views.main.collapsedActors=['group',subgroup];
   const g=L.layout(d);
   assert.deepEqual(g.edges.filter(e=>e.type==='causalLink').map(e=>e.id),['negative','out-state','out-actor']);
   for(const id of ['negative','out-state','out-actor']) {
     const c=M.get(d,'causalLink',id),e=g.edges.find(e=>e.id===id);
     assert.equal(e.points[0].x,g.vp.x(M.endpoint(d,c.source).time));
-    assert.equal(e.points.at(-1).x,g.vp.x(M.endpoint(d,c.target).time));
+    assert.equal(e.points.at(-1).x,g.vp.x(M.causalArrivalTime(d,c)));
   }
   assert.equal(g.edges.find(e=>e.id==='out-state').actorId,'group');
   assert.equal(g.edges.find(e=>e.id==='out-actor').actorId,'group');

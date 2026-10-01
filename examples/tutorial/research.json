@@ -1,7 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
   "title": "技術Gap — 妨害源の探知から妨害活動への介入まで",
-  "notes": "架空の能力検討例。電波監視→指揮所の判断→介入担当への指令→敵Taskへの負の因果を追う。敵の妨害実行は20〜68分、介入は48分。指向性妨害の追尾制御だけを研究段階（仮定のTRL4）として、時間窓内でも技術条件が未充足になる例。耐妨害受信と敵の送信活動抑制は別の能力として扱う。",
+  "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
   "time": {
     "unit": "minutes",
     "duration": 80,
@@ -109,6 +109,14 @@
       "activity": "active",
       "phase": "other",
       "notes": ""
+    },
+    {
+      "id": "suppress-output-48",
+      "actorId": "effector",
+      "time": 48,
+      "name": "妨害活動を抑制成立",
+      "activity": "active",
+      "phase": "other"
     }
   ],
   "tasks": [
@@ -131,10 +139,11 @@
     {
       "id": "suppress",
       "fromStateId": "w0",
-      "toStateId": "w1",
+      "toStateId": "suppress-output-48",
       "label": "追尾・指向性妨害",
       "kind": "interference",
-      "notes": ""
+      "notes": "",
+      "junctions": []
     },
     {
       "id": "jam",
@@ -142,7 +151,28 @@
       "toStateId": "e1",
       "label": "通信帯域を妨害",
       "kind": "interference",
-      "notes": ""
+      "notes": "",
+      "junctions": [
+        {
+          "id": "blue-action-junction",
+          "time": 48,
+          "outcomes": [
+            {
+              "label": "妨害活動を抑制結果",
+              "toStateId": "e1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "suppress-after-48",
+      "fromStateId": "suppress-output-48",
+      "toStateId": "w1",
+      "label": "追尾・指向性妨害（継続）",
+      "kind": "interference",
+      "notes": "",
+      "junctions": []
     }
   ],
   "causalLinks": [
@@ -158,7 +188,10 @@
       },
       "label": "位置・周波数",
       "kind": "information",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 2,
+        "qualityRetention": 1
+      }
     },
     {
       "id": "order",
@@ -172,23 +205,29 @@
       },
       "label": "介入指令",
       "kind": "command",
-      "polarity": "positive"
+      "propagation": {
+        "duration": 2,
+        "qualityRetention": 1
+      }
     },
     {
       "id": "blue-action",
       "source": {
-        "type": "task",
-        "id": "suppress",
-        "time": 48
+        "type": "state",
+        "id": "suppress-output-48"
       },
       "target": {
-        "type": "task",
-        "id": "jam",
-        "time": 48
+        "type": "junction",
+        "taskId": "jam",
+        "id": "blue-action-junction",
+        "outcomeStateId": "e1"
       },
       "label": "妨害活動を抑制",
       "kind": "interference",
-      "polarity": "negative"
+      "propagation": {
+        "duration": 0,
+        "qualityRetention": 1
+      }
     }
   ],
   "technologies": [
@@ -272,7 +311,8 @@
       "filters": {
         "technology": true,
         "causalLink": true,
-        "quiet": true
+        "quiet": true,
+        "implicitDependencies": false
       },
       "laneHeight": 64,
       "collapsedLayout": "compact",

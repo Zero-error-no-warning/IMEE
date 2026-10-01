@@ -8,7 +8,7 @@ async function ready(a){const until=Date.now()+5000;while(a.$('#simulation-apply
 
 test('rates use all trials, preserve seeded statistics and semantic geometry, and display zero separately from unconfigured links',()=>{
   const d=M.defaults(fixture());
-  d.causalLinks=[{id:'display-only',label:'表示のみ',polarity:'positive',source:{type:'state',id:'s0'},target:{type:'state',id:'c0'}}];
+  d.causalLinks=[{id:'display-only',label:'表示のみ',source:{type:'state',id:'s0'},target:{type:'state',id:'c0'},propagation:{duration:0}}];
   const before=JSON.stringify(d),r=S.run(d),baseline=L.layout(d,1050),g=L.layout(d,1050,{simulationResult:r});
   assert.deepEqual(counts(g,'detect'),[r.tasks[0].finished]);
   assert.equal(g.edges.find(e=>e.id==='detect').resultSegments[0].metric.ratio,r.tasks[0].finished/r.iterations);
@@ -17,7 +17,7 @@ test('rates use all trials, preserve seeded statistics and semantic geometry, an
   assert.deepEqual([...g.states].map(([id,s])=>[id,s.x,s.y]),[...baseline.states].map(([id,s])=>[id,s.x,s.y]));
   assert.equal(JSON.stringify(d),before);
   assert.deepEqual(S.run(d),r);
-  for(const c of d.tasks[0].simulation.performanceModel.curves){c.points.forEach(p=>p.p=0);c.pInfinity=1;}
+  for(const c of d.tasks[0].simulation.performanceModel.curves){c.points.forEach(p=>p.p=0);}
   const zero=L.layout(d,1050,{simulationResult:S.run(d)}),z=xml(d,zero);
   assert.deepEqual(counts(zero,'detect'),[0]);assert.deepEqual(counts(zero,'act'),[0]);
   assert.equal(z.querySelector('.simulation-result-segment .line').getAttribute('stroke'),'#aebbc0');
@@ -44,7 +44,7 @@ test('effect branches reduce the continuation width and match chosen outcomes an
 });
 
 test('probability-only Tasks count the reached trunk and multiple branches remove only diverted paths',()=>{
-  const d=M.defaults({version:2,title:'分岐率',time:{unit:'seconds',duration:30,snap:1},actors:[{id:'a',name:'Actor',side:'friendly'}],
+  const d=M.defaults({version:3,title:'分岐率',time:{unit:'seconds',duration:30,snap:1},actors:[{id:'a',name:'Actor',side:'friendly'}],
     states:[['start',0],['first',5],['second',10],['normal',20]].map(([id,time])=>({id,actorId:'a',name:id,time})),
     tasks:[{id:'choice',fromStateId:'start',toStateId:'normal',label:'選択',junctions:[
       {id:'j1',time:5,simulation:{mode:'probability'},outcomes:[{toStateId:'first',label:'先行',probability:.5,delay:0}]},

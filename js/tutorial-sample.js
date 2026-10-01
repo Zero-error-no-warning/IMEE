@@ -1,170 +1,1009 @@
-/* Fictional teaching scenarios. Times and technology maturity are illustrative. */
-(function (root) {
+/* Canonical version 3 examples, shared with checked-in JSON. */
+(function(root){
   "use strict";
-  const M = typeof module !== "undefined" && module.exports ? require("./model.js") : root.ME;
-  const actor = (id, name, parentId = null, side = "friendly", isGroup = false) =>
-    ({ id, name, parentId, side, ...(isGroup ? { isGroup } : {}) });
-  const state = (id, actorId, name, time, status = "planned", phase = "other") =>
-    ({ id, actorId, name, time, status, activity: "active", phase, notes: "" });
-  const task = (id, fromStateId, toStateId, label, kind = "support", status = "planned") =>
-    ({ id, fromStateId, toStateId, label, kind, status, notes: "" });
-  const branch = (id, fromStateId, label, time, outcomes, kind = "support") =>
-    ({ id, fromStateId, label, kind, status: "planned", junctions: [
-      { id: "j-" + id, time, outcomes: outcomes.map(([toStateId, label]) => ({ toStateId, label })) },
-    ] });
-  const at = (id, time) => time === undefined ? { type: "state", id } : { type: "task", id, time };
-  const cause = (id, source, target, label, kind = "information", polarity = "positive") =>
-    ({ id, source, target, label, kind, polarity });
-  function finish(d) {
-    for (const x of [...d.states, ...d.tasks]) delete x.status;
-    M.defaults(d);
-    d.views.main.filters.technology = false;
-    return M.validate(d);
+  const M=typeof module!=="undefined" && module.exports?require("./model.js"):root.ME;
+  const data={
+  "sample": {
+    "version": 3,
+    "title": "沿岸監視 — 不明接触の識別と妨害下での通報",
+    "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
+    "time": {
+      "unit": "minutes",
+      "duration": 90,
+      "snap": 1
+    },
+    "actors": [
+      {
+        "id": "group",
+        "name": "沿岸監視隊",
+        "parentId": null,
+        "side": "friendly",
+        "isGroup": true,
+        "color": "#a75353"
+      },
+      {
+        "id": "sensor",
+        "name": "監視UUV",
+        "parentId": "group",
+        "side": "friendly",
+        "color": "#236d78"
+      },
+      {
+        "id": "control",
+        "name": "識別担当",
+        "parentId": "group",
+        "side": "friendly",
+        "color": "#8061a8"
+      },
+      {
+        "id": "radio",
+        "name": "通信担当",
+        "parentId": "group",
+        "side": "friendly",
+        "color": "#a56c24"
+      },
+      {
+        "id": "enemy",
+        "name": "妨害装置",
+        "parentId": null,
+        "side": "hostile",
+        "color": "#397aa0"
+      }
+    ],
+    "states": [
+      {
+        "id": "s0",
+        "actorId": "sensor",
+        "name": "未探知",
+        "time": 2,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "s1",
+        "actorId": "sensor",
+        "name": "接触探知",
+        "time": 16,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "i0",
+        "actorId": "control",
+        "name": "識別待ち",
+        "time": 18,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "i1",
+        "actorId": "control",
+        "name": "識別済",
+        "time": 35,
+        "activity": "active",
+        "phase": "decision",
+        "notes": ""
+      },
+      {
+        "id": "i2",
+        "actorId": "control",
+        "name": "識別保留",
+        "time": 35,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "i3",
+        "actorId": "control",
+        "name": "追加情報取得",
+        "time": 58,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "r0",
+        "actorId": "radio",
+        "name": "通報準備済",
+        "time": 38,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "r1",
+        "actorId": "radio",
+        "name": "通報完了",
+        "time": 56,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "r2",
+        "actorId": "radio",
+        "name": "未達確認",
+        "time": 56,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "r3",
+        "actorId": "radio",
+        "name": "代替回線確立",
+        "time": 70,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "r4",
+        "actorId": "radio",
+        "name": "再送完了",
+        "time": 84,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "e0",
+        "actorId": "enemy",
+        "name": "妨害準備済",
+        "time": 38,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "e1",
+        "actorId": "enemy",
+        "name": "妨害終了",
+        "time": 68,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "jam-output-49",
+        "actorId": "enemy",
+        "time": 49,
+        "name": "受信を阻害成立",
+        "activity": "active",
+        "phase": "other"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "search",
+        "fromStateId": "s0",
+        "toStateId": "s1",
+        "label": "海域を捜索",
+        "kind": "detection",
+        "notes": ""
+      },
+      {
+        "id": "identify",
+        "fromStateId": "i0",
+        "label": "特徴を照合",
+        "kind": "support",
+        "junctions": [
+          {
+            "id": "j-identify",
+            "time": 29,
+            "outcomes": [
+              {
+                "toStateId": "i1",
+                "label": "一致"
+              },
+              {
+                "toStateId": "i2",
+                "label": "不一致"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "reobserve",
+        "fromStateId": "i2",
+        "toStateId": "i3",
+        "label": "追尾・再観測",
+        "kind": "observation",
+        "notes": ""
+      },
+      {
+        "id": "transmit",
+        "fromStateId": "r0",
+        "label": "識別結果を送信",
+        "kind": "support",
+        "junctions": [
+          {
+            "id": "j-transmit",
+            "time": 49,
+            "outcomes": [
+              {
+                "toStateId": "r1",
+                "label": "ACK受信"
+              },
+              {
+                "toStateId": "r2",
+                "label": "応答なし"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "switch",
+        "fromStateId": "r2",
+        "toStateId": "r3",
+        "label": "通信方式を切替",
+        "kind": "support",
+        "notes": ""
+      },
+      {
+        "id": "retry",
+        "fromStateId": "r3",
+        "toStateId": "r4",
+        "label": "再送・ACK確認",
+        "kind": "information",
+        "notes": ""
+      },
+      {
+        "id": "jam",
+        "fromStateId": "e0",
+        "toStateId": "jam-output-49",
+        "label": "通信帯域を妨害",
+        "kind": "interference",
+        "notes": "",
+        "junctions": []
+      },
+      {
+        "id": "jam-after-49",
+        "fromStateId": "jam-output-49",
+        "toStateId": "e1",
+        "label": "通信帯域を妨害（継続）",
+        "kind": "interference",
+        "notes": "",
+        "junctions": []
+      }
+    ],
+    "causalLinks": [
+      {
+        "id": "report",
+        "source": {
+          "type": "state",
+          "id": "s1"
+        },
+        "target": {
+          "type": "state",
+          "id": "i0"
+        },
+        "label": "接触情報",
+        "kind": "information",
+        "propagation": {
+          "duration": 2,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "order",
+        "source": {
+          "type": "state",
+          "id": "i1"
+        },
+        "target": {
+          "type": "state",
+          "id": "r0"
+        },
+        "label": "通報指示",
+        "kind": "command",
+        "propagation": {
+          "duration": 3,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "negative",
+        "source": {
+          "type": "state",
+          "id": "jam-output-49"
+        },
+        "target": {
+          "type": "junction",
+          "taskId": "transmit",
+          "id": "j-transmit",
+          "outcomeStateId": "r2"
+        },
+        "label": "受信を阻害",
+        "kind": "interference",
+        "propagation": {
+          "duration": 0,
+          "qualityRetention": 1
+        }
+      }
+    ],
+    "technologies": [],
+    "bindings": [],
+    "views": {
+      "main": {
+        "collapsedActors": [],
+        "actorOrder": [
+          "group",
+          "sensor",
+          "control",
+          "radio",
+          "enemy"
+        ],
+        "zoom": 1,
+        "visibleTimeRange": {
+          "start": 0,
+          "end": 90
+        },
+        "filters": {
+          "technology": false,
+          "causalLink": true,
+          "quiet": true,
+          "implicitDependencies": false
+        },
+        "laneHeight": 64,
+        "collapsedLayout": "compact",
+        "mode": "mission"
+      }
+    }
+  },
+  "grouped": {
+    "version": 3,
+    "title": "海底調査 — 2機のUUVと母船による確認・回収",
+    "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
+    "time": {
+      "unit": "minutes",
+      "duration": 100,
+      "snap": 1
+    },
+    "actors": [
+      {
+        "id": "fleet",
+        "name": "調査隊",
+        "parentId": null,
+        "side": "friendly",
+        "isGroup": true,
+        "color": "#a75353"
+      },
+      {
+        "id": "mother",
+        "name": "母船",
+        "parentId": "fleet",
+        "side": "friendly",
+        "color": "#236d78"
+      },
+      {
+        "id": "team",
+        "name": "水中調査班",
+        "parentId": "fleet",
+        "side": "friendly",
+        "isGroup": true,
+        "color": "#8061a8"
+      },
+      {
+        "id": "uuv-a",
+        "name": "A機・広域捜索",
+        "parentId": "team",
+        "side": "friendly",
+        "color": "#a56c24"
+      },
+      {
+        "id": "uuv-b",
+        "name": "B機・近接確認",
+        "parentId": "team",
+        "side": "friendly",
+        "color": "#397aa0"
+      }
+    ],
+    "states": [
+      {
+        "id": "a0",
+        "actorId": "uuv-a",
+        "name": "捜索開始",
+        "time": 4,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "a1",
+        "actorId": "uuv-a",
+        "name": "候補探知",
+        "time": 24,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "a2",
+        "actorId": "uuv-a",
+        "name": "回収点到着",
+        "time": 88,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b0",
+        "actorId": "uuv-b",
+        "name": "座標受領",
+        "time": 27,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b1",
+        "actorId": "uuv-b",
+        "name": "対象確認",
+        "time": 48,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b2",
+        "actorId": "uuv-b",
+        "name": "確認不可",
+        "time": 48,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b3",
+        "actorId": "uuv-b",
+        "name": "再走査終了",
+        "time": 68,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b4",
+        "actorId": "uuv-b",
+        "name": "回収指示受領",
+        "time": 76,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "b5",
+        "actorId": "uuv-b",
+        "name": "回収点到着",
+        "time": 94,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "m0",
+        "actorId": "mother",
+        "name": "確認報告受領",
+        "time": 51,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "m1",
+        "actorId": "mother",
+        "name": "記録確定",
+        "time": 66,
+        "activity": "active",
+        "phase": "decision",
+        "notes": ""
+      },
+      {
+        "id": "m2",
+        "actorId": "mother",
+        "name": "再調査を計画",
+        "time": 80,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      }
+    ],
+    "tasks": [
+      {
+        "id": "survey",
+        "fromStateId": "a0",
+        "toStateId": "a1",
+        "label": "広域を走査",
+        "kind": "detection",
+        "notes": ""
+      },
+      {
+        "id": "a-return",
+        "fromStateId": "a1",
+        "toStateId": "a2",
+        "label": "地形を記録し帰投",
+        "kind": "support",
+        "notes": ""
+      },
+      {
+        "id": "inspect",
+        "fromStateId": "b0",
+        "label": "接近・撮像",
+        "kind": "observation",
+        "junctions": [
+          {
+            "id": "j-inspect",
+            "time": 40,
+            "outcomes": [
+              {
+                "toStateId": "b1",
+                "label": "確認"
+              },
+              {
+                "toStateId": "b2",
+                "label": "不鮮明"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rescan",
+        "fromStateId": "b2",
+        "toStateId": "b3",
+        "label": "別角度で再走査",
+        "kind": "observation",
+        "notes": ""
+      },
+      {
+        "id": "b-return",
+        "fromStateId": "b4",
+        "toStateId": "b5",
+        "label": "回収点へ帰投",
+        "kind": "support",
+        "notes": ""
+      },
+      {
+        "id": "compile",
+        "fromStateId": "m0",
+        "toStateId": "m1",
+        "label": "画像と座標を照合",
+        "kind": "support",
+        "notes": ""
+      }
+    ],
+    "causalLinks": [
+      {
+        "id": "cue",
+        "source": {
+          "type": "state",
+          "id": "a1"
+        },
+        "target": {
+          "type": "state",
+          "id": "b0"
+        },
+        "label": "候補座標",
+        "kind": "information",
+        "propagation": {
+          "duration": 3,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "confirm-report",
+        "source": {
+          "type": "state",
+          "id": "b1"
+        },
+        "target": {
+          "type": "state",
+          "id": "m0"
+        },
+        "label": "確認画像",
+        "kind": "information",
+        "propagation": {
+          "duration": 3,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "incomplete-report",
+        "source": {
+          "type": "state",
+          "id": "b3"
+        },
+        "target": {
+          "type": "state",
+          "id": "m2"
+        },
+        "label": "未確定を報告",
+        "kind": "information",
+        "propagation": {
+          "duration": 12,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "recall",
+        "source": {
+          "type": "state",
+          "id": "m1"
+        },
+        "target": {
+          "type": "state",
+          "id": "b4"
+        },
+        "label": "回収指示",
+        "kind": "command",
+        "propagation": {
+          "duration": 10,
+          "qualityRetention": 1
+        }
+      }
+    ],
+    "technologies": [],
+    "bindings": [],
+    "views": {
+      "main": {
+        "collapsedActors": [],
+        "actorOrder": [
+          "fleet",
+          "mother",
+          "team",
+          "uuv-a",
+          "uuv-b"
+        ],
+        "zoom": 1,
+        "visibleTimeRange": {
+          "start": 0,
+          "end": 100
+        },
+        "filters": {
+          "technology": false,
+          "causalLink": true,
+          "quiet": true,
+          "implicitDependencies": false
+        },
+        "laneHeight": 64,
+        "collapsedLayout": "compact",
+        "mode": "mission"
+      }
+    }
+  },
+  "research": {
+    "version": 3,
+    "title": "技術Gap — 妨害源の探知から妨害活動への介入まで",
+    "notes": "時間・品質は説明用の仮定。Stateは意味のある条件・受領・結果のみを表す。作用線はState起点、Stateまたは分岐点終点。Task途中の出力は成立Stateを設けて分割する。",
+    "time": {
+      "unit": "minutes",
+      "duration": 80,
+      "snap": 1
+    },
+    "actors": [
+      {
+        "id": "sensor",
+        "name": "電波監視",
+        "parentId": null,
+        "side": "friendly",
+        "color": "#a75353"
+      },
+      {
+        "id": "control",
+        "name": "指揮所",
+        "parentId": null,
+        "side": "friendly",
+        "color": "#236d78"
+      },
+      {
+        "id": "effector",
+        "name": "介入担当",
+        "parentId": null,
+        "side": "friendly",
+        "color": "#8061a8"
+      },
+      {
+        "id": "enemy",
+        "name": "敵妨害装置",
+        "parentId": null,
+        "side": "hostile",
+        "color": "#a56c24"
+      }
+    ],
+    "states": [
+      {
+        "id": "s0",
+        "actorId": "sensor",
+        "name": "監視開始",
+        "time": 2,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "s1",
+        "actorId": "sensor",
+        "name": "妨害源探知",
+        "time": 14,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "c0",
+        "actorId": "control",
+        "name": "報告受領",
+        "time": 16,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "c1",
+        "actorId": "control",
+        "name": "介入決定",
+        "time": 30,
+        "activity": "active",
+        "phase": "decision",
+        "notes": ""
+      },
+      {
+        "id": "w0",
+        "actorId": "effector",
+        "name": "指令受領",
+        "time": 32,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "w1",
+        "actorId": "effector",
+        "name": "介入終了",
+        "time": 60,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "e0",
+        "actorId": "enemy",
+        "name": "送信準備済",
+        "time": 20,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "e1",
+        "actorId": "enemy",
+        "name": "妨害終了",
+        "time": 68,
+        "activity": "active",
+        "phase": "other",
+        "notes": ""
+      },
+      {
+        "id": "suppress-output-48",
+        "actorId": "effector",
+        "time": 48,
+        "name": "妨害活動を抑制成立",
+        "activity": "active",
+        "phase": "other"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "detect",
+        "fromStateId": "s0",
+        "toStateId": "s1",
+        "label": "電波を探知・測位",
+        "kind": "detection",
+        "notes": ""
+      },
+      {
+        "id": "decide",
+        "fromStateId": "c0",
+        "toStateId": "c1",
+        "label": "介入可否を判断",
+        "kind": "support",
+        "notes": ""
+      },
+      {
+        "id": "suppress",
+        "fromStateId": "w0",
+        "toStateId": "suppress-output-48",
+        "label": "追尾・指向性妨害",
+        "kind": "interference",
+        "notes": "",
+        "junctions": []
+      },
+      {
+        "id": "jam",
+        "fromStateId": "e0",
+        "toStateId": "e1",
+        "label": "通信帯域を妨害",
+        "kind": "interference",
+        "notes": "",
+        "junctions": [
+          {
+            "id": "blue-action-junction",
+            "time": 48,
+            "outcomes": [
+              {
+                "label": "妨害活動を抑制結果",
+                "toStateId": "e1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "suppress-after-48",
+        "fromStateId": "suppress-output-48",
+        "toStateId": "w1",
+        "label": "追尾・指向性妨害（継続）",
+        "kind": "interference",
+        "notes": "",
+        "junctions": []
+      }
+    ],
+    "causalLinks": [
+      {
+        "id": "report",
+        "source": {
+          "type": "state",
+          "id": "s1"
+        },
+        "target": {
+          "type": "state",
+          "id": "c0"
+        },
+        "label": "位置・周波数",
+        "kind": "information",
+        "propagation": {
+          "duration": 2,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "order",
+        "source": {
+          "type": "state",
+          "id": "c1"
+        },
+        "target": {
+          "type": "state",
+          "id": "w0"
+        },
+        "label": "介入指令",
+        "kind": "command",
+        "propagation": {
+          "duration": 2,
+          "qualityRetention": 1
+        }
+      },
+      {
+        "id": "blue-action",
+        "source": {
+          "type": "state",
+          "id": "suppress-output-48"
+        },
+        "target": {
+          "type": "junction",
+          "taskId": "jam",
+          "id": "blue-action-junction",
+          "outcomeStateId": "e1"
+        },
+        "label": "妨害活動を抑制",
+        "kind": "interference",
+        "propagation": {
+          "duration": 0,
+          "qualityRetention": 1
+        }
+      }
+    ],
+    "technologies": [
+      {
+        "id": "esm",
+        "name": "電波探知・測位",
+        "status": "existing",
+        "trl": 9
+      },
+      {
+        "id": "c2",
+        "name": "情報融合・指揮",
+        "status": "existing",
+        "trl": 9
+      },
+      {
+        "id": "array",
+        "name": "指向性送信装置",
+        "status": "existing",
+        "trl": 9
+      },
+      {
+        "id": "tracking",
+        "name": "妨害源追尾制御",
+        "status": "research",
+        "trl": 4
+      }
+    ],
+    "bindings": [
+      {
+        "id": "b-sensor",
+        "technologyId": "esm",
+        "targetType": "actor",
+        "targetId": "sensor"
+      },
+      {
+        "id": "b-control",
+        "technologyId": "c2",
+        "targetType": "actor",
+        "targetId": "control"
+      },
+      {
+        "id": "b-effector",
+        "technologyId": "array",
+        "targetType": "actor",
+        "targetId": "effector"
+      },
+      {
+        "id": "b-report",
+        "technologyId": "c2",
+        "targetType": "causalLink",
+        "targetId": "report"
+      },
+      {
+        "id": "b-order",
+        "technologyId": "c2",
+        "targetType": "causalLink",
+        "targetId": "order"
+      },
+      {
+        "id": "b-action",
+        "technologyId": "tracking",
+        "targetType": "causalLink",
+        "targetId": "blue-action"
+      }
+    ],
+    "views": {
+      "main": {
+        "collapsedActors": [],
+        "actorOrder": [
+          "sensor",
+          "control",
+          "effector",
+          "enemy"
+        ],
+        "zoom": 1,
+        "visibleTimeRange": {
+          "start": 0,
+          "end": 80
+        },
+        "filters": {
+          "technology": true,
+          "causalLink": true,
+          "quiet": true,
+          "implicitDependencies": false
+        },
+        "laneHeight": 64,
+        "collapsedLayout": "compact",
+        "mode": "gap"
+      }
+    }
   }
-  function sample() {
-    return finish({
-      version: 2,
-      title: "沿岸監視 — 不明接触の識別と妨害下での通報",
-      notes: "架空の検討例。目的は探知した接触の識別結果を母船へ届けること。分岐は代替結果を示す。識別できなければ追尾を続け、通報に失敗した場合は通信方式を切り替えて再送する。分岐先は排他的な候補であり、同時に実現した実績ではない。所要時間は説明用の仮定。",
-      time: { unit: "minutes", duration: 90, snap: 1 },
-      actors: [
-        actor("group", "沿岸監視隊", null, "friendly", true),
-        actor("sensor", "監視UUV", "group"),
-        actor("control", "識別担当", "group"),
-        actor("radio", "通信担当", "group"),
-        actor("enemy", "妨害装置", null, "hostile"),
-      ],
-      states: [
-        state("s0", "sensor", "未探知", 2, "actual"),
-        state("s1", "sensor", "接触探知", 16, "actual"),
-        state("i0", "control", "識別待ち", 18),
-        state("i1", "control", "識別済", 35, "planned", "decision"),
-        state("i2", "control", "識別保留", 35),
-        state("i3", "control", "追加情報取得", 58),
-        state("r0", "radio", "通報準備済", 38),
-        state("r1", "radio", "通報完了", 56),
-        state("r2", "radio", "未達確認", 56),
-        state("r3", "radio", "代替回線確立", 70),
-        state("r4", "radio", "再送完了", 84),
-        state("e0", "enemy", "妨害準備済", 38),
-        state("e1", "enemy", "妨害終了", 68),
-      ],
-      tasks: [
-        task("search", "s0", "s1", "海域を捜索", "detection", "actual"),
-        branch("identify", "i0", "特徴を照合", 29, [["i1", "一致"], ["i2", "不一致"]]),
-        task("reobserve", "i2", "i3", "追尾・再観測", "observation"),
-        branch("transmit", "r0", "識別結果を送信", 49, [["r1", "ACK受信"], ["r2", "応答なし"]]),
-        task("switch", "r2", "r3", "通信方式を切替"),
-        task("retry", "r3", "r4", "再送・ACK確認", "information"),
-        task("jam", "e0", "e1", "通信帯域を妨害", "interference"),
-      ],
-      causalLinks: [
-        cause("report", at("s1"), at("i0"), "接触情報"),
-        cause("order", at("i1"), at("r0"), "通報指示", "command"),
-        cause("negative", at("jam", 49), at("transmit", 49), "受信を阻害", "interference", "negative"),
-      ],
-    });
-  }
-  function grouped() {
-    return finish({
-      version: 2,
-      title: "海底調査 — 2機のUUVと母船による確認・回収",
-      notes: "架空の検討例。A機が候補を探知し、B機が近接確認、母船が報告を照合して回収を指示する。水中調査班を折りたたむと母船との報告・指令が残る。確認不可の枝では再走査して、未確定であることを報告する。時刻・能力は説明用の仮定。",
-      time: { unit: "minutes", duration: 100, snap: 1 },
-      actors: [
-        actor("fleet", "調査隊", null, "friendly", true),
-        actor("mother", "母船", "fleet"),
-        actor("team", "水中調査班", "fleet", "friendly", true),
-        actor("uuv-a", "A機・広域捜索", "team"),
-        actor("uuv-b", "B機・近接確認", "team"),
-      ],
-      states: [
-        state("a0", "uuv-a", "捜索開始", 4, "actual"),
-        state("a1", "uuv-a", "候補探知", 24),
-        state("a2", "uuv-a", "回収点到着", 88),
-        state("b0", "uuv-b", "座標受領", 27),
-        state("b1", "uuv-b", "対象確認", 48),
-        state("b2", "uuv-b", "確認不可", 48),
-        state("b3", "uuv-b", "再走査終了", 68),
-        state("b4", "uuv-b", "回収指示受領", 76),
-        state("b5", "uuv-b", "回収点到着", 94),
-        state("m0", "mother", "確認報告受領", 51),
-        state("m1", "mother", "記録確定", 66, "planned", "decision"),
-        state("m2", "mother", "再調査を計画", 80),
-      ],
-      tasks: [
-        task("survey", "a0", "a1", "広域を走査", "detection"),
-        task("a-return", "a1", "a2", "地形を記録し帰投"),
-        branch("inspect", "b0", "接近・撮像", 40, [["b1", "確認"], ["b2", "不鮮明"]], "observation"),
-        task("rescan", "b2", "b3", "別角度で再走査", "observation"),
-        task("b-return", "b4", "b5", "回収点へ帰投"),
-        task("compile", "m0", "m1", "画像と座標を照合"),
-      ],
-      causalLinks: [
-        cause("cue", at("a1"), at("b0"), "候補座標"),
-        cause("confirm-report", at("b1"), at("m0"), "確認画像"),
-        cause("incomplete-report", at("b3"), at("m2"), "未確定を報告"),
-        cause("recall", at("m1"), at("b4"), "回収指示", "command"),
-      ],
-    });
-  }
-  function research() {
-    const d = finish({
-      version: 2,
-      title: "技術Gap — 妨害源の探知から妨害活動への介入まで",
-      notes: "架空の能力検討例。電波監視→指揮所の判断→介入担当への指令→敵Taskへの負の因果を追う。敵の妨害実行は20〜68分、介入は48分。指向性妨害の追尾制御だけを研究段階（仮定のTRL4）として、時間窓内でも技術条件が未充足になる例。耐妨害受信と敵の送信活動抑制は別の能力として扱う。",
-      time: { unit: "minutes", duration: 80, snap: 1 },
-      actors: [
-        actor("sensor", "電波監視"), actor("control", "指揮所"),
-        actor("effector", "介入担当"), actor("enemy", "敵妨害装置", null, "hostile"),
-      ],
-      states: [
-        state("s0", "sensor", "監視開始", 2, "actual"),
-        state("s1", "sensor", "妨害源探知", 14),
-        state("c0", "control", "報告受領", 16),
-        state("c1", "control", "介入決定", 30, "planned", "decision"),
-        state("w0", "effector", "指令受領", 32),
-        state("w1", "effector", "介入終了", 60),
-        state("e0", "enemy", "送信準備済", 20),
-        state("e1", "enemy", "妨害終了", 68),
-      ],
-      tasks: [
-        task("detect", "s0", "s1", "電波を探知・測位", "detection"),
-        task("decide", "c0", "c1", "介入可否を判断"),
-        task("suppress", "w0", "w1", "追尾・指向性妨害", "interference"),
-        task("jam", "e0", "e1", "通信帯域を妨害", "interference"),
-      ],
-      causalLinks: [
-        cause("report", at("s1"), at("c0"), "位置・周波数"),
-        cause("order", at("c1"), at("w0"), "介入指令", "command"),
-        cause("blue-action", at("suppress", 48), at("jam", 48), "妨害活動を抑制", "interference", "negative"),
-      ],
-      technologies: [
-        { id: "esm", name: "電波探知・測位", status: "existing", trl: 9 },
-        { id: "c2", name: "情報融合・指揮", status: "existing", trl: 9 },
-        { id: "array", name: "指向性送信装置", status: "existing", trl: 9 },
-        { id: "tracking", name: "妨害源追尾制御", status: "research", trl: 4 },
-      ],
-      bindings: [
-        { id: "b-sensor", technologyId: "esm", targetType: "actor", targetId: "sensor" },
-        { id: "b-control", technologyId: "c2", targetType: "actor", targetId: "control" },
-        { id: "b-effector", technologyId: "array", targetType: "actor", targetId: "effector" },
-        { id: "b-report", technologyId: "c2", targetType: "causalLink", targetId: "report" },
-        { id: "b-order", technologyId: "c2", targetType: "causalLink", targetId: "order" },
-        { id: "b-action", technologyId: "tracking", targetType: "causalLink", targetId: "blue-action" },
-      ],
-    });
-    d.views.main.mode = "gap";
-    d.views.main.filters.technology = true;
-    return d;
-  }
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = sample;
-    module.exports.grouped = grouped;
-    module.exports.research = research;
-  } else {
-    root.createTutorialSample = sample;
-    root.createTutorialGroupedSample = grouped;
-    root.createTutorialResearchSample = research;
-  }
+};
+  const sample=()=>M.defaults(M.validate(M.clone(data.sample)));
+  const grouped=()=>M.defaults(M.validate(M.clone(data.grouped)));
+  const research=()=>M.defaults(M.validate(M.clone(data.research)));
+  if(typeof module!=="undefined" && module.exports){module.exports=sample;module.exports.grouped=grouped;module.exports.research=research;}
+  else {root.createTutorialSample=sample;root.createTutorialGroupedSample=grouped;root.createTutorialResearchSample=research;}
 })(globalThis);

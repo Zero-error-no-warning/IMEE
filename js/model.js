@@ -1,4 +1,4 @@
-/* IMEE v2: pure mission data and operations. No DOM or runtime dependencies. */
+/* IMEE v3: pure mission data and operations. No DOM or runtime dependencies. */
 (function (root) {
   "use strict";
   const P = typeof module !== "undefined" && module.exports ? require("./performance.js") : root.MEPerformance;
@@ -20,10 +20,20 @@
     "gap",
     "unknown",
   ];
-  const fail = (s) => {
-    throw new Error(s);
+  let validationContext = null;
+  const fail = (message, path, fragment) => {
+    const error = new Error(message);
+    error.name = "MissionValidationError";
+    const context = path ? { path, fragment } : validationContext;
+    if (context) {
+      error.validationPath = context.path;
+      try { error.validationFragment = clone(context.fragment); }
+      catch (_) { error.validationFragment = context.fragment; }
+    }
+    throw error;
   };
-  const get = (d, type, id) => d[collections[type]]?.find((x) => x.id === id);
+  const context = (path, fragment) => { validationContext = { path, fragment }; };
+  const get = (d, type, id) => type === "junction" ? d.tasks.flatMap(t=>t.junctions || []).find(j=>j.id===id) : d[collections[type]]?.find((x) => x.id === id);
   const snap = (n, step) => Math.round(n / step) * step;
   const actorPalette = ["#a75353", "#236d78", "#8061a8", "#a56c24", "#397aa0", "#538447", "#a55387", "#596a86"];
   function actorColor(d, actor) {
@@ -45,11 +55,13 @@
       technology: true,
       causalLink: true,
       quiet: true,
+      implicitDependencies: false,
       ...v.filters,
     };
     v.laneHeight ??= 64;
     v.collapsedLayout ??= "compact";
     v.mode ??= "mission";
+    validationContext = null;
     return d;
   }
   function taskWindow(d, t) {
@@ -62,23 +74,72 @@
     };
   }
   function endpoint(d, p) {
+    if (!p) return;
     if (p.type === "state") {
       const s = get(d, "state", p.id);
       return s && { actorId: s.actorId, time: s.time };
     }
-    if (p.type === "task") {
-      const t = get(d, "task", p.id);
-      return (
-        t && { actorId: get(d, "state", t.fromStateId)?.actorId, time: p.time }
-      );
+    if (p.type === "junction") {
+      const t=get(d,"task",p.taskId), j=t?.junctions?.find(j=>j.id===p.id);
+      return j && {actorId:get(d,"state",t.fromStateId)?.actorId,time:j.time};
     }
-    if (p.type === "actor")
-      return get(d, "actor", p.id) && { actorId: p.id, time: p.time };
+  }
+  function endpointActor(d, p) { return endpoint(d,p)?.actorId; }
+  function startStateIds(t) { return [...new Set([t.fromStateId,...(t.simulation?.waitForStateIds || [])])]; }
+  function nominalStart(d,t) {
+    const base=Math.max(...startStateIds(t).map(id=>get(d,"state",id).time));
+    const qi=t.simulation?.qInput, qs=qi?.stateIds || [];
+    return qs.length ? Math.max(base,(qi.mode === "any" ? Math.min : Math.max)(...qs.map(id=>get(d,"state",id).time))) : base;
+  }
+  function implicitDependencies(d) {
+    return d.causalLinks.filter(c=>c.target.type==="junction").map(c=>({
+      sourceStateId:c.source.id,targetTaskId:c.target.taskId,linkId:c.id,
+      startStateIds:startStateIds(get(d,"task",c.target.taskId))
+    }));
+  }
+  function dependencyGraph(d, executableOnly=false) {
+    const nodes=new Map(), add=(id,type,item,dependencies=[])=>nodes.set(id,{id,type,item,dependencies:[...new Set(dependencies)]});
+    for(const st of d.states)add(st.id,"state",st);
+    for(const t of d.tasks){add("start:"+t.id,"start",t,[...startStateIds(t),...(t.simulation?.qInput?.stateIds || [])]);add(t.id,"task",t,["start:"+t.id]);}
+    for(const t of d.tasks)for(const id of new Set([t.toStateId,...(t.junctions || []).flatMap(j=>j.outcomes.map(o=>o.toStateId))].filter(Boolean)))nodes.get(id).dependencies.push(t.id);
+    for(const c of d.causalLinks.filter(c=>!executableOnly || c.simulation?.enabled)){
+      if(c.target.type==="state"){add(c.id,"link",c,[c.source.id]);nodes.get(c.target.id).dependencies.push(c.id);}
+      else nodes.get(c.source.id).dependencies.push("start:"+c.target.taskId);
+    }
+    const done=new Set(), visiting=new Set(), order=[], stack=[];
+    function visit(id){
+      if(done.has(id))return;
+      if(visiting.has(id)){
+        const cycle=[...stack.slice(stack.indexOf(id)),id];
+        const links=d.causalLinks.filter(c=>cycle.includes(c.source.id) && cycle.includes("start:"+c.target.taskId));
+        fail("暗黙の開始依存を含む循環があります: "+cycle.join(" → "),"$.causalLinks",{cycle,causalLinks:links,items:cycle.map(id=>nodes.get(id)?.item)});
+      }
+      visiting.add(id);stack.push(id);
+      for(const p of nodes.get(id).dependencies)visit(p);
+      stack.pop();visiting.delete(id);done.add(id);order.push(nodes.get(id));
+    }
+    for(const id of nodes.keys())visit(id);
+    return {nodes,order};
+  }
+
+  function causalEndpoint(d, c, side = "target") {
+    const source = endpoint(d, c.source);
+    if (!source) return;
+    if (side === "source") return source;
+    const actorId = endpointActor(d, c.target);
+    const duration = c.propagation?.duration;
+    if (!actorId || !Number.isFinite(duration)) return;
+    return { actorId, time: source.time + duration };
+  }
+  function causalArrivalTime(d, c) {
+    return causalEndpoint(d, c, "target")?.time;
   }
   function validate(d) {
-    if (!d || d.version !== 2)
+    try {
+    validationContext = { path: "$", fragment: d };
+    if (!d || d.version !== 3)
       fail(
-        "version: 2 のJSONが必要です。旧version 1の期間Stateは読み込めません。",
+        "version: 3 のJSONが必要です。旧w・極性・Task/Actor作用端点は使用できません。",
       );
     const str = (s, n, empty = false) => {
       if (typeof s !== "string" || (!empty && !s.trim()) || s.length > 10000)
@@ -116,9 +177,10 @@
         continue;
       if (!Array.isArray(d[k]) || d[k].length > 10000)
         fail(k + "は10,000件以下の配列です。");
-      d[k].forEach(register);
+      d[k].forEach((x,i)=>{context(`$.${k}[${i}]`,x);register(x);});
     }
-    for (const a of d.actors) {
+    for (const [i, a] of d.actors.entries()) {
+      context(`$.actors[${i}]`, a);
       str(a.name, "Actor名");
       opt(a.side, ["friendly", "hostile", "neutral"], "所属");
       if (!a.side) fail("所属が必要です。");
@@ -142,7 +204,8 @@
         fail("proposedは真偽値です。");
       if (x.kind !== undefined) str(x.kind, "分類", true);
     };
-    for (const s of d.states) {
+    for (const [i, s] of d.states.entries()) {
+      context(`$.states[${i}]`, s);
       str(s.name, "State名");
       if (!get(d, "actor", s.actorId)) fail("StateのActorが存在しません。");
       num(s.time, "State.time");
@@ -153,24 +216,25 @@
       opt(s.phase, ["other", "decision"], "役割");
       if (s.simulation !== undefined) {
         if (!s.simulation || typeof s.simulation !== "object" || Array.isArray(s.simulation)) fail("State.simulationが不正です。");
-        if (s.simulation.w !== undefined) P.number(s.simulation.w, "State出力w", 0, 1);
+        if ("w" in s.simulation) fail("State.wは廃止されました。qを使用してください。");
+        if (s.simulation.q !== undefined) P.number(s.simulation.q, "State品質q", 0, 1);
         opt(s.simulation.join, ["all", "any"], "State合流モード");
       }
     }
-    for (const t of d.tasks) {
+    for (const [i, t] of d.tasks.entries()) {
+      context(`$.tasks[${i}]`, t);
       status(t);
       P.validateTask(t.simulation, t.label || t.id);
+      if(t.simulation && "q" in t.simulation)fail("Taskの入力qはStateから取得します。固定qは初期Stateへ指定してください。");
       const refs = (ids, label) => {
         if (ids !== undefined && (!Array.isArray(ids) || ids.length > 10000 || new Set(ids).size !== ids.length || ids.some(sid => !get(d, "state", sid)))) fail(label + "参照が不正です。");
       };
       refs(t.simulation?.cancelOnStateIds, "Task中止State");
-      if (t.simulation?.outputW !== undefined) P.number(t.simulation.outputW, "Task出力w", 0, 1);
-      if (t.simulation?.wInput !== undefined) {
-        const wi = t.simulation.wInput;
-        if (!wi || typeof wi !== "object" || Array.isArray(wi)) fail("wInputが不正です。");
-        refs(wi.stateIds, "w入力State");
-        if (wi.waitForLinks !== undefined && typeof wi.waitForLinks !== "boolean") fail("waitForLinksは真偽値です。");
-        opt(wi.combine, ["max"], "w結合方式");
+      if (t.simulation?.qInput !== undefined) {
+        const qi=t.simulation.qInput;
+        if(!qi || typeof qi!=="object" || Array.isArray(qi))fail("qInputが不正です。");
+        refs(qi.stateIds,"品質入力State");
+        opt(qi.mode,["all","any"],"品質入力合流条件");
       }
       if (t.simulation?.waitForStateIds !== undefined &&
           (!Array.isArray(t.simulation.waitForStateIds) || t.simulation.waitForStateIds.length > 10000 ||
@@ -225,45 +289,55 @@
         }
       }
     }
-    for (const c of d.causalLinks) {
+    for (const [i, c] of d.causalLinks.entries()) {
+      context(`$.causalLinks[${i}]`, c);
       str(c.label, "因果ラベル");
-      opt(c.polarity, ["positive", "negative"], "極性");
-      if (!c.polarity) fail("polarityが必要です。");
+      if ("polarity" in c) fail("polarityは廃止されました。State成立または分岐結果で作用を表現してください。");
       status(c);
-      for (const p of [c.source, c.target]) {
-        if (
-          !p ||
-          !["state", "task", "actor"].includes(p.type) ||
-          !endpoint(d, p)
-        )
-          fail("因果リンクの端点が不正です。");
-        if (p.type !== "state") num(p.time, "端点の時刻");
-        else if ("time" in p)
-          fail("State端点に時刻を重複保存しないでください。");
-        // Out-of-window attachments remain representable; opportunity() reports
-        // the actual timing gap without a planned/proposed mode.
+      if(!c.source || c.source.type!=="state" || !endpoint(d,c.source) || "time" in c.source)fail("作用線の起点はStateのみです。source.timeは保存しません。");
+      const target=c.target;
+      if(!target || !["state","junction"].includes(target.type) || !endpoint(d,target) || "time" in target)fail("作用線の到達先はStateまたは明示的な分岐点です。target.timeは保存しません。");
+      const p=c.propagation;
+      if(!p || typeof p!=="object" || Array.isArray(p))fail("propagation.durationが必要です。");
+      P.number(p.duration,"伝搬時間",0,1e9);
+      if("w" in p)fail("propagation.wは廃止されました。");
+      if(p.qualityRetention!==undefined)P.number(p.qualityRetention,"品質保持率",0,1);
+      if(p.performanceModel)P.validateTask({enabled:true,performanceModel:p.performanceModel},"作用線の伝搬CDF");
+      const arrival=causalArrivalTime(d,c), ep=endpoint(d,target);
+      if(!Number.isFinite(arrival) || arrival>d.time.duration)fail("作用線の基準到達時刻が表示期間外です。");
+      if(target.type==="junction" && Math.abs(arrival-ep.time)>1e-9)fail(`基準到達時刻が分岐点と一致しません。source+duration=${arrival}, target=${ep.time}`);
+      if(target.type==="junction"){
+        const t=get(d,"task",target.taskId), j=get(d,"junction",target.id);
+        if(!j.outcomes.some(o=>o.toStateId===target.outcomeStateId))fail("分岐点の結果Stateをtarget.outcomeStateIdで指定してください。");
+        if(j.simulation && j.simulation.mode!=="effect")fail("作用線の到達先は作用分岐点です。");
+        if(get(d,"state",c.source.id).time<nominalStart(d,t))fail("作用発生Stateの基準時刻は対象Taskの開始条件成立以降にしてください。実行時は暗黙の開始依存を適用します。");
       }
-      if (endpoint(d, c.source).time > endpoint(d, c.target).time)
-        fail("因果リンクは時間を逆行できません。");
-      if (c.simulation !== undefined) {
-        const sim = c.simulation;
-        if (!sim || typeof sim !== "object" || Array.isArray(sim) || typeof sim.enabled !== "boolean") fail("作用線simulation.enabledは真偽値です。");
-        opt(sim.type, ["w", "branch", "state"], "作用線実行タイプ");
-        if (sim.enabled && !sim.type) fail("作用線の実行タイプが必要です。");
-        if (sim.delay !== undefined) P.number(sim.delay, "作用線遅延", 0, 1e9);
-        if (sim.w !== undefined) P.number(sim.w, "作用線w", 0, 1);
-        P.validateTask(sim.propagation, "作用線「" + c.label + "」の伝搬CDF");
-        for (const k of ["stopTargetActor", "holdUntilStart"]) if (sim[k] !== undefined && typeof sim[k] !== "boolean") fail(k + "は真偽値です。");
-        if (sim.enabled && sim.type === "w" && c.target.type === "actor") fail("w入力先はTaskまたはStateです。");
-        if (sim.enabled && sim.type === "w" && c.source.type === "actor" && sim.w === undefined) fail("Actor出力には固定wが必要です。");
-        if (sim.enabled && sim.type === "state" && c.target.type !== "state") fail("State到達作用の入力先はStateです。");
-        if (sim.enabled && sim.type === "branch") {
-          const task = get(d, "task", c.target.id), junction = task?.junctions?.find(j => j.id === sim.junctionId);
-          if (c.target.type !== "task" || junction?.simulation?.mode !== "effect" || !junction.outcomes.some(o => o.toStateId === sim.outcomeStateId)) fail("作用分岐のJunction・結果State参照が不正です。");
-        }
+      if(c.simulation!==undefined){
+        const sim=c.simulation;
+        if(!sim || typeof sim!=="object" || Array.isArray(sim) || typeof sim.enabled!=="boolean")fail("作用線simulation.enabledは真偽値です。");
+        for(const k of ["type","w","delay","propagation","junctionId","outcomeStateId","holdUntilStart"])if(k in sim)fail("旧作用線simulation."+k+"は廃止されました。作用はtargetから決まります。");
+        if(sim.stopTargetActor!==undefined && (typeof sim.stopTargetActor!=="boolean" || target.type!=="junction"))fail("stopTargetActorは分岐点への作用にのみ指定できます。");
       }
     }
-    for (const t of d.technologies || []) {
+    // Individual receipts may precede or follow the State's nominal establishment.
+    for(const [i,st] of d.states.entries()) {
+      const links=d.causalLinks.filter(c=>c.target.type==="state" && c.target.id===st.id);
+      if(!links.length)continue;
+      const arrivals=links.map(c=>causalArrivalTime(d,c));
+      for(const t of d.tasks){
+        if(t.toStateId===st.id)arrivals.push(st.time);
+        for(const j of t.junctions || [])for(const o of j.outcomes)
+          if(o.toStateId===st.id)arrivals.push(j.time+(o.delay ?? st.time-j.time));
+      }
+      const mode=st.simulation?.join || "all";
+      let expected=(mode==="any"?Math.min:Math.max)(...arrivals);
+      const gates=d.causalLinks.filter(c=>c.target.type==="junction" && c.source.id===st.id);
+      if(gates.length)expected=Math.max(expected,...gates.map(c=>nominalStart(d,get(d,"task",c.target.taskId))));
+      if(Math.abs(st.time-expected)>1e-9)fail(`Stateの基準成立時刻が合流条件と一致しません。join=${mode}, expected=${expected}, State.time=${st.time}`,`$.states[${i}]`,{state:st,arrivals,causalLinks:links});
+    }
+    dependencyGraph(d);
+    for (const [i, t] of (d.technologies || []).entries()) {
+      context(`$.technologies[${i}]`, t);
       str(t.name, "技術名");
       opt(t.status, technologyStatuses, "技術区分");
       if (!t.status) fail("技術区分が必要です。");
@@ -272,7 +346,8 @@
         if (!Number.isInteger(t.trl)) fail("TRLは整数です。");
       }
     }
-    for (const b of d.bindings || []) {
+    for (const [i, b] of (d.bindings || []).entries()) {
+      context(`$.bindings[${i}]`, b);
       if (
         !["actor", "state", "task", "causalLink"].includes(b.targetType) ||
         !get(d, b.targetType, b.targetId) ||
@@ -281,6 +356,7 @@
         fail("Technology Bindingの参照が不正です。");
     }
     if (d.simulation !== undefined) {
+      context("$.simulation", d.simulation);
       const sim = d.simulation;
       if (!sim || typeof sim !== "object" || Array.isArray(sim) ||
           !Array.isArray(sim.successStateIds) || sim.successStateIds.length > 10000 ||
@@ -294,6 +370,7 @@
           fail("simulation." + key + "が不正です。");
     }
     if (d.views?.main) {
+      context("$.views.main", d.views.main);
       const v = d.views.main;
       opt(v.mode, ["mission", "technology", "gap", "causality"], "View");
       opt(v.collapsedLayout, ["compact", "single", "spaced"], "折りたたみ表示");
@@ -315,12 +392,13 @@
           fail(k + "のActor参照が不正です。");
       for (const [k, value] of Object.entries(v.filters || {}))
         if (
-          !["technology", "causalLink", "planned", "quiet"].includes(k) ||
+          !["technology", "causalLink", "planned", "quiet", "implicitDependencies"].includes(k) ||
           typeof value !== "boolean"
         )
           fail("表示フィルタが不正です。");
     }
     return d;
+    } catch(error){if(!error.validationPath && validationContext){error.validationPath=validationContext.path;error.validationFragment=clone(validationContext.fragment);}throw error;}
   }
   function parse(text) {
     return defaults(clone(validate(JSON.parse(text))));
@@ -377,11 +455,17 @@
       validate(d);
       return { type: "task", id: t.id };
     }
+    if(source.type!=="state" || !["state","junction"].includes(target.type))fail("接続はState起点・Stateまたは分岐点終点です。途中出力はStateを設けてTaskを分けてください。");
+    const sourcePoint = endpoint(d, source), targetPoint = endpoint(d, target);
+    if (!sourcePoint || !targetPoint) fail("作用線の端点が不正です。");
+    const duration = targetPoint.time - sourcePoint.time;
+    if (duration < 0)
+      fail("作用線は時間を逆行できません。到達位置は発生位置以降にしてください。");
     const c = {
       id: id("cause"),
       source: clone(source),
       target: clone(target),
-      polarity: "positive",
+      propagation: { duration },
       label: "作用",
       kind: "",
       notes: "",
@@ -423,7 +507,7 @@
         set.add(t.id);
     }
     for (const c of d.causalLinks)
-      if (set.has(c.source.id) && set.has(c.target.id)) set.add(c.id);
+      if (set.has(c.source.id) && set.has(c.target.type === "junction" ? c.target.taskId : c.target.id)) set.add(c.id);
     return set;
   }
   function fragment(d, selection) {
@@ -443,7 +527,7 @@
       [...f.actors, ...f.states, ...f.tasks].map((x) => x.id),
     );
     f.causalLinks = f.causalLinks.filter(
-      (c) => available.has(c.source.id) && available.has(c.target.id),
+      (c) => available.has(c.source.id) && available.has(c.target.type === "junction" ? c.target.taskId : c.target.id),
     );
     const copied = new Set([...available, ...f.causalLinks.map((c) => c.id)]);
     f.bindings = clone(d.bindings.filter((b) => copied.has(b.targetId)));
@@ -474,7 +558,7 @@
       if (t.simulation?.waitForStateIds)
         t.simulation.waitForStateIds = t.simulation.waitForStateIds.map(ref);
       if (t.simulation?.cancelOnStateIds) t.simulation.cancelOnStateIds = t.simulation.cancelOnStateIds.map(ref);
-      if (t.simulation?.wInput?.stateIds) t.simulation.wInput.stateIds = t.simulation.wInput.stateIds.map(ref);
+      if (t.simulation?.qInput?.stateIds) t.simulation.qInput.stateIds = t.simulation.qInput.stateIds.map(ref);
       for (const j of t.junctions || []) {
         j.id = ref(j.id);
         j.time += delta;
@@ -483,12 +567,10 @@
     }
     for (const c of f.causalLinks) {
       c.id = ref(c.id);
-      if (c.simulation?.junctionId) c.simulation.junctionId = ref(c.simulation.junctionId);
-      if (c.simulation?.outcomeStateId) c.simulation.outcomeStateId = ref(c.simulation.outcomeStateId);
-      for (const p of [c.source, c.target]) {
-        p.id = ref(p.id);
-        if (p.type !== "state") p.time += delta;
-      }
+      if(c.target.type === "junction"){c.target.taskId=ref(c.target.taskId);c.target.outcomeStateId=ref(c.target.outcomeStateId);}
+      c.source.id = ref(c.source.id);
+      c.target.id = ref(c.target.id);
+      if (c.source.type !== "state") c.source.time += delta;
     }
     for (const b of f.bindings) {
       b.id = ref(b.id);
@@ -516,9 +598,8 @@
       t.junctions = (t.junctions || []).filter((j) => j.outcomes.length);
       if (!t.toStateId && !t.junctions.length) set.add(t.id);
     }
-    for (const c of d.causalLinks)
-      if (set.has(c.source.id) || set.has(c.target.id) || (c.simulation?.type === "branch" &&
-          !get(d,"task",c.target.id)?.junctions?.some(j => j.id === c.simulation.junctionId && j.outcomes.some(o => o.toStateId === c.simulation.outcomeStateId)))) set.add(c.id);
+    for(const c of d.causalLinks)
+      if(set.has(c.source.id) || set.has(c.target.id) || set.has(c.target.taskId) || (c.target.type==="junction" && !get(d,"task",c.target.taskId)?.junctions?.some(j=>j.id===c.target.id && j.outcomes.some(o=>o.toStateId===c.target.outcomeStateId))))set.add(c.id);
     for (const k of [
       "actors",
       "states",
@@ -539,7 +620,7 @@
       if (t.simulation?.waitForStateIds)
         t.simulation.waitForStateIds = t.simulation.waitForStateIds.filter(sid => get(d, "state", sid));
       if (t.simulation?.cancelOnStateIds) t.simulation.cancelOnStateIds = t.simulation.cancelOnStateIds.filter(sid => get(d,"state",sid));
-      if (t.simulation?.wInput?.stateIds) t.simulation.wInput.stateIds = t.simulation.wInput.stateIds.filter(sid => get(d,"state",sid));
+      if (t.simulation?.qInput?.stateIds) t.simulation.qInput.stateIds = t.simulation.qInput.stateIds.filter(sid => get(d,"state",sid));
     }
     if (d.simulation)
       d.simulation.successStateIds = d.simulation.successStateIds.filter(sid => get(d, "state", sid));
@@ -607,8 +688,7 @@
     for (const t of d.tasks)
       if (set.has(t.id)) for (const j of t.junctions || []) j.time += delta;
     for (const c of d.causalLinks)
-      for (const p of [c.source, c.target])
-        if (p.type !== "state" && set.has(p.id)) p.time += delta;
+      if (c.source.type !== "state" && set.has(c.source.id)) c.source.time += delta;
     validate(d);
   }
   function technologyFor(d, type, tid) {
@@ -629,9 +709,9 @@
     );
   }
   function opportunity(d, c) {
-    if (c.target.type !== "task") return null;
-    const w = taskWindow(d, get(d, "task", c.target.id));
-    const at = endpoint(d, c.target).time;
+    if (c.target.type !== "junction") return null;
+    const w = taskWindow(d, get(d, "task", c.target.taskId));
+    const at = causalArrivalTime(d, c);
     return {
       ...w,
       at,
@@ -648,9 +728,8 @@
   function analyzeTask(d, taskId) {
     const candidates = d.causalLinks.filter(
       (c) =>
-        c.target.type === "task" &&
-        c.target.id === taskId &&
-        c.polarity === "negative",
+        c.target.type === "junction" &&
+        c.target.taskId === taskId,
     );
     const paths = [];
     let truncated = false;
@@ -747,8 +826,7 @@
           link.id !== c.id &&
           link.target.type === p.type &&
           link.target.id === p.id &&
-          endpoint(d, link.target).time <= deadline &&
-          link.polarity === "positive"
+          causalArrivalTime(d, link) <= deadline
         )
           incoming.push({ link });
       if (p.type === "task") {
@@ -828,7 +906,11 @@
     validate,
     parse,
     taskWindow,
+    startStateIds, nominalStart, implicitDependencies, dependencyGraph,
     endpoint,
+    endpointActor,
+    causalEndpoint,
+    causalArrivalTime,
     descendants,
     hierarchy,
     visibleActor,
