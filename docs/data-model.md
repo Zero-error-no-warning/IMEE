@@ -60,7 +60,7 @@ Stateは成立した条件・事実、Taskは同Actor内の時間を要する状
 
 `source`はStateのみ。`target`はState/junctionのみ。`source.time`, `target.time`, `polarity`, `simulation.type`, `simulation.w`, `holdUntilStart`は廃止。到達先からState成立/分岐の処理を決めます。`kind`は説明・分析用です。
 
-`propagation.duration`は必須の非負の基準所要時間。図の到達時刻は発生元State.time＋duration。基準到達は到達先State.time/junction.timeと一致させます。CDFは`propagation.performanceModel`へ指定。実行時の所要時間そのものを抽選し、durationへ加算しません。`simulation.enabled`がfalse/省略なら表示専用です。junction作用には`simulation.stopTargetActor`で同Actorの他Taskを中止できます。
+`propagation.duration`は必須の非負の基準所要時間。図の到達時刻は発生元State.time＋duration。Stateへの各入力の基準到達時刻は異なってよい。State.timeは全生成元Task/作用線の基準到達のうち、ANDなら最大、ORなら最小と一致させます（暗黙の開始依存があれば、その開始条件との最大）。分岐点への基準到達はjunction.timeと一致させます。異なる入力到達は図の小丸で示し、成立Stateとの間は待機／後着を示す灰色破線で結びます。CDFは`propagation.performanceModel`へ指定。実行時の所要時間そのものを抽選し、durationへ加算しません。`simulation.enabled`がfalse/省略なら表示専用です。junction作用には`simulation.stopTargetActor`で同Actorの他Taskを中止できます。
 
 ## 共通CDFと品質q
 

@@ -547,6 +547,7 @@
               });
           }
         }
+    const stateReceipts=[];
     function anchor(p, c = null, side = "source") {
       const ep = side === "target" && c ? M.causalEndpoint(doc, c, "target") : M.endpoint(doc, p);
       if (!ep) return null;
@@ -554,7 +555,15 @@
         const row = rows.find(r => r.actor.id === displayActor(ep.actorId));
         return row && {x:vp.x(ep.time),y:row.center,r:0};
       }
-      if (p.type === "state") return states.get(p.id);
+      if (p.type === "state") {
+        const st=states.get(p.id);
+        if(st && side==="target" && Math.abs(ep.time-M.get(doc,"state",p.id).time)>1e-9){
+          const receipt={...st,x:vp.x(ep.time),r:3};
+          stateReceipts.push({linkId:c.id,stateId:p.id,time:ep.time,x:receipt.x,y:st.y,stateX:st.x,late:ep.time>M.get(doc,"state",p.id).time});
+          return receipt;
+        }
+        return st;
+      }
       if(p.type==="junction")return ensure(p.taskId,ep.time,p.id);
     }
     if (filters.causalLink)
@@ -732,6 +741,7 @@
       states,
       tasks,
       junctions,
+      stateReceipts,
       edges,
       height,
       filters,

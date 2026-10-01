@@ -305,7 +305,7 @@
       if(p.performanceModel)P.validateTask({enabled:true,performanceModel:p.performanceModel},"作用線の伝搬CDF");
       const arrival=causalArrivalTime(d,c), ep=endpoint(d,target);
       if(!Number.isFinite(arrival) || arrival>d.time.duration)fail("作用線の基準到達時刻が表示期間外です。");
-      if(Math.abs(arrival-ep.time)>1e-9)fail(`基準到達時刻が到達先と一致しません。source+duration=${arrival}, target=${ep.time}`);
+      if(target.type==="junction" && Math.abs(arrival-ep.time)>1e-9)fail(`基準到達時刻が分岐点と一致しません。source+duration=${arrival}, target=${ep.time}`);
       if(target.type==="junction"){
         const t=get(d,"task",target.taskId), j=get(d,"junction",target.id);
         if(!j.outcomes.some(o=>o.toStateId===target.outcomeStateId))fail("分岐点の結果Stateをtarget.outcomeStateIdで指定してください。");
@@ -318,6 +318,22 @@
         for(const k of ["type","w","delay","propagation","junctionId","outcomeStateId","holdUntilStart"])if(k in sim)fail("旧作用線simulation."+k+"は廃止されました。作用はtargetから決まります。");
         if(sim.stopTargetActor!==undefined && (typeof sim.stopTargetActor!=="boolean" || target.type!=="junction"))fail("stopTargetActorは分岐点への作用にのみ指定できます。");
       }
+    }
+    // Individual receipts may precede or follow the State's nominal establishment.
+    for(const [i,st] of d.states.entries()) {
+      const links=d.causalLinks.filter(c=>c.target.type==="state" && c.target.id===st.id);
+      if(!links.length)continue;
+      const arrivals=links.map(c=>causalArrivalTime(d,c));
+      for(const t of d.tasks){
+        if(t.toStateId===st.id)arrivals.push(st.time);
+        for(const j of t.junctions || [])for(const o of j.outcomes)
+          if(o.toStateId===st.id)arrivals.push(j.time+(o.delay ?? st.time-j.time));
+      }
+      const mode=st.simulation?.join || "all";
+      let expected=(mode==="any"?Math.min:Math.max)(...arrivals);
+      const gates=d.causalLinks.filter(c=>c.target.type==="junction" && c.source.id===st.id);
+      if(gates.length)expected=Math.max(expected,...gates.map(c=>nominalStart(d,get(d,"task",c.target.taskId))));
+      if(Math.abs(st.time-expected)>1e-9)fail(`Stateの基準成立時刻が合流条件と一致しません。join=${mode}, expected=${expected}, State.time=${st.time}`,`$.states[${i}]`,{state:st,arrivals,causalLinks:links});
     }
     dependencyGraph(d);
     for (const [i, t] of (d.technologies || []).entries()) {

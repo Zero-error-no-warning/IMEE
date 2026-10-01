@@ -6,7 +6,7 @@
 2. 実行経路・依存・分岐・作用・成功条件に寄与するStateだけを作る。Actorごとに形式的な待機Stateを作らない。単なる存在・時刻0の穴埋め、実行経路外の準備Taskを作らない。
 3. 同Actorの行為をState→Task→Stateで表す。途中報告が必要なら、報告成立Stateを作ってTaskを分ける。名前だけで役割を推測させず、受領・成立・結果をState名にする。
 4. 作用線はState起点、Stateまたは既存の明示的junction終点。Task/Actorを端点にせず、polarityを保存しない。分岐先はtarget.outcomeStateIdに指定する。
-5. source.time/target.timeを指定せず、propagation.durationから基準到達を計算する。非負の所要時間と、到達先State/junctionの基準時刻を一致させる。
+5. source.time/target.timeを指定せず、propagation.durationから基準到達を計算する。所要時間は非負。Stateへの入力は異なる到達時刻でよい。受領State.timeはANDなら全生成元の基準到達の最大、ORなら最小にする。分岐点への到達はjunction.timeに一致させる。情報源の時刻差を消すために伝搬時間を変更しない。
 6. 分岐作用の起点Sは対象Task実開始を暗黙に待つ。対象Task起点S0からSへ逆向きの必要条件が生じないか、手で依存をたどる。複数対象を共有するSは全対象の開始を待つため、独立作用ならSを分ける。
 7. 複数生成元を持つStateはAND/ORを選ぶ。ANDは全到達・最小q、ORは最初の到達時点の最大q。未来の入力品質を現在へ適用しない。
 8. qは0〜1で高いほど良い。入力q×品質保持率で出力qを求める。詳細な分布を使うなら点ごとにt,p,qを指定し、時間とpの順序を確認する。最終p<1の残余は不達。未達確率の別フィールドは作らない。
