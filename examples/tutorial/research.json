@@ -158,7 +158,10 @@
       },
       "label": "位置・周波数",
       "kind": "information",
-      "polarity": "positive"
+      "polarity": "positive",
+      "propagation": {
+        "duration": 2
+      }
     },
     {
       "id": "order",
@@ -172,7 +175,10 @@
       },
       "label": "介入指令",
       "kind": "command",
-      "polarity": "positive"
+      "polarity": "positive",
+      "propagation": {
+        "duration": 2
+      }
     },
     {
       "id": "blue-action",
@@ -183,12 +189,14 @@
       },
       "target": {
         "type": "task",
-        "id": "jam",
-        "time": 48
+        "id": "jam"
       },
       "label": "妨害活動を抑制",
       "kind": "interference",
-      "polarity": "negative"
+      "polarity": "negative",
+      "propagation": {
+        "duration": 0
+      }
     }
   ],
   "technologies": [
