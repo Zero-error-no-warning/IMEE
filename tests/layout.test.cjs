@@ -85,7 +85,7 @@ test("square wave has flat plateaus and perpendicular steps at the shared amplit
 });
 test("same-Actor positive cause is square in every View and SVG export", () => {
   const d=sample();
-  d.causalLinks.push({id:'same-actor',source:{type:'state',id:'s0'},target:{type:'state',id:'s1'},polarity:'positive',label:'同Actor作用'});
+  d.causalLinks.push({id:'same-actor',source:{type:'state',id:'s0'},target:{type:'state',id:'s1'},propagation:{duration:14},polarity:'positive',label:'同Actor作用'});
   for(const mode of ['mission','causality','technology','gap']) {
     d.views.main.mode=mode;
     const g=L.layout(d),edge=g.edges.find(e=>e.id==='same-actor');
@@ -123,6 +123,7 @@ test("causal links connect facing circle boundaries downwards and upwards", () =
     id: "up",
     source: { type: "state", id: "e0" },
     target: { type: "state", id: "i1" },
+    propagation: { duration: 11 },
     polarity: "positive",
     label: "上向き",
   });
