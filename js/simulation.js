@@ -42,7 +42,7 @@
     }
     for (const l of links) {
       const source=nodes.get(l.source.id), target=nodes.get(l.target.id);
-      l.delay=l.simulation.delay ?? M.endpoint(d,l.target).time-M.endpoint(d,l.source).time;
+      l.delay=l.propagation.duration;
       l.distributions=new Map();
       if (l.source.type === "task") {
         if (l.source.time<source.window.start || l.source.time>source.window.end) fail("実行作用線の出力端点はTask期間内です: "+l.label);
@@ -52,7 +52,9 @@
         target.inputs.push(l);
         if (target.item.simulation?.wInput?.waitForLinks && l.source.type !== "actor") target.predecessors.push(l.source.id);
       }
-      if (l.simulation.type === "branch" && l.target.time !== target.junctions.find(j => j.id === l.simulation.junctionId).time) fail("作用分岐の入力端点は指定Junction時刻にしてください。");
+      if (l.simulation.type === "branch" &&
+          Math.abs(M.causalArrivalTime(d,l)-target.junctions.find(j => j.id === l.simulation.junctionId).time)>1e-9)
+        fail("作用分岐の基準到達時刻は指定Junction時刻にしてください: "+l.label);
     }
     // Potential branches participate in readiness validation, effects themselves do not create a wait dependency.
     for (const n of nodes.values()) { n.predecessors=unique(n.predecessors); for (const pid of n.predecessors) nodes.get(pid).successors.push(n.id); }
@@ -95,8 +97,8 @@
       const inputs=overrides[t.id]?.w !== undefined ? [overrides[t.id].w] : [t.simulation.w ?? 0,...(wi?.stateIds || []).flatMap(values),...n.inputs.flatMap(l => l.simulation.w !== undefined ? [l.simulation.w] : values(l.source.id))];
       for(const w of unique(inputs)) n.distributions.set(w,P.distribution(t.simulation.performanceModel,w));
     }
-    for(const l of links) if(l.simulation.propagation?.enabled) {
-      const p=l.simulation.propagation, inputs=p.w !== undefined ? [p.w] : l.source.type === "actor" ? [l.simulation.w ?? 0] : values(l.source.id);
+    for(const l of links) if(l.propagation?.performanceModel) {
+      const p=l.propagation, inputs=p.w !== undefined ? [p.w] : l.source.type === "actor" ? [l.simulation.w ?? 0] : values(l.source.id);
       for(const w of unique(inputs)) l.distributions.set(w,P.distribution(p.performanceModel,w));
     }
     return {document:d,config,nodes,order,links,cost,overrides,warnings:d.causalLinks.some(l => !l.simulation?.enabled) ? ["実行未指定の作用線は表示専用です。依存・w・分岐・State到達には適用しません。"] : []};
@@ -115,7 +117,7 @@
       inputs.set(n.id,new Map());
     }
     // Reserve link draws after Task draws, even if their source never emits.
-    const linkDraws=new Map(c.links.filter(l=>l.simulation.propagation?.enabled).map(l=>[l.id,rng()]));
+    const linkDraws=new Map(c.links.filter(l=>l.propagation?.performanceModel).map(l=>[l.id,rng()]));
     const graph=(id,time,parents=[],taskId=null,linkId=null) => {causes.set(id,{time,parents,taskId,linkId});return id;};
     const outW=n => n.item.simulation?.outputW ?? taskTimes.get(n.id).w ?? 0;
     const running=id => taskTimes.get(id).status === "running";
@@ -144,9 +146,9 @@
       return true;
     }
     function emit(l,time,w,cause) {
-      const sim=l.simulation, p=sim.propagation, inputW=p?.w ?? w;
-      if(p?.enabled && !l.distributions.has(inputW)) l.distributions.set(inputW,P.distribution(p.performanceModel,inputW));
-      const delay=p?.enabled ? P.sample(l.distributions.get(inputW),linkDraws.get(l.id)) : l.delay;
+      const sim=l.simulation, p=l.propagation, inputW=p?.w ?? w;
+      if(p?.performanceModel && !l.distributions.has(inputW)) l.distributions.set(inputW,P.distribution(p.performanceModel,inputW));
+      const delay=p?.performanceModel ? P.sample(l.distributions.get(inputW),linkDraws.get(l.id)) : l.delay;
       const event={linkId:l.id,emittedAt:time,delay:finite(delay)?delay:null,w:inputW,time:finite(delay)?time+delay:null,status:"failed"};
       if(!finite(delay)) {signalEvents.push(event);return;}
       events.add(time+delay,1,() => {
@@ -228,7 +230,7 @@
       id: t.id, label: t.label, started: 0, finished: 0, failed: 0, blocked: 0, cancelled: 0, branched: 0,
       criticalCount: 0, successfulCriticalCount: 0, starts: [], ends: [], waits: [], ws: [],
     }]));
-    const branches = new Map(), signals = new Map(c.links.map(l => [l.id,{id:l.id,label:l.label,propagation:l.simulation.propagation?.enabled?"cdf":"fixed",accepted:0,early:0,late:0,held:0,failed:0,unavailable:0,criticalCount:0,successfulCriticalCount:0,delays:[],ws:[]} ]));
+    const branches = new Map(), signals = new Map(c.links.map(l => [l.id,{id:l.id,label:l.label,propagation:l.propagation?.performanceModel?"cdf":"fixed",accepted:0,early:0,late:0,held:0,failed:0,unavailable:0,criticalCount:0,successfulCriticalCount:0,delays:[],ws:[]} ]));
     let trace = null;
     function step(batch = 100) {
       if (!Number.isInteger(batch) || batch < 1) fail("バッチサイズは正の整数です。");
