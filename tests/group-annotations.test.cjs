@@ -50,16 +50,16 @@ test('nested collapsed groups retain external State, Task and Actor causal ancho
   const d=sample();
   const subgroup=M.groupActors(d,['sensor','control'],'内側');
   d.causalLinks.push(
-    {id:'out-state',source:{type:'state',id:'s1'},target:{type:'state',id:'e0'},label:'外部へ',polarity:'positive'},
-    {id:'out-actor',source:{type:'actor',id:'control',time:40},target:{type:'task',id:'jam',time:41},label:'Actorから',polarity:'negative'},
-    {id:'parent-internal',source:{type:'actor',id:'group',time:1},target:{type:'state',id:'s0'},label:'内部',polarity:'positive'});
+    {id:'out-state',source:{type:'state',id:'s1'},target:{type:'state',id:'e0'},propagation:{duration:8},label:'外部へ',polarity:'positive'},
+    {id:'out-actor',source:{type:'actor',id:'control',time:40},target:{type:'task',id:'jam'},propagation:{duration:1},label:'Actorから',polarity:'negative'},
+    {id:'parent-internal',source:{type:'actor',id:'group',time:1},target:{type:'state',id:'s0'},propagation:{duration:1},label:'内部',polarity:'positive'});
   d.views.main.collapsedActors=['group',subgroup];
   const g=L.layout(d);
   assert.deepEqual(g.edges.filter(e=>e.type==='causalLink').map(e=>e.id),['negative','out-state','out-actor']);
   for(const id of ['negative','out-state','out-actor']) {
     const c=M.get(d,'causalLink',id),e=g.edges.find(e=>e.id===id);
     assert.equal(e.points[0].x,g.vp.x(M.endpoint(d,c.source).time));
-    assert.equal(e.points.at(-1).x,g.vp.x(M.endpoint(d,c.target).time));
+    assert.equal(e.points.at(-1).x,g.vp.x(M.causalArrivalTime(d,c)));
   }
   assert.equal(g.edges.find(e=>e.id==='out-state').actorId,'group');
   assert.equal(g.edges.find(e=>e.id==='out-actor').actorId,'group');
