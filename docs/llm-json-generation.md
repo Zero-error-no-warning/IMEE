@@ -2,6 +2,8 @@
 
 この文書だけをLLMへ渡して、IMEE Mission State Timeline Editorへ読み込めるJSONを生成できます。文書末尾の完成例は `examples/llm-example.json` と同一です。
 
+**シミュレーションも実行するシナリオを生成する場合は、[LLM向けシミュレーションシナリオ作成手順](llm-simulation-generation.md)を併用してください。** この文書は共通のJSON形式を定め、追加手順書はCDF・実行依存・作用線・分岐・成功条件・感度分析の設定と検証を定めます。完成した実行例は [弾道ミサイルの二段階迎撃](../examples/simulation.json)です。末尾の沿岸監視例は表示用で、分岐の実行モードやMission成功条件は未設定です。
+
 ## 目次
 
 1. 出力と不明点の扱い
@@ -23,6 +25,8 @@
 
 **State＝点、Task・分岐＝直線、正の因果＝矩形波、負の因果＝滑らかな波線、必要な分岐・合流点だけ小さい白丸。** 横位置は時刻。期間State、矩形の横幅、専用イベント・Outcome・Transitionノードを使わない。Task分類・成否を破線・色・太さの意味として指定しない。色はActorの識別に使う。作用ラベルは線と同色の下線付き、Task・分岐結果のラベルは線上に白背景・線と同色の枠付きで描画する。
 
+シミュレーションでは、CDF有効Task・実行作用線は単線、固定所要時間のTask・固定遅延の実行作用線・分岐後の結果線は二重線になります。JSONに線種を保存せず、実行設定から描画に任せます。
+
 トップレベルは以下とする。
 
 | キー         | 値                                                |
@@ -36,6 +40,7 @@
 | causalLinks  | Actor間等の因果配列                               |
 | technologies | Technology配列（未登録なら空配列）                |
 | bindings     | Technology Binding配列（未登録なら空配列）        |
+| simulation   | シミュレーション用のMission成功条件・期限・試行数・Seed。実行用シナリオでは追加手順書に従って明示 |
 | views        | 後述main View。省略可能だが完成文書では明示を推奨 |
 
 Actor：`{id, name, side, parentId, isGroup, color, notes}`。sideはfriendly / hostile / neutral。parentIdは親ActorのIDまたはnull、isGroupは真偽値。環境要因は通常のneutral Actorとして表現する。任意Actorが子Actorを持てる。parentId・isGroup・color・notesは省略可能。colorは#RRGGBBで、省略時はパレットから補完される。State・Task・結果線は所属Actor、因果線は起点Actorの色を使う。
@@ -118,9 +123,10 @@ actorOrder / collapsedActorsは存在するActor IDのみ、重複不可。actor
 3. 必要なTaskにだけ分岐junctionと短いoutcomeラベルを加える。
 4. 因果のsource / targetをStateまたはTask時点で設定。正・負をpolarityで表す。同時刻のTask端点を統一する。
 5. 実際に分かる技術とBindingを登録し、Viewを整える。
+   シミュレーションを求められた場合は、[追加手順書](llm-simulation-generation.md)に従い、Task・State・Junction・作用線と文書全体へ実行設定を加える。ラベルやkindだけで実行規則を表現しない。
 6. ID・参照・時刻・区分・因果の向きを点検し、JSON全体を保存する。
 7. リポジトリルートで `node scripts/validate-mission.cjs <file.json>` を実行する。追加パッケージ不要。標準入力は `node scripts/validate-mission.cjs -`。エラーを修正して再実行する。検証コードを書き換えて通過させない。
-8. `VALID`は形式・参照・時刻の整合性だけを意味する。シナリオの意味と仮定、因果の正当性、経路Gapを別に確認する。
+8. `VALID`は形式・参照・時刻の整合性だけを意味する。シナリオの意味と仮定、因果の正当性、経路Gapを別に確認する。シミュレーション用文書は追加手順書のcompile・Monte Carlo・境界ケース検証まで行う。
 9. 実行環境がなければ「未実行」とし、検証済みと主張しない。
 
 既存v2文書の修正では、依頼と無関係なID・時刻・Viewを保持する。複製では内部IDを再発行し参照を再マップ、Technologyカタログは共有する。

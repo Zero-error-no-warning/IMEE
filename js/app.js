@@ -17,7 +17,9 @@
     swallowClick = false,
     saveTimer,
     chain = null,
-    gapIds = null;
+    gapIds = null,
+    simulationPanel = null,
+    cdfHover = null;
   try {
     history = new M.History(
       localStorage.getItem(KEY)
@@ -74,11 +76,14 @@
     render();
   }
   function render() {
+    cdfHover?.hide();
+    simulationPanel?.invalidate();
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
     geometry = L.layout(
       d,
       Math.max(320, $("#canvas-scroll").clientWidth || window.innerWidth - 48),
+      {simulationResult:simulationPanel?.getOverlayResult()},
     );
     const current = selected();
     chain = null;
@@ -104,6 +109,7 @@
     });
     const svg = holder.firstChild;
     const target = $("#timeline");
+    if(!svg.hasAttribute("data-result-iterations")) target.removeAttribute("data-result-iterations");
     for (const a of [...svg.attributes])
       if (!["id"].includes(a.name)) target.setAttribute(a.name, a.value);
     target.innerHTML = svg.innerHTML;
@@ -164,7 +170,7 @@
     if (!x) {
       panel.insertAdjacentHTML(
         "beforeend",
-        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。Task・分岐は直線、正の因果は矩形波、負の因果は滑らかな波線で接続します。</p>`,
+        `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。CDF有効Taskは実線、固定所要時間（FIX）のTask・分岐後の線は二重線です。正の因果は矩形波、負の因果は滑らかな波線で接続します。</p>`,
       );
       if (selection.length) {
         panel.append(
@@ -184,10 +190,11 @@
       facts = `時刻 T+${x.time} / ${esc(M.get(doc(), "actor", x.actorId).name)}`;
     if (s.type === "task") {
       const w = M.taskWindow(doc(), x);
-      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
+      facts = `開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)} ${esc(doc().time.unit)}<br>${x.simulation?.enabled ? "CDF：実線・達成までの所要時間と未達を抽選" : "FIX：二重線・所要時間固定（開始時刻は依存条件で変動）"}<br>Taskの時間変更は接続元・先Stateまたは分岐点の時刻変更です。`;
     }
     if (s.type === "causalLink") {
       facts = `${x.polarity === "negative" ? "負の因果（滑らかな波線）" : "正の因果（矩形波）"}<br>発生 ${M.endpoint(doc(), x.source).time} → 到達 ${M.endpoint(doc(), x.target).time}<br>分類: ${esc(x.kind || "未指定")}`;
+      facts += `<br>${x.simulation?.enabled ? `${({w:"w伝播",branch:"作用分岐",state:"State到達"})[x.simulation.type]} / ${x.simulation.propagation?.enabled ? "CDF：実線・伝搬時間と未達を抽選" : "FIX：二重線・伝搬時間固定"}` : "表示のみ（シミュレーション実行なし）"}`;
       const o = M.opportunity(doc(), x);
       if (o) facts += `<br>介入時間窓 ${o.start}〜${o.end} / ${esc(o.message)}`;
     }
@@ -405,10 +412,14 @@
           ],
           x.phase,
         ) +
-        notes(x),
+        notes(x) + window.MESimulationUI.stateFields(x),
       (v) =>
         applyEdit((d) => {
-          const s = { ...x, ...v, time: +v.time };
+          const s = {
+            ...x, name: v.name, actorId: v.actorId, activity: v.activity,
+            phase: v.phase, notes: v.notes, time: +v.time,
+            simulation: window.MESimulationUI.readState($("#editor-form"), x),
+          };
           if (sid) Object.assign(M.get(d, "state", sid), s);
           else d.states.push(s);
           return { type: "state", id: s.id };
@@ -446,12 +457,13 @@
             o.toStateId,
           );
     }
-    dialog("Task", html + notes(t), (v) =>
+    dialog("Task", html + notes(t) + window.MESimulationUI.junctionFields(t) + window.MESimulationUI.performanceFields(doc(), t), (v) =>
       applyEdit((d) => {
         const x = M.get(d, "task", tid);
         x.label = v.label;
         x.kind = v.kind;
         x.notes = v.notes;
+        x.simulation = window.MESimulationUI.readPerformance($("#editor-form"), t);
         M.get(d, "state", x.fromStateId).time = +v.start;
         if (x.toStateId) M.get(d, "state", x.toStateId).time = +v.end;
         const changedTimes = new Map(
@@ -463,16 +475,27 @@
               p.time = changedTimes.get(p.time);
         for (const [i, j] of (x.junctions || []).entries()) {
           j.time = +v["j" + i];
+          if (v[`branchMode-${i}`]) j.simulation = { mode: v[`branchMode-${i}`] };
+          else delete j.simulation;
           j.outcomes = j.outcomes
             .map((o, n) => ({
+              ...o,
+              probability:v[`branchP-${i}-${n}`]===""?undefined:Number(v[`branchP-${i}-${n}`]),
+              delay:v[`branchDelay-${i}-${n}`]===""?undefined:Number(v[`branchDelay-${i}-${n}`]),
               label: v[`label-${i}-${n}`],
               toStateId: v[`target-${i}-${n}`],
             }))
             .filter((o) => o.toStateId);
         }
         x.junctions = (x.junctions || []).filter((j) => j.outcomes.length);
+        d.causalLinks = d.causalLinks.filter(c =>
+          c.target.id !== tid || !c.simulation?.enabled || c.simulation.type !== "branch" ||
+          x.junctions.some(j => j.id === c.simulation.junctionId && j.simulation?.mode === "effect" &&
+            j.outcomes.some(o => o.toStateId === c.simulation.outcomeStateId)));
+        d.bindings = d.bindings.filter(b => M.get(d, b.targetType, b.targetId));
       }),
     );
+    window.MESimulationUI.bindPerformance($("#editor-form"), doc());
   }
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
@@ -580,7 +603,7 @@
         endpointFields("source", c.source) +
         endpointFields("target", c.target) +
         field("kind", "分析分類", c.kind || "") +
-        notes(c),
+        notes(c) + window.MESimulationUI.causalFields(doc(),c),
       (v) =>
         applyEdit((d) => {
           const x = M.get(d, "causalLink", cid);
@@ -594,6 +617,7 @@
               ...(type === "state" ? {} : { time: +v[name + "Time"] }),
             };
           }
+          x.simulation=window.MESimulationUI.readCausal($("#editor-form"),c);
           Object.assign(x, {
             label: v.label,
             polarity: v.polarity,
@@ -602,6 +626,7 @@
           });
         }),
     );
+    window.MESimulationUI.bindCausal($("#editor-form"),doc(),c);
   }
   function editTechnology(tid) {
     const t = tid
@@ -1005,10 +1030,17 @@
       connect(s, timeAt(point(e).x));
       return;
     }
+    // Selection redraw can detach the pressed SVG node and suppress the native
+    // dblclick. The second click still carries the browser's click count.
+    if (e.detail === 2) {
+      doubleClick(e);
+      return;
+    }
     if(e.target.closest(".technology-summary")) inspector(true);
     select(s, e.ctrlKey || e.metaKey);
   });
-  $("#timeline").addEventListener("dblclick", (e) => {
+  function doubleClick(e) {
+    if (document.querySelector("dialog[open]")) return;
     const summary = e.target.closest("[data-expand-group]");
     if (summary) {
       change(d => { d.views.main.collapsedActors = d.views.main.collapsedActors.filter(id => id !== summary.dataset.expandGroup); });
@@ -1022,7 +1054,8 @@
       if (row && p.x >= geometry.vp.left)
         editState(null, row.actor.id, timeAt(p.x));
     }
-  });
+  }
+  $("#timeline").addEventListener("dblclick", doubleClick);
   function menu(e, entries) {
     const el = $("#context-menu");
     el.replaceChildren();
@@ -1267,7 +1300,8 @@
   function exportSource() {
     const d = M.clone(doc());
     d.views.main.mode = "mission";
-    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true });
+    simulationPanel?.invalidate();
+    const g = L.layout(d, Math.max(1050, geometry.vp.width), { full: true, simulationResult:simulationPanel?.getOverlayResult() });
     return {
       svg: R.render(d, g, { export: true, full: true }),
       width: g.vp.width,
@@ -1526,6 +1560,23 @@
     undo,
     redo,
   };
+  simulationPanel = window.MESimulationUI.controller({
+    getDocument: () => M.clone(doc()), download,onOverlayChange:render,
+    configure: () => dialog("Simulation設定", window.MESimulationUI.settingsFields(doc()), () => {
+      applyEdit(d => {
+        d.simulation = window.MESimulationUI.readSettings($("#editor-form"));
+        if (!d.simulation.successStateIds.length) throw new Error("成功Stateを1件以上選択してください。");
+      });
+      setTimeout(() => simulationPanel.open(), 0);
+    }),
+    loadDemo: () => confirmReplace("シミュレーション例へ置き換え", () => {
+      loadJSON(JSON.stringify(createSimulationSample()));
+      setTimeout(() => simulationPanel.open(), 0);
+    }),
+  });
+  $("#simulation-btn").onclick = simulationPanel.open;
+  cdfHover=window.MESimulationUI.hoverPreview({surface:$("#timeline"),getDocument:doc,
+    canShow:()=>!drag && !connecting && !space && !document.querySelector("dialog[open]")});
   inspector(false);
   render();
   persist();

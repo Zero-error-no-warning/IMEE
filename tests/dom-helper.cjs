@@ -54,10 +54,16 @@ async function openApp(saved) {
   };
   if (saved) w.localStorage.setItem("imee.document.v2", JSON.stringify(saved));
   for (const file of [
+    "performance.js",
     "model.js",
+    "simulation.js",
+    "sensitivity.js",
+    "simulation-overlay.js",
     "layout.js",
     "render.js",
+    "simulation-ui.js",
     "sample.js",
+    "simulation-sample.js",
     "tutorial-sample.js",
     "app.js",
   ])

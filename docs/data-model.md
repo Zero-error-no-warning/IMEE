@@ -68,11 +68,11 @@ TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ
 
 outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
 
-通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。
+通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。Task本体はsimulation.enabled=trueならCDFの実線、未設定/無効なら固定所要時間（FIX）の二重線です。分岐後の結果線は固定遅延なので二重線です。線種は描画時に導出し、別のデータ項目には保存しません。
 
 UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
 
-Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、作用との紐付けや、因果の成否を自動判定する分岐条件は設定しません。
+Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、追加時点では作用との紐付けや分岐条件を自動設定しません。任意のSimulation設定はTask・作用線編集で明示します。
 
 Task編集で分岐時刻を変えた場合、同じ旧時刻へ接続していた因果端点も追従します。複数junctionの既存情報も編集できます。
 
@@ -125,7 +125,7 @@ views: { main: {
 
 modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。技術表示時は必要に応じて間隔を広げます。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
 
-折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
+折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。singleの集約Task線はすべて固定なら二重線、CDFを含む場合は実線です。CDF/FIX混在時はTooltipで混在と展開を案内します。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
 
 ## コピー・削除・履歴
 
@@ -148,7 +148,15 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 
 構造完結に加え、到達が時間窓内、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。旧status / proposedは条件判定に使わず、条件充足を実施証明とは扱いません。
 
-最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。
+最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。この構造・技術評価では成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。任意のSimulation機能は別の実行モデルを使用します。
+
+## Simulation（任意・version 2互換）
+
+Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定入力・省略時0）、`performanceModel`（type: cdf / curves）、`waitForStateIds`（接続元に加えたAND依存）を保存します。CDF有効時のモデルは必須で、時間・累積確率の単調性、wの範囲、最終確率+未達確率=1を本体のvalidate/parseで検証します。CDF無効Taskも実行し、図上の固定所要時間を使います。
+
+文書トップレベルの任意 `simulation` には `successStateIds` と `successMode`（all: AND / any: OR、省略時all）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
+
+実行依存DAGの検証はシミュレーション実行前に追加で行います。Junctionはsimulation.mode（probability / effect）を明示して実行します。outcomeのprobability・delay、作用線のsimulation（enabled、type: w / branch / state、propagation、delay、w、junctionId、outcomeStateId、stopTargetActor、holdUntilStart）を検証します。Stateにはsimulation.w・join（all / any）、TaskにはwInput（stateIds・waitForLinks・combine: max）、outputW、cancelOnStateIdsを保存できます。依存循環・分岐実行未指定は拒否します。実行指定したw作用線は性能入力となり、到着待ちを指定したときだけ開始依存になります。State到達作用は入力先Stateの生成元となり、Taskと同じAND/OR合流に参加します。作用線の任意 `simulation.propagation` は `{enabled, w?, performanceModel?}` で、CDF有効ならモデル必須。w省略時は発生元wを引き継ぎ、出力の固定simulation.wとは別に扱います。CDF無効/未設定は従来の固定delayを使います。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
 
 ## 描画の制約
 
