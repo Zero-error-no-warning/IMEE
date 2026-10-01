@@ -77,7 +77,7 @@ test('nested collapse projects children to parent color and hides internal cause
   const d=sample(),before=M.clone(d);
   d.actors.push({id:'external',name:'外部',side:'neutral',color:'#888888'});d.views.main.actorOrder.push('external');
   d.states.push({id:'ext',actorId:'external',name:'外部State',time:46});
-  d.causalLinks.push({id:'unrelated',source:{type:'state',id:'e0'},target:{type:'state',id:'ext'},polarity:'positive',label:'外部因果'});
+  d.causalLinks.push({id:'unrelated',source:{type:'state',id:'e0'},target:{type:'state',id:'ext'},propagation:{duration:22},polarity:'positive',label:'外部因果'});
   const subgroup=M.groupActors(d,['sensor','control'],'内側');
   d.views.main.collapsedActors=['group',subgroup];
   const g=L.layout(d);assert.equal(g.states.size,d.states.length);assert.equal(g.tasks.size,d.tasks.length);
