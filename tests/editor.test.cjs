@@ -77,7 +77,8 @@ test("Alt drag creates causal link to precise Task time and polarity editable in
   a.submit();
   const c = a.savedDoc().causalLinks.at(-1);
   assert.equal(c.target.type, "task");
-  assert.equal(c.target.time, 24);
+  assert.equal(c.propagation.duration, 8);
+  assert.equal(a.w.ME.causalArrivalTime(a.savedDoc(), c), 24);
   assert.equal(c.polarity, "negative");
   assert(
     a.$(`[data-id="${c.id}"] .line`).getAttribute("d").split("L").length > 10,
@@ -285,7 +286,8 @@ test("editing multiple junction times remaps attachments once, without cascading
   d.causalLinks.push({
     id: "attach-early",
     source: { type: "state", id: "s1" },
-    target: { type: "task", id: "identify", time: 24 },
+    target: { type: "task", id: "identify" },
+    propagation: { duration: 8 },
     polarity: "positive",
     label: "確認",
   });
@@ -296,7 +298,7 @@ test("editing multiple junction times remaps attachments once, without cascading
   a.submit();
   assert.equal(a.$("#dialog-error").textContent, "");
   assert.equal(
-    a.savedDoc().causalLinks.find((c) => c.id === "attach-early").target.time,
-    29,
+    a.w.ME.causalArrivalTime(a.savedDoc(), a.savedDoc().causalLinks.find((c) => c.id === "attach-early")),
+    24,
   );
 });
