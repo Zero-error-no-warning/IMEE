@@ -139,7 +139,9 @@ test('completed results can be applied, toggled, exported and retained through V
   a.click('#simulation-overlay-toggle');assert(!a.$('.simulation-rate-label'));assert(!a.$('#timeline').hasAttribute('data-result-iterations'));
   a.click('#simulation-overlay-toggle');assert(a.$('.simulation-rate-label'));
   a.event(a.$('.task-label[data-id="detect"] text'),'dblclick');a.fill('label','編集後');a.submit();
-  assert(a.$('#simulation-overlay-toggle').disabled);assert(!a.$('.simulation-rate-label'));assert(!a.$('#timeline').hasAttribute('data-result-iterations'));
+  assert(!a.$('#simulation-overlay-toggle').disabled);assert(a.$('.simulation-rate-label'));
+  const changed=a.w.IMEE.getDocument();changed.tasks.find(t=>t.id==='detect').simulation.qualityRetention=.5;a.w.IMEE.loadJSON(JSON.stringify(changed));
+  assert(a.$('#simulation-overlay-toggle').disabled);assert(!a.$('.simulation-rate-label'));assert(!a.$('#timeline').hasAttribute('data-result-iterations'));assert(a.$('#simulation-history .analysis-history'));
 });
 
 test('rerun or cancellation clears the previous diagram and never enables partial results',async t=>{

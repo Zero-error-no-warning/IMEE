@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="styles.css" />
     <script defer src="js/performance.js"></script>
     <script defer src="js/model.js"></script>
+    <script defer src="js/authoring.js"></script>
+    <script defer src="js/workspace.js"></script>
     <script defer src="js/import-diagnostics.js"></script>
     <script defer src="js/simulation.js"></script>
     <script defer src="js/sensitivity.js"></script>
@@ -19,6 +21,7 @@
     <script defer src="js/simulation-sample.js"></script>
     <script defer src="js/tutorial-sample.js"></script>
     <script defer src="js/all-cdf-ui.js"></script>
+    <script defer src="js/authoring-ui.js"></script>
     <script defer src="js/app.js"></script>
   </head>
   <body>
@@ -32,6 +35,7 @@
         ><button id="document-title" title="ミッション設定を編集"></button>
       </div>
       <div class="file-actions">
+        <button id="new-document">新規</button><button id="documents-btn">文書一覧</button>
         <span id="save-status" role="status">このブラウザに保存</span
         ><button id="open-btn">読込</button
         ><button id="save-btn" class="primary">
@@ -41,8 +45,10 @@
     </header>
     <nav class="toolbar" aria-label="編集ツール">
       <div class="tool-group">
-        <button id="add-actor">＋ Actor</button
+        <button id="add-actor">＋ 登場主体</button
         ><button id="add-group">＋ グループ</button>
+        <button id="add-activity" class="primary">＋ 活動</button>
+        <button id="connect-btn">接続</button><button id="branch-btn">分岐</button>
       </div>
       <div class="tool-group">
         <button id="undo" aria-label="元に戻す" title="元に戻す (Ctrl+Z)">
@@ -57,11 +63,11 @@
       </div>
       <div class="view-tools">
         <select id="view-mode" aria-label="表示モード">
-          <option value="mission">Mission View</option>
-          <option value="technology">Technology View</option>
-          <option value="gap">Gap View</option>
-          <option value="causality">Causality View</option></select
-        ><button id="simulation-btn">Simulation</button
+          <option value="mission">シナリオ</option>
+          <option value="technology">技術</option>
+          <option value="gap">技術Gap</option>
+          <option value="causality">因果関係</option></select
+        ><button id="simulation-btn">Simulation / 分析</button
         ><button id="simulation-overlay-toggle" disabled aria-pressed="false">結果表示</button
         ><button id="view-settings">表示設定</button
         ><button id="group-selected" title="Ctrl / ⌘ + G">まとめる</button>
@@ -74,10 +80,12 @@
         ><output id="zoom-label">100%</output
         ><button id="zoom-in" aria-label="拡大">＋</button
         ><button id="fit" title="全期間を表示">全体</button
+        ><button id="fit-selection" title="選択項目の周辺を表示">選択へ</button><button id="overview-btn" aria-pressed="false">概観</button>
         ><button id="search-btn" title="状態を検索 (F)">検索</button
         ><button id="help-btn" aria-label="操作ガイド">?</button>
       </div>
     </nav>
+    <section id="authoring-status" aria-label="作成の進捗"><div id="creation-guide"></div><button id="issues-btn">実行準備</button><button id="checkpoint-btn">保存時点を作成</button></section>
     <main>
       <section class="canvas-section" aria-label="ミッションタイムライン">
         <div class="canvas-heading">
@@ -155,20 +163,21 @@
         <h2>操作ガイド</h2>
         <button id="help-close" aria-label="閉じる">×</button>
       </div>
-      <p class="muted">Stateは到達時点、Taskは時間をかけて行う活動です。</p>
+      <section class="dialog-content">
+      <p class="muted">「新規」から、登場主体→活動→相互作用→達成目標の順で作ります。Stateは到達時点、Taskは時間をかけて行う活動です。上部の「練習する」で手順を確認できます。</p>
       <dl class="help-list">
         <dt>追加・接続</dt>
         <dd>
-          Actor行の空白をダブルクリックしてStateを追加。Alt /
+          活動ボタンまたはActor行の＋で、開始条件・活動・成果をまとめて追加。選択したStateの＋接続や接続ボタンを使えます。Alt /
           Option＋Stateのドラッグ、または選択後にCキーで接続。同じActorのState間はTask、Stateから別ActorのState・既存の分岐点へは作用線になります。
         </dd>
         <dt>分岐</dt>
         <dd>
-          Taskの右クリック→「結果を追加」。分岐時刻・結果ラベル・接続先Stateを指定。同じ時刻の結果と外部因果は小さい白丸に集約します。通常Taskには中間ノードはありません。
+          「分岐」で方式・時刻・結果・確率・遅延を指定。活動上に作用を結ぶと分岐と作用を一括で作成できます。「途中の成果を追加」で活動を分割してStateを置けます。
         </dd>
         <dt>移動・選択</dt>
         <dd>
-          Stateの点をドラッグして時刻を変更。左右キーでも移動。Ctrl /
+          Stateの点をドラッグして関連時刻をまとめて変更。Shiftで後続時刻を維持します。詳細でも変更をプレビューでき、左右キーでも移動。Ctrl /
           ⌘＋クリックで複数選択、空白ドラッグで矩形選択。Ctrl /
           ⌘＋ドラッグは複製移動。
         </dd>
@@ -179,7 +188,7 @@
         <dt>画面と時刻</dt>
         <dd>
           ＋ /
-          −は表示する時間範囲を変更し、横幅を固定します。スライダーまたはSpace＋ドラッグでパン。詳細パネルは開閉可能。Fで検索。
+          −は表示する時間範囲を変更し、横幅を固定します。スライダーまたはSpace＋ドラッグでパン。詳細パネルは開閉可能。選択へ移動・全体概観・前後State・関連先へ移動できます。Fで名前・備考・IDを横断検索。
         </dd>
         <dt>キーボード</dt>
         <dd>
@@ -194,18 +203,20 @@
         </dd>
         <dt>保存・出力</dt>
         <dd>
-          ブラウザ内に自動保存。JSONはversion
+          「文書」で複数文書・別案を管理。「保存時点」は文書ごとに最新20件を復元できます。ブラウザ内に自動保存。JSONはversion
           3専用です。右上メニューから全期間・全階層のSVG /
           PNGを出力。読込・サンプル置換もUndoで戻せます。
         </dd>
       </dl>
       <p class="help-note">
-        横位置は常に時刻です。重なるStateは同じActor内で上下に分離します。CDF有効のTask・作用線は実線、所要時間・伝搬時間固定（FIX）のTask・作用線・分岐後の線は二重線です。表示のみの作用線は単線です。作用線の起点はState、到達先はStateまたは分岐点です。Task・分岐のラベルは線上の枠付き、作用ラベルは線と同色の下線付きです。CDF有効Task・作用線をホバーすると、入力qの変化幅を帯グラフで確認できます。
+        横位置は常に時刻です。重なるStateは同じActor内で上下に分離します。CDF有効のTask・作用線は実線、所要時間・伝搬時間固定（FIX）のTask・作用線・分岐後の線は二重線です。表示のみの作用線は単線です。作用線の起点はState、到達先はStateまたは分岐点です。Task・分岐のラベルは線上の枠付き、作用ラベルは線と同色の下線付きです。CDF有効Task・作用線をホバーすると、入力qの変化幅を帯グラフで確認できます。設定では点をドラッグ・矢印キー・表で編集します。qスライダーはプレビュー専用です。
       </p>
+          </section>
     </dialog>
     <div id="context-menu" role="menu" hidden></div>
     <dialog id="simulation-dialog" aria-labelledby="simulation-title">
       <div class="dialog-heading"><h2 id="simulation-title">Mission Simulation</h2><button id="simulation-close" aria-label="閉じる">×</button></div>
+      <section class="dialog-content">
       <div id="simulation-setup"></div>
       <div class="simulation-actions"><button id="simulation-configure">成功条件・実行設定</button><button id="simulation-demo">シミュレーション例を開く</button><button id="all-cdf-open">全CDFの自動感度分析</button><button id="simulation-run" class="primary">Monte Carlo実行</button><button id="simulation-stop" hidden>中断</button><button id="simulation-apply" disabled>結果をシナリオ図に反映</button><button id="simulation-export" disabled>結果JSON保存</button></div>
       <p id="simulation-error" role="alert"></p><p id="simulation-progress" role="status"></p>
@@ -221,14 +232,19 @@
           <div class="simulation-actions"><button id="sensitivity-run" type="submit" class="primary">感度分析・要求逆算を実行</button><button id="sensitivity-stop" type="button" hidden>中断</button><button id="sensitivity-export" type="button" disabled>分析JSON保存</button></div>
         </form><p id="sensitivity-error" role="alert"></p><p id="sensitivity-progress" role="status"></p><div id="sensitivity-results"></div>
       </details>
+          </section>
     </dialog>
     <dialog id="all-cdf-dialog" aria-labelledby="all-cdf-title">
       <div class="dialog-heading"><h2 id="all-cdf-title">全CDFの自動感度分析</h2><button id="all-cdf-close" aria-label="閉じる">×</button></div>
+      <section class="dialog-content">
       <p>実行対象の全Task・作用線のCDFについて、入力品質qを0〜1に固定してMission成功率を比較します。他の条件は維持し、出力を後続へ伝搬します。番号と色は図・グラフで共通です。番号や対象をクリックすると双方を強調します。</p>
+      <p class="muted">評価するのは対象への入力品質の変更です。技術成熟度の変更や、CDF自体の高速化・未達低減を直接評価するランキングではありません。</p>
       <form id="all-cdf-form"><div class="field-row"><label class="field"><span>各点の試行数</span><input name="iterations" type="number" min="1" max="100000" value="500" required></label><label class="field"><span>qの評価点数</span><input name="steps" type="number" min="2" max="25" value="11" required></label></div><div class="simulation-actions"><button id="all-cdf-run" class="primary" type="submit">全CDFを分析</button><button id="all-cdf-stop" type="button" hidden>中断</button><button id="all-cdf-export" type="button" disabled>分析JSON保存</button></div></form>
       <p id="all-cdf-error" role="alert"></p><p id="all-cdf-progress" role="status"></p>
       <div class="all-cdf-columns"><div id="all-cdf-results"></div><section class="all-cdf-scenario"><h3>対象CDFの位置</h3><div id="all-cdf-map"></div></section></div>
+          </section>
     </dialog>
     <div id="toast" role="alert" hidden></div>
+    <section id="overview-panel" hidden aria-label="全体概観"></section>
   </body>
 </html>

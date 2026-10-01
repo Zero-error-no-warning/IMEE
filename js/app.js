@@ -2,6 +2,7 @@
 (function () {
   "use strict";
   const M = window.ME,
+    A = window.MEAuthoring,
     L = window.MELayout,
     R = window.MERender,
     $ = (s) => document.querySelector(s),
@@ -10,6 +11,9 @@
   let importPreview=null;
   const D=window.MEImportDiagnostics;
   let allCDFPanel=null;
+  let authoringUI=null;
+  let provisionalConnection=null;
+  const workspace=window.MEWorkspace.create(localStorage);
   let history,
     selection = [],
     clipboard = null,
@@ -52,9 +56,10 @@
     $("#status").textContent = message;
   }
   function persist() {
-    if(importPreview)return;
+    if(importPreview||provisionalConnection)return;
     try {
       localStorage.setItem(KEY, JSON.stringify(doc()));
+      workspace.update(doc());
       $("#save-status").textContent = "このブラウザに保存";
     } catch (e) {
       $("#save-status").textContent = "自動保存できません";
@@ -92,8 +97,7 @@
   }
   function render() {
     cdfHover?.hide();
-    simulationPanel?.invalidate();
-    allCDFPanel?.invalidate();
+    if(!provisionalConnection){simulationPanel?.invalidate();allCDFPanel?.invalidate();}
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
     const d = doc();
     geometry = L.layout(
@@ -119,7 +123,7 @@
     const holder = document.createElement("div");
     holder.innerHTML = R.render(d, geometry, {
       selection,
-      connecting: !!connecting,
+      connecting,
       chain,
       gapIds: d.views.main.mode === "gap" ? gapIds : null,
     });
@@ -154,7 +158,7 @@
     $("#time-pan").value = r.start;
     $("#time-pan").disabled = span >= d.time.duration;
     $("#time-window").textContent =
-      `T+${+r.start.toFixed(2)} — T+${+r.end.toFixed(2)}`;
+      `T+${+r.start.toPrecision(6)} — T+${+r.end.toPrecision(6)}`;
     $("#snap").innerHTML = [...new Set([0.1, 0.5, 1, 5, 10, d.time.snap])]
       .filter((n) => n <= d.time.duration)
       .sort((a, b) => a - b)
@@ -171,9 +175,10 @@
           ]),
       );
     $("#mode-hint").textContent = connecting
-      ? "接続先のStateまたはTaskをクリック · Escで取消"
+      ? "接続先を選択：同じ主体は活動、別の主体は作用、Task上は作用分岐を作成 · Escで取消"
       : "空白をダブルクリックでState追加 · 点をドラッグで時刻移動 · Alt / Option＋ドラッグで接続";
     renderInspector();
+    authoringUI?.render(geometry);
   }
   function inspector(open) {
     $("#inspector").classList.toggle("hidden", !open);
@@ -199,6 +204,7 @@
         `<h2 class="panel-title">${selection.length ? selection.length + "件を選択" : "Taskと因果を描く"}</h2><p class="muted">Stateは時点、Taskはその間の行為です。CDF有効Taskは実線、固定所要時間（FIX）のTask・分岐後の線は二重線です。作用線はStateからStateまたは明示的な分岐点へ接続します。</p>`,
       );
       if (selection.length) {
+        renderSelectionScope(panel);
         panel.append(
           button("複製", duplicate),
           button("削除", deleteSelection),
@@ -228,6 +234,7 @@
       "beforeend",
       `<p class="notes">${facts}</p><p class="notes">${esc(x.notes || "")}</p>`,
     );
+    renderSelectionScope(panel);
     const actions = document.createElement("div");
     actions.className = "panel-actions";
     actions.append(
@@ -299,6 +306,11 @@
     )
       panel.append(button("Technologyカタログ", catalog));
   }
+  function renderSelectionScope(panel) {
+    if(!selection.length||importPreview)return;
+    const info=A.selectionInfo(doc(),selection),names={actors:'主体',states:'State',tasks:'活動',causalLinks:'作用',technologies:'技術',bindings:'技術の関連付け'},counts=x=>Object.entries(names).filter(([k])=>x[k]?.length||typeof x[k]==='number'&&x[k]>0).map(([k,n])=>`${n} ${typeof x[k]==='number'?x[k]:x[k].length}`).join(' / ')||'対象なし';
+    panel.insertAdjacentHTML('beforeend',`<div class="selection-scope muted">複製範囲：${counts(info.copied)}<br>削除範囲：${counts(info.deleted)}<br>範囲外の開始・品質・中止条件への参照は複製時に維持します。${info.error?`<p class="danger">削除できません：${esc(info.error)}</p>`:''}</div>`);
+  }
   function field(name, label, value = "", type = "text") {
     if (type === "color")
       return `<label class="field"><span>${esc(label)}</span><span class="color-control"><span class="color-swatch" aria-hidden="true"></span><span class="color-value" aria-hidden="true"></span><input name="${name}" type="color" value="${esc(value)}" aria-label="${esc(label)}"></span></label>`;
@@ -315,8 +327,12 @@
   const notes = (x) =>
     `<label class="field"><span>備考</span><textarea name="notes">${esc(x.notes || "")}</textarea></label>`;
   function dialog(title, html, apply) {
+    $("#editor-form").oninput = null;
+    $("#editor-form").onchange = null;
+    $("#dialog-fields").onclick = null;
     $("#dialog-title").textContent = title;
     $("#dialog-fields").innerHTML = html;
+    for(const select of $('#dialog-fields').querySelectorAll('select'))if(select.options.length>10){const filter=document.createElement('input');filter.type='search';filter.className='candidate-search';filter.placeholder='候補を検索';filter.setAttribute('aria-label','候補の絞り込み');select.before(filter);filter.oninput=()=>{const q=filter.value.toLowerCase();for(const option of select.options)option.hidden=!!q&&!option.textContent.toLowerCase().includes(q)&&option.value!==select.value;};}
     document.querySelectorAll("#dialog-fields .color-control").forEach(control => {
       const input = control.querySelector('input[type="color"]');
       const sync = () => {
@@ -345,6 +361,7 @@
     if(importPreview)throw new Error("診断表示中は編集できません。元JSONを修正して再読み込みしてください。");
     const next = M.clone(doc());
     const result = fn(next);
+    if(provisionalConnection){history.doc=provisionalConnection.document;history.past=provisionalConnection.past;history.future=provisionalConnection.future;provisionalConnection=null;}
     history.commit(next);
     if (result?.type) selection = [result];
     render();
@@ -421,6 +438,7 @@
           x.actorId,
         ) +
         field("time", "時刻", x.time, "number") +
+        choices("timePolicy", "時刻変更時の後続", [["follow","後続の所要時間を保って移動"],["keep","後続の基準時刻を維持"]], "follow") +
         choices(
           "activity",
           "表示",
@@ -442,16 +460,20 @@
         notes(x) + window.MESimulationUI.stateFields(x),
       (v) =>
         applyEdit((d) => {
+          if(sid && +v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy);
+          const before=M.clone(d);
           const s = {
             ...x, name: v.name, actorId: v.actorId, activity: v.activity,
             phase: v.phase, notes: v.notes, time: +v.time,
             simulation: window.MESimulationUI.readState($("#editor-form"), x),
           };
-          if (sid) Object.assign(M.get(d, "state", sid), s);
+          if (sid) {Object.assign(M.get(d, "state", sid), s);if((x.simulation?.join||'all')!==v.stateJoin)A.reconcile(d,before);}
           else d.states.push(s);
           return { type: "state", id: s.id };
         }),
     );
+    if(sid)authoringUI?.preview((d,v)=>{if(+v.time!==x.time)A.moveState(d,sid,+v.time,v.timePolicy);const before=M.clone(d);M.get(d,'state',sid).simulation=window.MESimulationUI.readState($("#editor-form"),x);if((x.simulation?.join||'all')!==v.stateJoin)A.reconcile(d,before);});
+    window.MESimulationUI.bindState($('#editor-form'),doc(),x);
   }
   function editTask(tid) {
     const t = M.get(doc(), "task", tid),
@@ -461,38 +483,18 @@
       field("kind", "分析分類（線種は変わりません）", t.kind || "") +
       `<p class="dialog-summary">開始 ${w.start} / 終了 ${w.end} / 所要時間 ${+(w.end - w.start).toFixed(4)}<br>開始の変更は接続元State、終了の変更は接続先Stateまたは分岐点を変更します。</p>` +
       field("start", "接続元Stateの時刻", w.start, "number");
-    if (t.toStateId) html += field("end", "接続先Stateの時刻", w.end, "number");
-    for (const [i, j] of (t.junctions || []).entries()) {
-      html += field("j" + i, "分岐点 " + (i + 1) + " の時刻", j.time, "number");
-      for (const [n, o] of j.outcomes.entries())
-        html +=
-          field(`label-${i}-${n}`, "結果ラベル", o.label) +
-          choices(
-            `target-${i}-${n}`,
-            "結果State（削除も可能）",
-            [
-              ["", "この結果を削除"],
-              ...doc()
-                .states.filter(
-                  (s) =>
-                    s.actorId ===
-                      M.get(doc(), "state", t.fromStateId).actorId &&
-                    s.id !== t.fromStateId,
-                )
-                .map((s) => [s.id, `${s.name} (T+${s.time})`]),
-            ],
-            o.toStateId,
-          );
-    }
-    dialog("Task", html + notes(t) + window.MESimulationUI.junctionFields(t) + window.MESimulationUI.performanceFields(doc(), t), (v) =>
-      applyEdit((d) => {
+    html+=choices('timePolicy','時間変更時の後続',[['follow','後続の所要時間を保って移動'],['keep','後続の基準時刻を維持']],'follow')+
+      field('taskDuration','基準所要時間',w.end-w.start,'number')+choices('timeAnchor','固定する値',[['start','開始を固定して所要時間を変更'],['end','終了を固定して所要時間を変更'],['manual','開始・終了を直接指定']],'start');
+    html += field("end", t.toStateId ? "接続先Stateの時刻" : "最終分岐の時刻", w.end, "number");
+    const updateTask=(d,v)=>{
         const x = M.get(d, "task", tid);
+        const beforeEdit=M.clone(d);
         x.label = v.label;
         x.kind = v.kind;
         x.notes = v.notes;
         x.simulation = window.MESimulationUI.readPerformance($("#editor-form"), t);
-        M.get(d, "state", x.fromStateId).time = +v.start;
-        if (x.toStateId) M.get(d, "state", x.toStateId).time = +v.end;
+        if(+v.start!==w.start)A.moveState(d,x.fromStateId,+v.start,v.timePolicy);
+        if(x.toStateId && +v.end!==M.get(d,'state',x.toStateId).time)A.moveState(d,x.toStateId,+v.end,v.timePolicy);
         const changedTimes = new Map(
           (x.junctions || []).map((j, i) => [j.time, +v["j" + i]]),
         );
@@ -518,9 +520,29 @@
         d.causalLinks = d.causalLinks.filter(c =>
           c.target.taskId !== tid || x.junctions.some(j => j.id === c.target.id && j.outcomes.some(o => o.toStateId === c.target.outcomeStateId)));
         d.bindings = d.bindings.filter(b => M.get(d, b.targetType, b.targetId));
-      }),
-    );
+        const changedSchedule=+v.start!==w.start||(t.toStateId&&+v.end!==w.end)||
+          JSON.stringify(x.simulation?.waitForStateIds||[])!==JSON.stringify(t.simulation?.waitForStateIds||[])||
+          JSON.stringify(x.simulation?.qInput?.stateIds||[])!==JSON.stringify(t.simulation?.qInput?.stateIds||[])||
+          ((x.simulation?.qInput?.stateIds?.length||0)>0&&(x.simulation?.qInput?.mode||'all')!==(t.simulation?.qInput?.mode||'all'))||
+          x.junctions.length!==(t.junctions||[]).length||(t.junctions||[]).some((j,i)=>{
+            const next=x.junctions[i];return !next||next.time!==j.time||next.outcomes.length!==j.outcomes.length||next.outcomes.some((o,n)=>o.toStateId!==j.outcomes[n]?.toStateId||(o.delay??M.get(beforeEdit,'state',o.toStateId).time-next.time)!==(j.outcomes[n]?.delay??M.get(beforeEdit,'state',j.outcomes[n]?.toStateId)?.time-j.time));});
+        if(changedSchedule)A.reconcile(d,beforeEdit,A.timing(d));
+    };
+    dialog("活動 / Task", html + notes(t) + window.MESimulationUI.junctionFields(t,doc()) + window.MESimulationUI.performanceFields(doc(), t), v => applyEdit(d=>updateTask(d,v)));
     window.MESimulationUI.bindPerformance($("#editor-form"), doc());
+    const form=$('#editor-form');
+    for(const block of form.querySelectorAll('.branch-editor')){const i=block.dataset.branchIndex,update=()=>{const mode=form.elements['branchMode-'+i].value,sum=[...block.querySelectorAll(`[name^="branchP-${i}-"]`)].reduce((n,input)=>n+(+input.value||0),0),message=block.querySelector('.branch-remainder');message.textContent=mode==='probability'?`通常継続 ${(100-sum*100).toFixed(1)}% / 分岐合計 ${(sum*100).toFixed(1)}%`:'作用が届かなければ通常経路を継続します。';message.classList.toggle('danger',sum>1&&mode==='probability');};block.addEventListener('input',update);block.addEventListener('change',update);update();}
+    const syncDuration=()=>{if(!form.elements.end)return;const anchor=form.elements.timeAnchor.value,n=+form.elements.taskDuration.value;
+      form.elements.start.readOnly=anchor==='end';form.elements.end.readOnly=anchor==='start';form.elements.taskDuration.readOnly=anchor==='manual';
+      if(anchor==='start')form.elements.end.value=(+form.elements.start.value)+n;
+      if(anchor==='end')form.elements.start.value=(+form.elements.end.value)-n;
+      if(anchor==='manual')form.elements.taskDuration.value=(+form.elements.end.value)-(+form.elements.start.value);
+      const start=+form.elements.start.value,duration=+form.elements.end.value-start;
+      for(const [i,j] of (t.junctions||[]).entries()){const progress=w.end===w.start?1:(j.time-w.start)/(w.end-w.start);form.elements['j'+i].value=start+duration*progress;}
+    };
+    form.elements.taskDuration.oninput=syncDuration;form.elements.timeAnchor.onchange=syncDuration;form.elements.start.oninput=syncDuration;if(form.elements.end)form.elements.end.oninput=syncDuration;
+    syncDuration();
+    authoringUI?.preview(updateTask);
   }
   function addCausalResult(cid) {
     const cause = M.get(doc(), "causalLink", cid);
@@ -528,70 +550,10 @@
       addResult(cause.target.taskId, {time:M.causalArrivalTime(doc(),cause),fixedTime:true});
   }
   function addResult(tid, context = {}) {
-    const t = M.get(doc(), "task", tid),
-      s = M.get(doc(), "state", t.fromStateId),
-      w = M.taskWindow(doc(), t),
-      time = context.time ?? w.end,
-      fixedTime = !!context.fixedTime,
-      actor = M.get(doc(), "actor", s.actorId);
-    if (time < w.start || time > w.end) {
-      toast("作用時刻がTaskの実行期間外のため、分岐を追加できません。Taskの期間または作用時刻を編集してください。");
-      return;
-    }
-    dialog(
-      "分岐を追加",
-      `<p class="dialog-summary">${esc(actor.name)} / ${esc(t.label)}<br>Taskの実行期間: ${w.start}〜${w.end}</p>` +
-        '<p id="branch-related-causes" class="dialog-summary" hidden></p>' +
-        field("time", "分岐する時刻", time, "number") +
-        field("label", "結果ラベル", "別の結果") +
-        choices("toStateId", "接続先State", [
-          ["", "新しいStateを作成"],
-          ...doc().states.filter(x => x.actorId === s.actorId && x.id !== s.id)
-            .map(x => [x.id, `${x.name} (T+${x.time})`]),
-        ], "") +
-        '<div id="new-result-state">' +
-        field("name", "新規State名", "") +
-        field("stateTime", "新規Stateの時刻", time, "number") + '</div>' +
-        '<p class="muted">元の到達先とTaskの終了時刻を保って、別の結果を追加します。同じ時刻の結果は1つの白丸へ集約します。新規Stateの時刻は、結果が現れる時刻に変更できます。</p>',
-      (v) => applyEdit((d) => {
-        const branchTime = fixedTime ? time : +v.time;
-        let target = v.toStateId;
-        if (!target) {
-          target = M.id("state");
-          d.states.push({id:target,actorId:s.actorId,name:v.name,time:+v.stateTime,activity:"active",phase:"other"});
-        }
-        M.addOutcome(d, tid, branchTime, target, v.label);
-        return {type:"task",id:tid};
-      }),
-    );
-    const timeInput = $('#dialog-fields [name="time"]');
-    const updateRelatedCauses = () => {
-      const causes = doc().causalLinks.filter(c => c.target.type === "junction" && c.target.taskId === tid && Math.abs(M.causalArrivalTime(doc(),c)-(+timeInput.value))<1e-9),
-        summary = $('#branch-related-causes');
-      summary.hidden = !causes.length;
-      summary.innerHTML = causes.length
-        ? `この時刻に到達する作用（T+${esc(timeInput.value)}）:<br>${causes.map(c => esc(c.label)).join("<br>")}<br><span class="muted">参考表示です。作用と分岐の紐付けや、分岐条件は設定されません。</span>`
-        : "";
-    };
-    timeInput.readOnly = fixedTime;
-    updateRelatedCauses();
-    let previousTime = time;
-    timeInput.oninput = () => {
-      const stateTime = $('#dialog-fields [name="stateTime"]');
-      if (+stateTime.value === previousTime) stateTime.value = timeInput.value;
-      previousTime = +timeInput.value;
-      updateRelatedCauses();
-    };
-    $('#dialog-fields [name="toStateId"]').onchange = (e) => {
-      const fields = $('#new-result-state');
-      fields.hidden = !!e.target.value;
-      fields.querySelectorAll('input').forEach(input => { input.disabled = !!e.target.value; });
-    };
-    $('#dialog-fields [name="name"]').placeholder = "例：無力化、通信回復";
-    $('#dialog-fields [name="label"]').focus();
+    return authoringUI.branch(tid, context);
   }
   function endpointFields(name,p){
-    const opts=doc().states.map(s=>["state:"+s.id,`State: ${s.name}`]);
+    const opts=doc().states.map(s=>["state:"+s.id,A.label(doc(),'state',s.id)]);
     if(name==="target")for(const t of doc().tasks)for(const j of t.junctions || [])opts.push(["junction:"+j.id,`分岐点: ${t.label} / T+${j.time}`]);
     return choices(name,name==="source"?"作用元State":"到達先State・分岐点",opts,p.type+":"+p.id);
   }
@@ -606,6 +568,7 @@
         notes(c) + window.MESimulationUI.causalFields(doc(),c),
       (v) =>
         applyEdit((d) => {
+          const beforeEdit=M.clone(d);
           const x = M.get(d, "causalLink", cid);
           {
             const i = v.source.indexOf(":"), type = v.source.slice(0,i), id = v.source.slice(i+1);
@@ -624,9 +587,13 @@
             kind: v.kind,
             notes: v.notes,
           });
+          const changedTiming=x.source.id!==c.source.id||x.target.type!==c.target.type||x.target.id!==c.target.id||x.propagation.duration!==c.propagation.duration;
+          if(changedTiming){if(x.target.type==='junction')A.propagation(d,x.id,x.propagation.duration);
+          else A.reconcile(d,beforeEdit);}
         }),
     );
     window.MESimulationUI.bindCausal($("#editor-form"),doc(),c);
+    authoringUI?.preview((d,v)=>{if(v.source===c.source.type+':'+c.source.id&&v.target===c.target.type+':'+c.target.id&&+v.causalDelay!==c.propagation.duration)A.propagation(d,cid,+v.causalDelay);});
   }
   function editTechnology(tid) {
     const t = tid
@@ -649,8 +616,7 @@
   function editBinding(s) {
     if(s.type === "state") return;
     if (!doc().technologies.length) {
-      editTechnology();
-      toast("技術を登録してから、もう一度「技術を関連付け」を選んでください。");
+      createAndBind(s);
       return;
     }
     dialog(
@@ -660,7 +626,7 @@
         "Technology",
         doc().technologies.map((t) => [t.id, t.name]),
         doc().technologies[0].id,
-      ),
+      )+ '<button type="button" id="binding-new-tech">新しい技術を登録して関連付け</button><p class="muted">技術の関連付けは性能を自動変更しません。時間・品質は対象の性能設定で指定します。</p>',
       (v) =>
         applyEdit((d) => {
           if (
@@ -679,7 +645,9 @@
             });
         }),
     );
+    $('#binding-new-tech').onclick=()=>createAndBind(s);
   }
+  function createAndBind(s){dialog('技術を登録して関連付け',field('name','技術名','')+choices('status','成熟状況',M.technologyStatuses,'unknown')+field('trl','TRL 1〜9（未評価は空欄）','','number')+notes({}),v=>applyEdit(d=>{const id=M.id('tech');d.technologies.push({id,name:v.name,status:v.status,trl:v.trl===''?null:+v.trl,notes:v.notes});d.bindings.push({id:M.id('binding'),technologyId:id,targetType:s.type,targetId:s.id});}));}
   function retargetBinding(id) {
     const b=M.get(doc(),"binding",id),tech=M.get(doc(),"technology",b.technologyId);
     const targets=[...doc().tasks.map(t=>{
@@ -739,14 +707,14 @@
     })[s.type]?.();
   }
   function deleteSelection() {
-    if (selection.length) change((d) => M.remove(d, selection));
+    if (selection.length){const before=M.clone(doc());change((d) => M.remove(d, selection));const removed=Object.values(M.collections).map(k=>({k,n:before[k].length-doc()[k].length})).filter(x=>x.n>0);toast('削除：'+removed.map(x=>x.k+' '+x.n+'件').join(' / ')+'。Undoで戻せます。');}
     selection = [];
     render();
   }
   function copy(cut = false) {
     clipboard = M.fragment(doc(), selection);
     if (cut) deleteSelection();
-    else toast("文書内クリップボードにコピーしました");
+    else toast(`コピー：主体 ${clipboard.actors.length} / State ${clipboard.states.length} / 活動 ${clipboard.tasks.length} / 作用 ${clipboard.causalLinks.length}`);
   }
   function paste() {
     if (!clipboard) return;
@@ -785,15 +753,18 @@
     const source = connecting,
       end = asEndpoint(target, time);
     if(!source)return;
-    if(!end){connecting=null;render();toast("接続先はStateまたは既存の分岐点です。Taskには先に分岐を追加してください。");return;}
+    const hint=A.connectionHints(doc(),source)(target?.type,target?.id);
+    if(!hint.allowed){toast(hint.message);return;}
+    if(!end){connecting=null;render();if(target?.type==='task'&&authoringUI){authoringUI.branch(target.id,{time},source);return;}toast("接続先はStateまたは既存の分岐点です。Taskには先に分岐を追加してください。");return;}
     connecting = null;
     let result;
     try {
-      applyEdit((d) => {
-        result = M.createConnection(d, source, end);
-        return result;
-      });
+      provisionalConnection={document:M.clone(doc()),past:[...history.past],future:[...history.future]};
+      const draft=M.clone(doc());result=M.createConnection(draft,source,end);
+      if(result.type==='causalLink')M.get(draft,result.type,result.id).simulation={enabled:true};
+      history.doc=draft;selection=[result];render();
     } catch (e) {
+      rollbackConnection();
       toast(e.message);
       render();
       return;
@@ -834,7 +805,7 @@
   }
   const canvas = $("#canvas-scroll");
   $("#timeline").addEventListener("pointerdown", (e) => {
-    if(e.target.closest(".import-error,.cdf-map-marker"))return;
+    if(e.target.closest(".import-error,.cdf-map-marker,.authoring-handle"))return;
     if (e.button !== 0) return;
     const p = point(e),
       s = targetInfo(e);
@@ -921,12 +892,19 @@
         `M${drag.start.x},${drag.start.y} L${p.x},${p.y}`,
       );
     $("#timeline").append(preview);
+    if(drag.kind==='state'){
+      const delta=M.snap((p.x-drag.start.x)/geometry.vp.scale,doc().time.snap),next=M.clone(doc());
+      try{const states=drag.selection.filter(s=>s.type==='state');for(const s of states)A.moveState(next,s.id,M.get(doc(),'state',s.id).time+delta,e.shiftKey?'keep':'follow');const g=L.layout(next,geometry.vp.width);const group=document.createElementNS(ns,'g');group.id='drag-state-preview';$('#drag-state-preview')?.remove();
+        group.innerHTML=states.map(s=>{const q=g.states.get(s.id);return q?`<circle cx="${q.x}" cy="${q.y}" r="12" fill="#087f8030" stroke="#087f80"/><text x="${q.x+15}" y="${q.y-12}" fill="#087f80">T+${M.get(next,'state',s.id).time}</text>`:'';}).join('');$('#timeline').append(group);$('#status').textContent=`${delta>=0?'+':''}${delta} ${doc().time.unit} · ${e.shiftKey?'後続時刻を維持':'後続の所要時間を維持'}`;
+      }catch(err){preview.setAttribute('stroke','#b42318');$('#status').textContent=err.message;}}
+    if(drag.kind==='actor'){const row=rowAt(p.y);if(row&&row.actor.id!==drag.source.id){const ratio=(p.y-row.y)/row.height;preview.setAttribute('d',ratio<.25||ratio>.75?`M0,${ratio<.25?row.y:row.y+row.height} H${geometry.vp.width}`:`M2,${row.y+2} H${geometry.vp.left-5} V${row.y+row.height-2} H2 Z`);$('#status').textContent=ratio<.25?'この行の上へ移動':ratio>.75?'この行の下へ移動':`${row.actor.name}の子にする`;}}
   });
   window.addEventListener("pointerup", (e) => {
     if (!drag) return;
     const d = drag;
     drag = null;
     $("#gesture-preview")?.remove();
+    $('#drag-state-preview')?.remove();
     if (!d.moved && d.kind !== "connect") return;
     swallowClick = true;
     setTimeout(() => (swallowClick = false), 0);
@@ -969,7 +947,9 @@
       const result = change((next) => {
         let sel = d.selection;
         if (d.copy) sel = M.paste(next, M.fragment(next, sel));
-        M.moveSelection(next, sel, delta, targetActorId);
+        const states=sel.filter(s=>s.type==='state');
+        if(states.length===1&&!d.copy){A.moveState(next,states[0].id,M.get(next,'state',states[0].id).time+delta,e.shiftKey?'keep':'follow');if(targetActorId)M.get(next,'state',states[0].id).actorId=targetActorId;M.validate(next);}
+        else A.moveSelection(next,sel,delta,e.shiftKey?'keep':'follow',targetActorId);
         return sel;
       });
       if (result) {
@@ -1108,9 +1088,13 @@
           ["コピー", () => copy()],
           ["切り取り", () => copy(true)],
         );
-      if (["state", "task", "actor"].includes(s.type))
+      if (s.type === "state")
         entries.push(["ここから接続", () => beginConnection(s, timeAt(p.x))]);
+      if(s.type==='state')entries.push(['次の活動を追加',()=>authoringUI.activity(M.get(doc(),'state',s.id).actorId,s.id)],
+        [doc().simulation?.successStateIds?.includes(s.id)?'達成目標を解除':'達成目標にする',()=>authoringUI.goals(s.id)],
+        ['合流条件を切り替え (AND / OR)',()=>change(d=>{const before=M.clone(d),st=M.get(d,'state',s.id);st.simulation={...st.simulation,join:st.simulation?.join==='any'?'all':'any'};A.reconcile(d,before);})]);
       if (s.type === "task") {
+        entries.push(['途中の成果を追加',()=>authoringUI.split(s.id,timeAt(p.x))]);
         const junction = e.target.closest(".junction[data-time]"),
           w = M.taskWindow(doc(), M.get(doc(), "task", s.id)),
           time = junction ? +junction.dataset.time : Math.max(w.start,Math.min(w.end,timeAt(p.x)));
@@ -1121,6 +1105,7 @@
         entries.push(["分岐を追加", () => addCausalResult(s.id)]);
       if (s.type === "actor")
         entries.push(
+          ['活動を追加',()=>authoringUI.activity(s.id)],
           ["子Actor追加", () => editActor(null, s.id)],
           ["子Group追加", () => editActor(null, s.id, true)],
           ["選択Actorをグループ化", group],
@@ -1131,6 +1116,8 @@
       if (["actor","task","causalLink"].includes(s.type))
         entries.push(["技術を関連付け", () => editBinding(s)]);
     } else {
+      if (row)
+        entries.push(['活動を追加',()=>authoringUI.activity(row.actor.id,null,timeAt(p.x))]);
       if (row)
         entries.push([
           "State追加",
@@ -1244,27 +1231,27 @@
       const query = $("#search-input").value.toLowerCase(),
         list = $(".search-results");
       list.replaceChildren();
-      for (const type of ["actor", "state", "task"])
+      for (const type of ["actor", "state", "task", "causalLink", "technology"])
         for (const x of doc()
           [M.collections[type]].filter((x) =>
-            (x.name || x.label).toLowerCase().includes(query),
+            [x.name,x.label,x.notes,x.id].filter(Boolean).join(' ').toLowerCase().includes(query),
           )
           .slice(0, 100))
           list.append(
-            button(x.name || x.label, () => {
+            button(`${type} · ${A.label(doc(),type,x.id)}`, () => {
               const aid =
                 type === "actor"
                   ? x.id
                   : type === "state"
                     ? x.actorId
-                    : M.get(doc(), "state", x.fromStateId).actorId;
+                    : type==='task'?M.get(doc(), "state", x.fromStateId).actorId:type==='causalLink'?M.get(doc(),'state',x.source.id).actorId:null;
               doc().views.main.collapsedActors =
                 doc().views.main.collapsedActors.filter(
                   (id) => !M.descendants(doc(), id).has(aid),
                 );
-              if (type !== "actor") {
+              if (type !== "actor" && type !== "technology") {
                 const t =
-                    type === "state" ? x.time : M.taskWindow(doc(), x).start,
+                    type === "state" ? x.time : type==='task'?M.taskWindow(doc(), x).start:M.get(doc(),'state',x.source.id).time,
                   r = doc().views.main.visibleTimeRange,
                   span = r.end - r.start;
                 if (t < r.start || t > r.end)
@@ -1272,7 +1259,7 @@
               }
               select({ type, id: x.id });
               const row = geometry.rows.find((r) => r.actor.id === aid);
-              canvas.scrollTo({ top: Math.max(0, row.y - 40) });
+              if(row)canvas.scrollTo({ top: Math.max(0, row.y - 40) });
               persist();
             }),
           );
@@ -1292,13 +1279,14 @@
           ["seconds", "minutes", "hours"],
           d.time.unit,
         ) +
+        choices('unitPolicy','変更時の扱い',[['convert','同じ実時間を保って換算'],['reinterpret','数値を保って単位変更']],'convert')+
         field("duration", "全期間", d.time.duration, "number"),
       (v) =>
         applyEdit((next) => {
           next.title = v.title;
-          next.time.unit = v.unit;
-          next.time.duration = +v.duration;
-          next.views.main.visibleTimeRange = { start: 0, end: +v.duration };
+          const factor=A.convertUnit(next,v.unit,v.unitPolicy==='convert');
+          next.time.duration = +v.duration*factor;
+          next.views.main.visibleTimeRange = { start: 0, end: next.time.duration };
           next.views.main.zoom = 1;
         }),
     );
@@ -1463,11 +1451,15 @@
   $("#help-btn").onclick = () => $("#help-dialog").showModal();
   $("#help-close").onclick = () => $("#help-dialog").close();
   $("#dialog-close").onclick = $("#dialog-cancel").onclick = () =>
-    $("#editor-dialog").close();
+    {rollbackConnection();$("#editor-dialog").close();};
+  function rollbackConnection(){if(!provisionalConnection)return;history.doc=provisionalConnection.document;history.past=provisionalConnection.past;history.future=provisionalConnection.future;provisionalConnection=null;selection=[];render();persist();}
+  $('#editor-dialog').addEventListener('cancel',rollbackConnection);
   $("#more-btn").onclick = (e) =>
     menu(e, [
       ["SVG出力", exportSVG],
       ["PNG出力", exportPNG],
+      ['新しいシナリオ',()=>authoringUI.newDocument()],
+      ['文書・別案・保存時点',()=>authoringUI.documents()],
       ["Technologyカタログ", catalog],
       ["表現デモ（捜索・識別・通信）", () =>
         confirmReplace("表現デモへ置き換え", () =>
@@ -1552,10 +1544,11 @@
     if (key === "arrowleft" || key === "arrowright") {
       e.preventDefault();
       change((d) =>
-        M.moveSelection(
+        selection.length===1&&selection[0].type==='state'?A.moveState(d,selection[0].id,M.get(d,'state',selection[0].id).time+(key==='arrowleft'?-1:1)*d.time.snap,e.shiftKey?'keep':'follow'):A.moveSelection(
           d,
           selection,
           (key === "arrowleft" ? -1 : 1) * d.time.snap,
+          e.shiftKey ? 'keep' : 'follow',
         ),
       );
     }
@@ -1582,8 +1575,26 @@
     exportPNG,
     undo,
     redo,
+    authoring:A,
+    select:s=>{select(s);inspector(true);},
+    getWorkspace:()=>workspace.list(),
   };
+  function navigate(s){
+    const x=M.get(doc(),s.type,s.id);if(!x)return;
+    const aid=s.type==='actor'?x.id:s.type==='state'?x.actorId:s.type==='task'?M.get(doc(),'state',x.fromStateId).actorId:s.type==='causalLink'?M.get(doc(),'state',x.source.id).actorId:null;
+    let start=0,end=doc().time.duration;
+    if(s.type==='state'){start=x.time-doc().time.snap*5;end=x.time+doc().time.snap*5;}
+    if(s.type==='task'){const w=M.taskWindow(doc(),x);start=w.start;end=w.end;}
+    if(s.type==='causalLink'){start=M.get(doc(),'state',x.source.id).time;end=M.causalArrivalTime(doc(),x);}
+    change(d=>{if(aid)d.views.main.collapsedActors=d.views.main.collapsedActors.filter(id=>!M.descendants(d,id).has(aid));const padding=Math.max(d.time.snap,(end-start)*.2);d.views.main.visibleTimeRange={start:Math.max(0,start-padding),end:Math.min(d.time.duration,Math.max(start+padding,end+padding))};});
+    select(s);inspector(true);const row=geometry.rows.find(r=>r.actor.id===aid);if(row)canvas.scrollTo({top:Math.max(0,row.y-40)});
+  }
+  function loadDocument(document){const inspected=D.inspect(JSON.stringify(document));if(inspected.errors.length)importPreview=inspected;else{importPreview=null;history=new M.History(document);}selection=[];connecting=null;render();persist();}
+  authoringUI=window.MEAuthoringUI.controller({getDocument:doc,change,applyEdit,dialog,field,choices,select,selected,edit,beginConnection,addActor:()=>editActor(),navigate,workspace,loadDocument,getImport:()=>importPreview,
+    repairImport:d=>{workspace.checkpoint('読み込み修正前の原文',importPreview.original);loadJSON(JSON.stringify(d));},toast,geometry:()=>geometry,render,
+    pan:time=>{const span=doc().views.main.visibleTimeRange.end-doc().views.main.visibleTimeRange.start;setRange(time-span/2,time+span/2);}});
   allCDFPanel=window.MEAllCDFUI.controller({getDocument:()=>M.clone(doc()),download,onHighlight:render,
+    onEditTarget:t=>{const s={type:t.type,id:t.id};navigate(s);edit(s);},
     onShowTarget:t=>{selection=[{type:t.type,id:t.id}];change(d=>{d.views.main.collapsedActors=[];d.views.main.visibleTimeRange={start:0,end:d.time.duration};});
       const node=[...$("#timeline").querySelectorAll("[data-type][data-id]")].find(e=>e.dataset.type===t.type&&e.dataset.id===t.id);node?.scrollIntoView?.({block:"center",inline:"center"});}
   });

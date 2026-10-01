@@ -56,6 +56,8 @@ async function openApp(saved) {
   for (const file of [
     "performance.js",
     "model.js",
+    "authoring.js",
+    "workspace.js",
     "import-diagnostics.js",
     "simulation.js",
     "sensitivity.js",
@@ -67,6 +69,7 @@ async function openApp(saved) {
     "simulation-sample.js",
     "tutorial-sample.js",
     "all-cdf-ui.js",
+    "authoring-ui.js",
     "app.js",
   ])
     w.eval(fs.readFileSync(path.join(root, "js", file), "utf8"));

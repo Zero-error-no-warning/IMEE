@@ -19,16 +19,17 @@
   }
   function curveFields(curves) {
     return curves.map((c,i)=>`<fieldset class="cdf-curve" data-curve="${i}"><legend>曲線 ${i+1}</legend>
-      <div class="cdf-curve-heading"><label>q ${input(`curve-${i}-q`,c.q,"曲線の品質w",0,1)}</label><button type="button" data-remove-curve="${i}" ${curves.length===1?"disabled":""}>曲線を削除</button></div>
-      <table class="simulation-table"><thead><tr><th>時間 t</th><th>累積確率 F(t) · 0〜1</th><th>品質保持率 q · 0〜1</th><th></th></tr></thead><tbody>
+      <div class="cdf-curve-heading"><label>入力品質 ${input(`curve-${i}-q`,c.q,"曲線の入力品質",0,1)}</label><button type="button" data-remove-curve="${i}" ${curves.length===1?"disabled":""}>曲線を削除</button></div>
+      <div class="cdf-direct-graph" data-curve-graph="${i}"></div><p class="muted">グラフの点をドラッグして時間・累積確率を調整できます。品質保持率は表で設定します。</p>
+      <table class="simulation-table"><thead><tr><th>所要時間</th><th>この時間以内の達成確率 · 0〜1</th><th>品質保持率 · 0〜1</th><th></th></tr></thead><tbody>
       ${c.points.map((p,j)=>`<tr data-point="${j}"><td>${input(`curve-${i}-t-${j}`,p.t,"時間t")}</td><td>${input(`curve-${i}-p-${j}`,p.p,"累積確率",0,1)}</td><td>${input(`curve-${i}-qOut-${j}`,p.q,"品質保持率",0,1)}</td><td><button type="button" data-remove-point="${i}-${j}" ${c.points.length===1?"disabled":""} aria-label="点を削除">×</button></td></tr>`).join("")}</tbody></table>
       <button type="button" data-add-point="${i}">＋ 点</button><p class="muted cdf-infinity"></p></fieldset>`).join("");
   }
   function performanceFields(d,t) {
     return `<details class="simulation-performance"><summary>Simulation / Performance${t.simulation?.enabled?" · CDF有効":""}</summary>
       <p class="muted">CDFはTask開始から「${esc(t.toStateId?M.get(d,"state",t.toStateId).name:"分岐点")}」の達成までの時間と未達を表し、実線で表示します。無効時は図上の固定所要時間（FIX）を使い、二重線で表示します。時間単位：${unit(d)}。Taskは1回実行します。</p>
-      <label class="simulation-check"><input type="checkbox" name="performanceEnabled" ${t.simulation?.enabled?"checked":""}>CDFを有効にする</label>
-      <fieldset id="performance-cdf-fields"><label class="field"><span>プレビュー用の入力品質 q（0〜1）</span>${input("performanceQ",t.simulation?.q??1,"性能品質",0,1)}</label>
+      <label class="field"><span>時間モデル</span><select name="performanceType"><option value="fixed">固定時間 (FIX)</option><option value="cdf" ${t.simulation?.enabled?'selected':''}>時間・未達の分布 (CDF)</option></select></label><input type="checkbox" name="performanceEnabled" ${t.simulation?.enabled?"checked":""} hidden>
+      <fieldset id="performance-cdf-fields"><label class="field"><span>プレビュー用の入力品質 q（0〜1）・実行値は上流から受領</span>${input("performanceQ",t.simulation?.q??1,"性能品質",0,1)}</label>
       <p class="muted">時間方向・曲線間は線形補間します。最終点以降は一定で、1 − 最終確率が未達確率です。各点のqは品質保持率で、出力q＝入力q×保持率です。</p>
       <div id="cdf-curves">${curveFields(t.simulation?.performanceModel?.curves || defaultCurves(d,t))}</div>
       <button type="button" id="add-cdf-curve">＋ qの曲線</button><div id="cdf-preview"></div><p id="cdf-preview-error" role="status"></p></fieldset>
@@ -68,7 +69,7 @@
     return sim;
   }
   function chart(points,label,timeUnit,deadline,band) {
-    const max=Math.max(1,points.at(-1).t,deadline??0,band?.maxTime??0), x=t=>50+t/max*520, y=p=>190-p*155;
+    const max=Math.max(1e-9,points.at(-1).t,deadline??0,band?.maxTime??0), x=t=>50+t/max*520, y=p=>190-p*155;
     if(points.at(-1).t<max) points=[...points,{t:max,p:points.at(-1).p}];
     const path=points.map((p,i)=>`${i?"L":"M"}${x(p.t)},${y(p.p)}`).join(" ");
     const bound=line=>line.map((p,i)=>`${i?"L":"M"}${x(p.t)},${y(p.p)}`).join(" ");
@@ -157,11 +158,25 @@
   }
   function bindPerformance(form,d,options={}) {
     const holder=form.querySelector("#cdf-curves"), preview=form.querySelector("#cdf-preview"), error=form.querySelector("#cdf-preview-error");
+    form._cdfAbort?.abort();const abort=new AbortController();form._cdfAbort=abort;
+    if(form.elements.performanceType){form.elements.performanceType.onchange=()=>{form.elements.performanceEnabled.checked=form.elements.performanceType.value==='cdf';update();};form.elements.performanceEnabled.addEventListener('change',()=>{form.elements.performanceType.value=form.elements.performanceEnabled.checked?'cdf':'fixed';},{signal:abort.signal});}
+    form.closest('dialog')?.addEventListener('close',()=>abort.abort(),{once:true,signal:abort.signal});
+    const tools=document.createElement('div');tools.className='cdf-edit-tools';
+    tools.innerHTML='<label>ひな型 <select data-cdf-preset><option value="baseline">基準時間から仮設定</option><option value="certain">基準時間までに100%達成（線形CDF）</option></select></label><button type="button" data-cdf-apply>ひな型を適用</button><button type="button" data-cdf-quality>低品質・高品質を設定</button><label>既存CDF <select data-cdf-copy><option value="">選択してください</option></select></label><button type="button" data-cdf-copy-apply>複製</button><p class="muted">ひな型の確率・保持率は仮置きです。計測値・推定値・仮置きの区別と根拠は備考に記録してください。</p>';
+    holder.before(tools);
+    const sources=[...d.tasks.filter(t=>t.simulation?.performanceModel).map(t=>({key:'task:'+t.id,label:root.MEAuthoring.label(d,'task',t.id),model:t.simulation.performanceModel})),...d.causalLinks.filter(c=>c.propagation.performanceModel).map(c=>({key:'causalLink:'+c.id,label:c.label,model:c.propagation.performanceModel}))];
+    for(const s of sources){const opt=document.createElement('option');opt.value=s.key;opt.textContent=s.label;tools.querySelector('[data-cdf-copy]').append(opt);}
+    const qInput=form.elements[options.qName||'performanceQ'],slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=1;slider.step=.01;slider.value=qInput.value||1;slider.setAttribute('aria-label','プレビューの入力品質');qInput.after(slider);
+    slider.oninput=()=>{qInput.value=slider.value;update();};qInput.addEventListener('input',()=>slider.value=qInput.value,{signal:abort.signal});
+    let dragging=null;
+    function graphs(curves){holder.querySelectorAll('[data-curve-graph]').forEach(el=>{const i=+el.dataset.curveGraph,c=curves[i],max=dragging?.curve===i?dragging.max:Math.max(1e-9,...c.points.map(p=>Number.isFinite(p.t)?p.t:0))*1.15,x=t=>40+t/max*490,y=p=>170-p*140;
+      el.innerHTML=`<svg viewBox="0 0 570 205" data-graph-max="${max}" aria-label="曲線${i+1}を編集"><path d="M40 30 V170 H530" stroke="#84979e" fill="none"/>${[0,.5,1].map(p=>`<text x="33" y="${y(p)+4}" text-anchor="end" font-size="10">${p*100}%</text><path d="M40 ${y(p)} H530" stroke="#dce5e7"/>`).join('')}<path d="${[...(c.points[0].t>0?[{t:0,p:0}]:[]),...c.points,{t:max,p:c.points.at(-1).p}].map((p,j)=>(j?'L':'M')+x(p.t)+','+y(p.p)).join(' ')}" stroke="#087f80" stroke-width="2" fill="none"/>${c.points.map((p,j)=>`<circle data-cdf-handle="${i}:${j}" cx="${x(p.t)}" cy="${y(p.p)}" r="6" fill="white" stroke="#087f80" stroke-width="2" role="button" tabindex="0" aria-label="点${j+1}: ${p.t}以内に${(p.p*100).toFixed(1)}%。矢印キーで変更"><title>${p.t} ${unit(d)}以内に ${(p.p*100).toFixed(1)}%達成。保持率 ${p.q}</title></circle>`).join('')}<text x="40" y="192" font-size="10">0</text><text x="530" y="192" text-anchor="end" font-size="10">${fmt(max)} ${unit(d)}</text></svg>`;});}
     function update() {
       const enabled=options.enabled ? options.enabled() : form.elements.performanceEnabled.checked;
       form.querySelector("#performance-cdf-fields").hidden=!enabled;
       form.querySelector("#performance-cdf-fields").disabled=!enabled;
       const curves=readCurves(form);
+      graphs(curves);
       holder.querySelectorAll(".cdf-curve").forEach(el=>{
         const value=1-curves[Number(el.dataset.curve)].points.at(-1).p;
         el.querySelector(".cdf-infinity").textContent="未達確率 P(T=∞)："+pct(Number.isFinite(value)?value:null);
@@ -176,6 +191,20 @@
       } catch(e) { error.textContent=diagnostic(e); }
     }
     function replace(curves) { holder.innerHTML=curveFields(curves); update(); }
+    tools.querySelector('[data-cdf-apply]').onclick=()=>{const branches=[...form.elements].filter(el=>/^j\d+$/.test(el.name)).map(el=>+el.value);const duration=options.duration??(form.elements.causalDelay?+form.elements.causalDelay.value:form.elements.end?Math.max(0,+form.elements.end.value-+form.elements.start.value):Math.max(0,...branches)-(+form.elements.start.value));replace(tools.querySelector('[data-cdf-preset]').value==='certain'?[{q:1,points:[{t:duration,p:1,q:1}]}]:durationCurves(duration));};
+    tools.querySelector('[data-cdf-quality]').onclick=()=>{const curves=readCurves(form),model=M.clone(curves.at(-1));replace([{...M.clone(model),q:0},{...model,q:1}]);};
+    tools.querySelector('[data-cdf-copy-apply]').onclick=()=>{const source=sources.find(s=>s.key===tools.querySelector('[data-cdf-copy]').value);if(source)replace(M.clone(source.model.curves));};
+    function movePoint(curve,index,t,p){
+      const c=readCurves(form)[curve],prev=c.points[index-1],next=c.points[index+1],scale=Math.max(1e-9,Math.abs(t),Math.abs(prev?.t??0),Math.abs(next?.t??0)),epsilon=Number.EPSILON*scale*16;
+      const lo=prev?prev.t+epsilon:0,hi=next?next.t-epsilon:1e9;if(lo>hi)return;
+      t=Math.max(lo,Math.min(hi,Number(t.toPrecision(12))));p=Math.max(prev?.p??0,Math.min(next?.p??1,Number(p.toFixed(4))));
+      form.elements[`curve-${curve}-t-${index}`].value=t;form.elements[`curve-${curve}-p-${index}`].value=p;update();
+    }
+
+    holder.addEventListener('pointerdown',e=>{const h=e.target.closest('[data-cdf-handle]');if(!h)return;const [curve,index]=h.dataset.cdfHandle.split(':').map(Number),svg=h.closest('svg');dragging={curve,index,max:+svg.dataset.graphMax,box:svg.getBoundingClientRect()};e.preventDefault();},{signal:abort.signal});
+    root.addEventListener('pointermove',e=>{if(!dragging||!dragging.box.width)return;const {curve,index,max,box}=dragging;movePoint(curve,index,Math.max(0,((e.clientX-box.left)/box.width*570-40)/490*max),Math.max(0,Math.min(1,(170-(e.clientY-box.top)/box.height*205)/140)));},{signal:abort.signal});
+    root.addEventListener('pointerup',()=>{if(dragging){dragging=null;update();}},{signal:abort.signal});
+    holder.addEventListener('keydown',e=>{const h=e.target.closest('[data-cdf-handle]');if(!h||!e.key.startsWith('Arrow'))return;e.preventDefault();const [curve,index]=h.dataset.cdfHandle.split(':').map(Number),p=readCurves(form)[curve].points[index],step=d.time.snap;movePoint(curve,index,p.t+(e.key==='ArrowRight'?step:e.key==='ArrowLeft'?-step:0),p.p+(e.key==='ArrowUp' ? .01 : e.key==='ArrowDown' ? -.01 : 0));holder.querySelector(`[data-cdf-handle="${curve}:${index}"]`)?.focus();},{signal:abort.signal});
     holder.addEventListener("click",event=>{
       const target=event.target.closest("button"); if (!target) return;
       const curves=readCurves(form);
@@ -198,23 +227,29 @@
       curves.push({...M.clone(curves.at(-1)),q}); curves.sort((a,b)=>a.q-b.q); replace(curves);
     };
     const section=form.querySelector(options.section || ".simulation-performance");
+    if(!options.section){const chooser=document.createElement('details');chooser.className='dependency-chooser';chooser.innerHTML='<summary>図から開始条件・品質入力・中止条件を選ぶ</summary><label>選ぶ条件 <select data-dependency-kind><option value="waitForStateIds">追加開始条件</option><option value="qStateIds">品質入力</option><option value="cancelOnStateIds">中止条件</option></select></label><div class="dependency-map"></div><p class="muted">Stateをクリックして選択・解除します。</p>';section.append(chooser);
+      const map=chooser.querySelector('.dependency-map'),kind=chooser.querySelector('select');const draw=()=>{const ids=[...form.querySelectorAll(`[name="${kind.value}"]:checked`)].map(x=>x.value),g=root.MELayout.layout(d,1000,{full:true});map.innerHTML=root.MERender.render(d,g,{selection:ids.map(id=>({type:'state',id}))});};kind.onchange=draw;map.onclick=e=>{const state=e.target.closest('.state[data-id]');if(!state)return;const checkbox=[...form.querySelectorAll(`[name="${kind.value}"]`)].find(x=>x.value===state.dataset.id);if(checkbox){checkbox.checked=!checkbox.checked;checkbox.dispatchEvent(new Event('change',{bubbles:true}));draw();}};chooser.addEventListener('toggle',()=>{if(chooser.open)draw();});}
     section.addEventListener("input",update); section.addEventListener("change",update); update();
   }
   function stateFields(s) {
     return `<details><summary>Simulation / State</summary><p class="muted">初期qは外生Stateだけに使います。到達した結果は品質を保持し、固定値で上書きしません。生成元が複数ならANDはすべて、ORは最初の到達を待ちます。</p>
       <label class="field"><span>初期Stateの品質q（既定1）</span>${input("stateQ",s.simulation?.q??"","State出力q",0,1)}</label>
-      <label class="field"><span>複数Task・State到達作用からの合流</span><select name="stateJoin"><option value="all">すべて（AND）</option><option value="any" ${s.simulation?.join==="any"?"selected":""}>いずれか（OR）</option></select></label></details>`;
+      <label class="field"><span>複数Task・State到達作用からの合流</span><select name="stateJoin"><option value="all">すべて（AND）</option><option value="any" ${s.simulation?.join==="any"?"selected":""}>いずれか（OR）</option></select></label><div id="join-preview"></div></details>`;
   }
+  function bindState(form,d,s){const arrivals=[...d.causalLinks.filter(c=>c.target.type==='state'&&c.target.id===s.id).map(c=>({label:c.label,time:M.causalArrivalTime(d,c)})),...d.tasks.filter(t=>t.toStateId===s.id).map(t=>({label:t.label,time:s.time}))],out=form.querySelector('#join-preview');
+    const update=()=>{if(!arrivals.length){out.innerHTML='<p class="muted">初期Stateです。指定した時刻に成立し、初期品質を使用します。</p>';return;}const any=form.elements.stateJoin.value==='any',time=(any?Math.min:Math.max)(...arrivals.map(a=>a.time)),max=Math.max(1e-9,...arrivals.map(a=>a.time)),x=t=>75+t/max*380;
+      out.innerHTML=`<p><strong>基準成立時刻 T+${fmt(time)}</strong>（${any?'最初の入力で成立':'全入力を待つ'}）</p><svg viewBox="0 0 500 ${arrivals.length*28+10}" role="img" aria-label="合流の成立時刻">${arrivals.map((a,i)=>`<text x="2" y="${i*28+18}" font-size="10">入力${i+1}</text><path d="M75 ${i*28+14} H${x(time)}" stroke="#84979e" stroke-dasharray="3 3"/><circle cx="${x(a.time)}" cy="${i*28+14}" r="4" fill="${a.time>time?'#aab8bb':'#087f80'}"/><title>${esc(a.label)} T+${a.time}</title>`).join('')}</svg><p class="muted">${any?'成立後の入力は品質を更新しません。成立時点までに届いた入力の最大品質を使います。':'成立時点で全入力の最小品質を使います。'} 対象活動の開始待ちがある場合、その条件も必要です。実際の時刻・品質は試行ごとに変わります。初期品質欄は到達した品質を上書きしません。</p>`;};form.elements.stateJoin.addEventListener('change',update);update();}
   function readState(form,s) {
     const sim={...M.clone(s.simulation || {}),join:form.elements.stateJoin.value};
     if(form.elements.stateQ.value!=="")sim.q=Number(form.elements.stateQ.value);else delete sim.q;
     return sim;
   }
-  function junctionFields(t) {
-    return (t.junctions || []).map((j,i)=>`<details><summary>分岐 ${i+1}の実行設定</summary>
+  function junctionFields(t,d) {
+    return (t.junctions || []).map((j,i)=>`<details open class="branch-editor" data-branch-index="${i}"><summary>分岐 ${i+1}：結果と実行条件</summary>
+      <label class="field"><span>分岐の基準時刻</span>${input('j'+i,j.time,'分岐時刻')}</label>
       <label class="field"><span>実行モード</span><select name="branchMode-${i}"><option value="">未指定（表示のみ・実行時エラー）</option><option value="probability" ${j.simulation?.mode==="probability"?"selected":""}>確率分岐</option><option value="effect" ${j.simulation?.mode==="effect"?"selected":""}>作用線による分岐</option></select></label>
       <p class="muted">確率は分岐点へ到達した条件下の選択確率。残りは通常経路。作用分岐はTask実行中の入力で移り、元の接続先を取り消します。遅延が空欄なら図上の分岐点から結果Stateまでの時間です。</p>
-      ${j.outcomes.map((o,n)=>`<div class="field-row"><label class="field"><span>${esc(o.label)} · 選択確率</span>${input(`branchP-${i}-${n}`,o.probability??"","分岐確率",0,1)}</label><label class="field"><span>結果到達までの遅延</span>${input(`branchDelay-${i}-${n}`,o.delay??"","分岐遅延")}</label></div>`).join("")}</details>`).join("");
+      <div class="branch-table-scroll"><table class="simulation-table branch-table"><thead><tr><th>結果名</th><th>到達State</th><th>選択確率 (0〜1)</th><th>到達までの時間</th></tr></thead><tbody>${j.outcomes.map((o,n)=>`<tr><td><input name="label-${i}-${n}" value="${esc(o.label)}" aria-label="結果名"></td><td><select name="target-${i}-${n}" aria-label="結果State"><option value="">この結果を削除</option>${(d?.states||[]).filter(s=>s.actorId===M.get(d,'state',t.fromStateId).actorId&&s.id!==t.fromStateId).map(s=>`<option value="${esc(s.id)}" ${s.id===o.toStateId?'selected':''}>${esc(root.MEAuthoring.label(d,'state',s.id))}</option>`).join('')}</select></td><td>${input(`branchP-${i}-${n}`,o.probability??"","分岐確率",0,1)}</td><td>${input(`branchDelay-${i}-${n}`,o.delay??"","分岐遅延")}</td></tr>`).join('')}</tbody></table></div><p class="branch-remainder" role="status"></p></details>`).join("");
   }
   function causalFields(d,c) {
     const sim=c.simulation || {},p=c.propagation || {},duration=p.duration ?? 0;
@@ -226,7 +261,7 @@
       <fieldset id="performance-cdf-fields"><label class="field"><span>プレビュー用入力q</span>${input("causalPreviewQ",1,"入力q",0,1)}</label>
       <div id="cdf-curves">${curveFields(p.performanceModel?.curves || durationCurves(duration))}</div>
       <button type="button" id="add-cdf-curve">＋ 入力qの曲線</button><div id="cdf-preview"></div><p id="cdf-preview-error" role="status"></p></fieldset>
-      <label class="simulation-check"><input type="checkbox" name="causalEnabled" ${sim.enabled?"checked":""}>シミュレーションで実行する</label>
+      <label class="simulation-check"><input type="checkbox" name="causalEnabled" ${sim.enabled?"checked":""}>実行する作用（OFFなら説明用）</label>
       <fieldset id="causal-branch-fields"><label class="field"><span>分岐結果</span><select name="causalOutcome"></select></label>
       <label class="simulation-check"><input type="checkbox" name="stopTargetActor" ${sim.stopTargetActor?"checked":""}>分岐後、対象Actorの他Taskを中止する</label></fieldset></details>`;
   }
@@ -296,6 +331,10 @@
     const analysisForm=document.querySelector("#sensitivity-form"), analysisOutput=document.querySelector("#sensitivity-results"),analysisError=document.querySelector("#sensitivity-error"),analysisProgress=document.querySelector("#sensitivity-progress"),analysisRun=document.querySelector("#sensitivity-run"),analysisExport=document.querySelector("#sensitivity-export");
     const overlayToggle=document.querySelector("#simulation-overlay-toggle"),applyButton=document.querySelector("#simulation-apply");
     let token=0, result=null, snapshot=null, signature=null, running=false,analysisToken=0,analysisResult=null,analysisSnapshot=null,overlayVisible=false;
+    let previousRun=null;
+    const history=document.createElement('section');history.id='simulation-history';output.after(history);
+    function remember(){if(result)previousRun={result:M.clone(result),snapshot:M.clone(snapshot)};}
+    function drawHistory(){history.innerHTML=previousRun?`<details class="analysis-history"><summary>変更前の成功率 ${pct(previousRun.result.successProbability)}${result?` → 現在 ${pct(result.successProbability)}`:''}</summary><p>旧設定の結果です。現在の図へは適用しません。</p><button type="button" id="simulation-previous-export">変更前の結果JSON保存</button>${resultHTML(previousRun.result)}</details>`:'';const b=history.querySelector('button');if(b)b.onclick=()=>download(new Blob([JSON.stringify({mission:previousRun.snapshot,result:previousRun.result},null,2)],{type:'application/json'}),'mission-simulation-previous.json');}
     function syncOverlay() {
       overlayToggle.disabled=applyButton.disabled=!result;
       overlayToggle.setAttribute("aria-pressed",String(overlayVisible));
@@ -309,7 +348,7 @@
     applyButton.onclick=()=>{showOverlay(true);dialog.close();};
     syncOverlay();
     function stopAnalysis(){analysisToken++;analysisRun.disabled=false;document.querySelector("#sensitivity-stop").hidden=true;}
-    const fingerprint=d=>JSON.stringify({...d,views:undefined});
+    const fingerprint=d=>root.MEAuthoring.fingerprint(d);
     function stop() { stopAnalysis(); token++; running=false; runButton.disabled=false; document.querySelector("#simulation-stop").hidden=true; }
     function setupHTML() {
       const d=getDocument(), sim=d.simulation;
@@ -324,8 +363,10 @@
     function invalidate() {
       const next=fingerprint(getDocument());
       if (signature!==null && signature!==next) {
+        remember();
         stop(); result=null; snapshot=null; exportButton.disabled=true; overlayVisible=false;syncOverlay(); analysisResult=null;analysisSnapshot=null;analysisExport.disabled=true;analysisOutput.innerHTML="";analysisProgress.textContent="文書が変わりました。再実行してください。";
         output.innerHTML=""; progress.textContent="文書が変わりました。再実行してください。";
+        drawHistory();
         if(dialog.open) setupHTML();
       }
       signature=next;
@@ -338,7 +379,7 @@
     document.querySelector("#simulation-demo").onclick=()=>{stop();dialog.close();loadDemo();};
     document.querySelector("#simulation-stop").onclick=()=>{stop();progress.textContent="実行を中断しました。";};
     runButton.onclick=()=>{
-      stop(); result=null; output.innerHTML=""; exportButton.disabled=true; snapshot=getDocument(); signature=fingerprint(snapshot);
+      remember();stop(); result=null; output.innerHTML=""; exportButton.disabled=true; snapshot=getDocument(); signature=fingerprint(snapshot);drawHistory();
       overlayVisible=false;syncOverlay();onOverlayChange();
       let job;
       try { job=S.createRun(snapshot); error.textContent=job.compiled.warnings.join("\n"); }
@@ -351,7 +392,7 @@
         try {
           const status=job.step(batch); progress.textContent=`${status.completed.toLocaleString()} / ${status.total.toLocaleString()} 試行`;
           if(!status.done) {setTimeout(tick,0);return;}
-          result=job.result(); stop(); output.innerHTML=resultHTML(result); exportButton.disabled=false;syncOverlay();
+          result=job.result(); stop(); output.innerHTML=resultHTML(result); exportButton.disabled=false;syncOverlay();drawHistory();
         } catch(e) {stop();error.textContent=diagnostic(e);}
       }
       setTimeout(tick,0);
@@ -387,5 +428,5 @@
     analysisExport.onclick=()=>{if(analysisResult && signature===fingerprint(getDocument()))download(new Blob([JSON.stringify({mission:analysisSnapshot,sensitivity:analysisResult},null,2)],{type:"application/json"}),"mission-sensitivity.json");};
     return {open,invalidate,getOverlayResult:()=>overlayVisible?result:null};
   }
-  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,hoverPreview,stateFields,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
+  root.MESimulationUI={performanceFields,readPerformance,bindPerformance,hoverPreview,stateFields,bindState,readState,junctionFields,causalFields,bindCausal,readCausal,settingsFields,readSettings,controller};
 })(globalThis);

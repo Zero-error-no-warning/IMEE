@@ -154,8 +154,8 @@
     };
     str(d.title, "ミッション名");
     if (!d.time) fail("時間設定が必要です。");
-    num(d.time.duration, "全期間", 0.01, 1e6);
-    num(d.time.snap, "スナップ", 0.01, d.time.duration);
+    num(d.time.duration, "全期間", 1e-9, 1e6);
+    num(d.time.snap, "スナップ", 1e-9, d.time.duration);
     opt(d.time.unit, ["seconds", "minutes", "hours"], "時間単位");
     if (!d.time.unit) fail("時間単位が必要です。");
     for (const k of ["actors", "states", "tasks", "causalLinks"])

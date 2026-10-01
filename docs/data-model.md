@@ -6,6 +6,8 @@ Stateは成立した条件・事実、Taskは同Actor内の時間を要する状
 
 必須: `version:3`, `title`, `time:{unit,duration,snap}`, `actors`, `states`, `tasks`, `causalLinks`。`technologies`, `bindings`, `views`は省略可能です。IDはjunctionを含め全体で一意。時間単位はseconds/minutes/hoursです。
 
+全期間は1e-9〜1,000,000、スナップは1e-9〜全期間です。単位換算時には全State・Junction・結果遅延・伝搬・CDF点・期限・表示範囲を同じ係数で換算できます。操作上の仕様は [authoring-workflow.md](authoring-workflow.md) を参照してください。
+
 ## State
 
 `{id,actorId,name,time,simulation?:{q,join}}`。`time`は図の基準成立時刻。初期Stateはその時刻に外生的に成立します。生成元のあるStateは実到達時刻で成立し、図の時刻に固定しません。
@@ -165,3 +167,7 @@ junctionを対象とする作用線ごとに、起点Stateが対象Taskの**実�
 Actorは`{id,name,side,parentId?,isGroup?,color?}`。技術の定義と関連付けは上記のTechnology・Bindingを参照してください。
 
 折りたたみ・Actor順・ズーム・フィルタは`views.main`に保存。固定時間は二重線、CDFは実線。正負での線種分けはしません。実行結果の割合と線幅は表示として適用し、文書の基準時刻・設定は変更しません。
+
+文書一覧・保存時点はシナリオJSONと別のブラウザ内保存です。計算結果の有効性は、時刻・接続・品質・CDF・分岐・成功条件などの計算設定で判定します。名前・備考・色・技術・表示の変更では既存結果を保持します。旧結果は当時の入力スナップショットへ紐付けます。
+
+Relative / Fixed-time Node・直交線・図上CDFは [検討中の設計案](time-axis-design.md) です。現行version 3にノード種別は追加していません。

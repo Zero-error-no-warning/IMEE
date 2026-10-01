@@ -34,6 +34,9 @@
       selection = options.selection || [],
       selected = (id) => selection.some((s) => s.id === id),
       chain = options.chain;
+    const connectionHint=options.connecting?.id&&root.MEAuthoring?.connectionHints(doc,options.connecting);
+    const connectionClass=(type,id)=>!options.connecting?'':!connectionHint?' connect-target':connectionHint(type,id).allowed?' connect-target':' connect-unavailable';
+    const connectionMessage=(type,id)=>connectionHint?connectionHint(type,id).message:'';
     const emphasis = (id) =>
       chain?.size && !chain.has(id) ? ' opacity="0.24"' : "";
     const data = (type, id) =>
@@ -75,7 +78,7 @@
       let marker = centeredEnd ? "state-arrow" : "arrow";
       const performanceTitle = e.type === "causalLink" ? performance === "cdf" ? "CDF：発生から到着までの伝搬時間・未達を抽選" : fixed ? "FIX：伝搬時間は固定、到着時刻は発生時刻で変動" : "表示のみ：シミュレーション実行なし" : performance === "cdf" ? "CDF：所要時間・未達を抽選" : performance === "mixed" ? "CDF / FIXを含む集約線（展開して確認）" : fixed ? e.part === "outcome" ? "FIX：分岐後の遅延は固定" : "FIX：所要時間は固定、開始時刻は依存条件で変動" : "";
       const resultTitle = e.resultSegments?.map(p=>`${p.metric.label} ${p.metric.text} (${p.metric.count}/${p.metric.total})`).join(" / ");
-      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${performanceTitle ? " · " + esc(performanceTitle) : ""}${resultTitle ? " · " + esc(resultTitle) : resultOverlay && e.summaryActorId ? " · 集約線の割合は展開して確認" : ""}</title>`;
+      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${e.part === "task"&&!e.summaryActorId ? connectionClass('task',e.id) : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${options.connecting&&e.part==='task'?' · '+esc(connectionMessage('task',e.id)):''}${performanceTitle ? " · " + esc(performanceTitle) : ""}${resultTitle ? " · " + esc(resultTitle) : resultOverlay && e.summaryActorId ? " · 集約線の割合は展開して確認" : ""}</title>`;
       if (e.type === "causalLink") {
         const segment = L.routeSegments(e.points).at(-1);
         const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
@@ -121,10 +124,12 @@
     for (const s of states.values()) {
       if (s.summaryHidden) continue;
       const a = M.get(doc, "actor", s.displayActorId), color = M.actorColor(doc,a);
-      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${s.summaryActorId ? summaryData(s.summaryActorId) : data("state",s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc((s.summaryNames && [...new Set(s.summaryNames)].join(" / ")) || s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
+      svg += `<g class="state${selected(s.id) ? " selected" : ""}${!s.summaryActorId?connectionClass('state',s.id):''}"${s.summaryActorId ? summaryData(s.summaryActorId) : data("state",s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc((s.summaryNames && [...new Set(s.summaryNames)].join(" / ")) || s.name)} · T+${s.time}${options.connecting?' · '+esc(connectionMessage('state',s.id)):''}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
       if (options.gapIds?.has(s.id)) svg += `<circle cx="${s.x}" cy="${s.y}" r="12" fill="none" stroke="#d17a30" opacity=".6"/>`;
       if (selected(s.id))
         svg += `<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" stroke="#76b8b5"/>`;
+      if(!s.summaryActorId&&doc.simulation?.successStateIds?.includes(s.id))svg+=`<g class="goal-marker"><title>達成目標</title><path d="M${s.x-13},${s.y-16} V${s.y-32} L${s.x+1},${s.y-28} L${s.x-13},${s.y-24}" fill="#087f80" stroke="#087f80"/><text x="${s.x+6}" y="${s.y-23}" font-size="9" fill="#087f80">目標</text></g>`;
+      if(!s.summaryActorId&&doc.causalLinks.filter(c=>c.target.type==='state'&&c.target.id===s.id).length+doc.tasks.filter(t=>t.toStateId===s.id).length>1)svg+=`<text class="join-marker" x="${s.x-16}" y="${s.y-9}" font-size="9" fill="#8061a8">${s.simulation?.join==='any'?'OR':'AND'}</text>`;
       s.lines.forEach(
         (line, i) =>
           (svg += `<text x="${s.labelX}" y="${s.y + 22 + i * 13}" text-anchor="middle" font-size="11">${esc(line)}</text>`),
@@ -144,6 +149,7 @@
       if (!isTask)
         svg += `<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
       svg += `<text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
+      if(e.type==='causalLink'&&!M.get(doc,'causalLink',e.id)?.simulation?.enabled&&!e.summaryActorId)svg+=`<g class="display-only-badge"><title>説明用：シミュレーションでは実行しません</title><text x="${b.x+b.width/2}" y="${b.y-4}" font-size="9" text-anchor="middle" fill="#84979e">説明用</text></g>`;
     }
     for (const e of edges) for (const part of e.resultSegments || []) {
       const b=part.labelInfo,m=part.metric;
