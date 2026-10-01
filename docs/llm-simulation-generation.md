@@ -38,6 +38,22 @@ State/Taskを残す基準:
 
 「時刻0に待機しているだけ」で、そのStateを経由せずシミュレーションが進むなら削除します。
 
+ただし、待機Stateを削除した結果、元々そのStateから始まっていたTaskへ情報・指令CausalLinkを直接接続して代用しないでください。
+
+情報・指令が後続行為の因果起点なら、
+
+```text
+送信側State
+   ↓ CausalLink
+受信側「指令受領」State
+   ↓
+後続Task
+```
+
+とします。
+
+TaskをCausalLinkのtargetにするのは、wをTaskへ入力する場合やeffect分岐でTaskを中断する場合など、Taskそのものへ作用させる意味があるときです。
+
 ## 3. Taskの時間モデル
 
 固定TaskはState時刻差を基準所要時間として使います。
