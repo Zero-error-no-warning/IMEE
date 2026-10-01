@@ -68,38 +68,100 @@ TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ
 
 outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
 
-通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。Task本体はsimulation.enabled=trueならCDFの実線、未設定/無効なら固定所要時間（FIX）の二重線です。分岐後の結果線は固定遅延なので二重線です。線種は描画時に導出し、別のデータ項目には保存しません。
+通常Taskにjunctionsは不要です。外部因果がTask途中へ到達する場合もjunctionsへの追記は不要で、到達位置はCausalLinkの発生時刻と伝搬時間から導出します。分岐情報のあるjunctionと同じ基準到達時刻なら、描画上は同じ白丸を共有します。
 
-UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
-
-Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、追加時点では作用との紐付けや分岐条件を自動設定しません。任意のSimulation設定はTask・作用線編集で明示します。
-
-Task編集で分岐時刻を変えた場合、同じ旧時刻へ接続していた因果端点も追従します。複数junctionの既存情報も編集できます。
+UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存Task実行期間内です。Taskを到達先とする因果線から分岐を追加する場合、分岐時刻は `source基準時刻 + propagation.duration` から求めます。
 
 ## CausalLink
 
+CausalLinkは**到達絶対時刻を保存しません**。
+
 ```js
 {
-  id, source: {type: "state", id: "sensor-detected"},
-  target: {type: "task", id: "transmit", time: 49},
-  polarity: "positive" | "negative",
-  label: "作用の説明", kind: "interference", notes: ""
+  id: "report",
+  source: {type: "state", id: "sensor-detected"},
+  target: {type: "task", id: "transmit"},
+  propagation: {
+    duration: 4
+  },
+  polarity: "positive",
+  label: "探知情報",
+  kind: "information",
+  notes: ""
 }
 ```
 
-source / targetの形式：
+### source
 
-| type  | フィールド     | 時刻・レーン                             |
-| ----- | -------------- | ---------------------------------------- |
-| state | type, id       | State.time / StateのActor                |
-| task  | type, id, time | 指定time / 接続元StateのActor            |
-| actor | type, id, time | 指定time / Actorレーン（環境等に利用可） |
+| type | フィールド | 発生時刻 |
+| --- | --- | --- |
+| state | type, id | State.time |
+| task | type, id, time | 指定time |
+| actor | type, id, time | 指定time |
 
-State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。Task端点はTask実行期間外でも全期間内の指定時刻に保存できます。期間外端点はTaskの実線上にはなく、時間窓外の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
+State sourceにはtimeを書きません。Task / Actor sourceにはtimeが必要です。
 
-polarityが唯一の因果線種です。positiveは矩形波、negativeは滑らかな波線で、いずれも経路に沿って振幅2.8px・周期15pxで描きます。端点付近では基準経路に戻し、矢印headは波形ではなく基準経路末尾の方向に固定します。Task・分岐結果の線は直線です。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
+### target
 
-State / Taskの旧status（actual / planned / proposed）とCausalLink.proposedは読込・保存の互換性のため受け付けますが、表示・フィルタ・分析には使いません。新規作成では付けません。シナリオの仮定はnotesで説明します。ラベル補助線も細いニュートラルな実線です。
+targetは `{type, id}` のみです。`target.time` は使用しません。
+
+基準到達時刻:
+
+```text
+arrivalTime = sourceTime + propagation.duration
+```
+
+`propagation.duration` は0以上の有限値です。
+
+State targetでは、表示整合のためtarget State.timeを基準到達時刻と一致させます。
+
+Task targetでは、基準到達時刻がTaskの開始〜終了のどこにあるかを介入時間窓として評価します。期間外を意図的に表すこと自体は可能ですが、その場合はnotesへ理由を書きます。
+
+### propagation
+
+固定伝搬:
+
+```js
+propagation: { duration: 4 }
+```
+
+CDF伝搬:
+
+```js
+propagation: {
+  duration: 4,
+  w: 0,
+  performanceModel: {
+    type: "cdf",
+    degradationInput: "w",
+    curves: [...]
+  }
+}
+```
+
+`duration` は図上の基準位置です。CDFを使う実行ではCDF抽選時間が実伝搬時間そのもので、durationへ加算しません。
+
+### simulation
+
+作用線の実行効果は `simulation` に分離します。
+
+```js
+simulation: {
+  enabled: true,
+  type: "w" | "branch" | "state",
+  w,
+  junctionId,
+  outcomeStateId,
+  stopTargetActor,
+  holdUntilStart
+}
+```
+
+旧 `simulation.delay` と `simulation.propagation` は廃止です。
+
+polarityは因果線種です。positiveは矩形波、negativeは滑らかな波線。kindは分析分類で、detection / observation / information / command / support / attack / interference等を使えます。
+
+State / Taskの旧statusとCausalLink.proposedは互換読込用です。新規作成では付けません。
 
 ## Technology Binding
 
@@ -152,11 +214,23 @@ Actor / Group複製は子孫Actor、State、内部Task、内部因果、Binding�
 
 ## Simulation（任意・version 2互換）
 
-Taskの任意 `simulation` に `enabled`（CDFの有効/無効）、`w`（固定入力・省略時0）、`performanceModel`（type: cdf / curves）、`waitForStateIds`（接続元に加えたAND依存）を保存します。CDF有効時のモデルは必須で、時間・累積確率の単調性、wの範囲、最終確率+未達確率=1を本体のvalidate/parseで検証します。CDF無効Taskも実行し、図上の固定所要時間を使います。
+Taskの任意 `simulation` に `enabled`、`w`、`performanceModel`、`waitForStateIds`、`wInput`、`outputW`、`cancelOnStateIds` を保存できます。
 
-文書トップレベルの任意 `simulation` には `successStateIds` と `successMode`（all: AND / any: OR、省略時all）、`deadline`（null/省略で期限なし）、`iterations`、`seed` を保存します。各State参照と数値をvalidate/parseで検証します。既存文書に設定を自動付与しません。
+文書トップレベルの `simulation` には `successStateIds`、`successMode`、`deadline`、`iterations`、`seed` を保存します。
 
-実行依存DAGの検証はシミュレーション実行前に追加で行います。Junctionはsimulation.mode（probability / effect）を明示して実行します。outcomeのprobability・delay、作用線のsimulation（enabled、type: w / branch / state、propagation、delay、w、junctionId、outcomeStateId、stopTargetActor、holdUntilStart）を検証します。Stateにはsimulation.w・join（all / any）、TaskにはwInput（stateIds・waitForLinks・combine: max）、outputW、cancelOnStateIdsを保存できます。依存循環・分岐実行未指定は拒否します。実行指定したw作用線は性能入力となり、到着待ちを指定したときだけ開始依存になります。State到達作用は入力先Stateの生成元となり、Taskと同じAND/OR合流に参加します。作用線の任意 `simulation.propagation` は `{enabled, w?, performanceModel?}` で、CDF有効ならモデル必須。w省略時は発生元wを引き継ぎ、出力の固定simulation.wとは別に扱います。CDF無効/未設定は従来の固定delayを使います。描画用のState.timeと実行時のState到達時刻は別で、実行により元文書を書き換えません。[CDF仕様、実行意味論、Criticalityと統計の詳細](simulation.md)を参照してください。
+Junctionは `simulation.mode: "probability" | "effect"` を使います。
+
+CausalLinkの時間モデルはトップレベル `propagation` に置きます。
+
+- `propagation.duration`: 基準伝搬時間。必須。
+- `propagation.w`: 伝搬CDFへ入力する固定w。任意。
+- `propagation.performanceModel`: 伝搬時間CDF。任意。
+
+作用線の `simulation.type` は `w / branch / state`。
+
+実行時のState到達時刻は元のState.timeを書き換えません。State.timeとpropagation.durationは基準描画・整合確認に使い、CDF有効時の実到着は抽選結果を使います。
+
+実行依存の循環、分岐モード、wの入力範囲等はcompile時にも確認しますが、JSON生成仕様は外部テスト環境を前提にしません。
 
 ## 描画の制約
 
