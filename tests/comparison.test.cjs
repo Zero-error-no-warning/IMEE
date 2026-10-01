@@ -37,7 +37,7 @@ for(const [name,create] of cases) {
     const old=read(name),d=create();
     assert.equal(d.causalLinks.length,old.interactions.length);
     for(const i of old.interactions) {
-      const c=M.get(d,'causalLink',i.id),source=M.endpoint(d,c.source),target=M.endpoint(d,c.target);
+      const c=M.get(d,'causalLink',i.id),source=M.endpoint(d,c.source),target=M.causalEndpoint(d,c);
       const targetStateId=i.targetType==='transition'?old.transitions.find(t=>t.id===i.targetId).from:i.targetId;
       assert.deepEqual(source,{actorId:old.states.find(s=>s.id===i.fromStateId).actorId,time:i.sourceTime});
       assert.deepEqual(target,{actorId:old.states.find(s=>s.id===targetStateId).actorId,time:i.time});
