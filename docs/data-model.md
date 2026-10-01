@@ -101,10 +101,67 @@ junctionを対象とする作用線ごとに、起点Stateが対象Taskの**実�
 - Task開始を別ノードとして扱い、完了待ちと混同しない。潜在依存も含め循環は禁止し、依存経路と該当JSONを出す。
 - `views.main.filters.implicitDependencies:true`で開始依存を破線表示。通常の作用線と分離する。
 
+## Technology（技術）
+
+トップレベルの`technologies`配列に技術オブジェクトを保存します。配列は省略可能で、省略時は空配列です。各技術は次の形式です。
+
+```json
+{
+  "id": "tech-identification",
+  "name": "接触識別技術",
+  "status": "research",
+  "trl": 4,
+  "notes": "説明用の架空の技術評価"
+}
+```
+
+| フィールド | 必須 | 型・制約 | 意味 |
+| --- | --- | --- | --- |
+| `id` | 必須 | 空でない文字列。文書全体で一意 | 技術の参照ID |
+| `name` | 必須 | 空でない文字列 | 表示する技術名 |
+| `status` | 必須 | 下表の5値のいずれか | 技術の成熟・確保状況の区分 |
+| `trl` | 任意 | 1〜9の整数、`null`、または省略 | 技術成熟度。未評価・不明は`null`または省略 |
+| `notes` | 任意 | 文字列。空文字可 | 根拠、仮定、制約などの説明 |
+
+| `status` | 意味 |
+| --- | --- |
+| `existing` | 既存・利用可能な技術 |
+| `research` | 研究開発中の技術 |
+| `planned` | 導入・開発を計画している技術 |
+| `gap` | 必要だが未確保の技術 |
+| `unknown` | 状況が不明な技術 |
+
+`status`と`trl`は別の項目です。区分からTRLを自動決定せず、不明なTRLは推測で埋めません。技術オブジェクト自体には関連付け先を保存しません。TaskのCDFや品質値もTechnologyへ移さず、各Task・作用線の実行設定へ保存します。Technologyはそれらの性能を自動的に変更しません。
+
+## Binding（技術の関連付け）
+
+トップレベルの`bindings`配列でTechnologyと対象を関連付けます。配列は省略可能で、省略時は空配列です。
+
+```json
+{
+  "id": "binding-identification",
+  "technologyId": "tech-identification",
+  "targetType": "task",
+  "targetId": "identify"
+}
+```
+
+| フィールド | 必須 | 型・制約 | 意味 |
+| --- | --- | --- | --- |
+| `id` | 必須 | 空でない文字列。文書全体で一意 | 関連付けのID |
+| `technologyId` | 必須 | 存在するTechnologyのID | 関連付ける技術 |
+| `targetType` | 必須 | `actor` / `task` / `causalLink` / `state` | 対象の種類 |
+| `targetId` | 必須 | 指定した種類の既存オブジェクトのID | 関連付け先 |
+| `notes` | 任意 | 文字列。空文字可 | 関連付けの説明 |
+
+上の例は`id:"identify"`のTaskが文書内に存在することを前提とします。技術を定義するだけではTask・作用線へ関連付きません。複数の対象へ同じ技術を関連付ける場合は、対象ごとにBindingを作ります。1つの対象へ複数技術を関連付けることもできます。
+
+通常はTask・作用線へ関連付けます。ActorへのBindingは、そのActorに所属するState・Taskの技術分析でも参照されます。既存のState Bindingは読み込み・保持できますが、エディタではStateへの新規関連付けを作成しません。分岐点・分岐結果は独立したBinding対象ではありません。
+
 ## Mission・表示・技術
 
 `simulation:{successStateIds,successMode:"all"|"any",deadline?,iterations?,seed?}`。成功は指定Stateの到達と任意の期限で判定し、q=0を自動的に不達へ変換しません。CDFなどで品質依存の性能を指定します。
 
-Actorは`{id,name,side,parentId?,isGroup?,color?}`。技術は`technologies`と`bindings:{id,technologyId,targetType,targetId}`でActor/Task/作用線へ関連付けます。Stateへの既存技術Bindingも保持可能です。
+Actorは`{id,name,side,parentId?,isGroup?,color?}`。技術の定義と関連付けは上記のTechnology・Bindingを参照してください。
 
 折りたたみ・Actor順・ズーム・フィルタは`views.main`に保存。固定時間は二重線、CDFは実線。正負での線種分けはしません。実行結果の割合と線幅は表示として適用し、文書の基準時刻・設定は変更しません。
