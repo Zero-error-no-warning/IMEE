@@ -17,6 +17,13 @@
     ({ id, source, target, label, kind, polarity });
   function finish(d) {
     for (const x of [...d.states, ...d.tasks]) delete x.status;
+    const states = new Map(d.states.map(s => [s.id, s]));
+    const time = p => p.type === "state" ? states.get(p.id)?.time : p.time;
+    for (const c of d.causalLinks) {
+      const sourceTime = time(c.source), targetTime = time(c.target);
+      c.propagation = { duration: targetTime - sourceTime };
+      if (c.target && "time" in c.target) delete c.target.time;
+    }
     M.defaults(d);
     d.views.main.filters.technology = false;
     return M.validate(d);
