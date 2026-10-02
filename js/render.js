@@ -127,7 +127,7 @@
       if (single && summaryJunctions.has(key)) continue;
       if (single) summaryJunctions.add(key);
       const color=M.actorColor(doc,M.get(doc,"actor",j.actorId));
-      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}" data-junction-id="${esc(j.explicit || "")}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
+      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}" data-junction-id="${esc(j.explicit || "")}"><title>Task上の分岐点 T+${j.time} · ドラッグで時刻移動 · Shiftで結果時刻を維持</title>${options.export?'':`<circle class="junction-hit" cx="${j.x}" cy="${j.y}" r="10" fill="transparent"/>`}<circle class="junction-body" cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
     }
     for (const s of states.values()) {
       if (s.summaryHidden) continue;

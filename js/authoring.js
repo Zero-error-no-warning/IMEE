@@ -258,30 +258,32 @@
       b = timing(before),
       delta = time - old;
     s.time = time;
-    if(s.timing?.mode === "fixed") {
-      s.timing.at=time;
-      return reconcile(d,before);
-    }
+    const fixed=s.timing?.mode === "fixed";
+    if(fixed)s.timing.at=time;
     const inputs=incomingRelations(before,id);
     const chosen=incomingId||(inputs.find(x=>Math.abs(x.time-old)<1e-8)||inputs[0])?.id;
     if(incomingId&&!inputs.some(x=>x.id===incomingId))throw new Error("時間を調整する入力が存在しません。");
     for (const c of d.causalLinks) {
-      if (c.target.type === "state" && c.target.id === id && chosen==="causalLink:"+c.id)
-        c.propagation.duration = round(
-          time - M.get(d, "state", c.source.id).time,
-        );
+      if (c.target.type === "state" && c.target.id === id && (!incomingId||chosen==="causalLink:"+c.id))
+        c.propagation.duration = round(incomingId?time-M.get(d,"state",c.source.id).time:c.propagation.duration+delta);
       if (mode === "keep" && c.source.id === id)
         c.propagation.duration = round(c.propagation.duration - delta);
-      if (c.propagation.duration < 0)
-        throw new Error(
-          "伝搬時間が負になります。発生元を早めるか、後続を移動してください。",
-        );
     }
+    if(mode!=="keep"){
+      const moved=new Set();
+      for(const c of d.causalLinks)if(c.source.id===id&&c.target.type==="junction"&&!moved.has(c.target.id)){
+        moved.add(c.target.id);
+        const oldJ=M.get(before,"junction",c.target.id);
+        adjustJunction(d,b,c.target.taskId,c.target.id,oldJ.time+delta);
+      }
+    }
+    if(d.causalLinks.some(c=>c.propagation.duration<0))
+      throw new Error("伝搬時間が負になります。発生元を早めるか、後続を移動してください。");
     for (const t of d.tasks) {
-      if (t.toStateId === id && chosen==="task:"+t.id) b.durations[t.id] += delta;
+      if (!fixed && t.toStateId === id && chosen==="task:"+t.id) b.durations[t.id] += delta;
       for (const j of t.junctions || [])
         for (const o of j.outcomes)
-          if (o.toStateId === id && chosen==="outcome:"+j.id+":"+id) b.delays[j.id + ":" + id] += delta;
+          if (!fixed && o.toStateId === id && chosen==="outcome:"+j.id+":"+id) b.delays[j.id + ":" + id] += delta;
       if (mode === "keep" && t.fromStateId === id) {
         b.durations[t.id] -= delta;
         for (const j of t.junctions || []) b.offsets[j.id] -= delta;
@@ -298,6 +300,23 @@
     const result=reconcile(d, before, b);
     if(Math.abs(s.time-time)>1e-8)throw new Error("他の入力・開始依存が成立時刻を拘束しています。調整する入力を変更するか、依存先も調整してください。");
     return result;
+  }
+  function adjustJunction(d,base,taskId,junctionId,time,mode="follow"){
+    const t=M.get(d,"task",taskId),j=t?.junctions?.find(j=>j.id===junctionId);
+    if(!j)throw new Error("分岐点が存在しません。");
+    const delta=time-j.time;
+    j.time=time;
+    base.offsets[j.id]=round(time-M.taskWindow(d,t).start);
+    for(const c of d.causalLinks)if(c.target.type==="junction"&&c.target.taskId===taskId&&c.target.id===junctionId)
+      c.propagation.duration=round(time-M.get(d,"state",c.source.id).time);
+    if(mode==="keep")for(const o of j.outcomes)base.delays[j.id+":"+o.toStateId]-=delta;
+  }
+  function moveJunction(d,taskId,junctionId,time,mode="follow"){
+    if(!Number.isFinite(time)||time<0)throw new Error("時刻は0以上の数値にしてください。");
+    const before=clone(d),base=timing(before);
+    adjustJunction(d,base,taskId,junctionId,time,mode);
+    if(Object.values(base.delays).some(delay=>delay<0))throw new Error("結果への遅延が負になります。結果も移動する方法を選んでください。");
+    return reconcile(d,before,base);
   }
   function setNodeTiming(d,id,mode,at){
     if(!["relative","fixed"].includes(mode))throw new Error("時間種別が不正です。");
@@ -317,9 +336,8 @@
     c.propagation.duration = duration;
     if (c.target.type === "junction") {
       const t = M.get(d, "task", c.target.taskId),
-        j = M.get(d, "junction", c.target.id),
-        start = M.taskWindow(d,t).start;
-      b.offsets[j.id] = M.get(d, "state", c.source.id).time + duration - start;
+        j = M.get(d, "junction", c.target.id);
+      adjustJunction(d,b,t.id,j.id,M.get(d,"state",c.source.id).time+duration);
       if (b.offsets[j.id] < 0)
         throw new Error("作用の到達は対象活動の開始以降にしてください。");
       b.durations[t.id] = Math.max(b.durations[t.id], b.offsets[j.id]);
@@ -651,6 +669,7 @@
     changes,
     reconcile,
     moveState,
+    moveJunction,
     incomingRelations,
     setNodeTiming,
     moveSelection,

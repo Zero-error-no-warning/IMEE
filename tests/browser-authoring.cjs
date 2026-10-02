@@ -236,6 +236,30 @@ async function main() {
     assert.equal((await document()).states.find(s=>s.id==='r1').time,22);
     assert(!(await page.locator('#simulation-btn').isDisabled()));
     await page.screenshot({path:path.join(output,'12-edit-error-repaired.png')});
+    const fixtures=require('./fixtures/quality.cjs'),branches=fixtures.gate();
+    branches.states.push(fixtures.state('extra-effect','a',20));
+    branches.causalLinks.push(fixtures.link('extra-hit','extra-effect',JSON.parse(JSON.stringify(branches.causalLinks[0].target)),1));
+    await page.evaluate(d=>window.IMEE.loadJSON(JSON.stringify(d)),branches);
+    if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
+    async function moveNode(selector,delta){
+      const target=page.locator(selector);await target.scrollIntoViewIfNeeded();const box=await target.boundingBox();
+      const pixels=await page.evaluate(delta=>{const svg=document.querySelector('#timeline'),g=window.MELayout.layout(window.IMEE.getDocument(),+svg.getAttribute('width'));return delta*g.vp.scale*svg.getScreenCTM().a;},delta);
+      await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+      await page.mouse.move(box.x+box.width/2+pixels,box.y+box.height/2,{steps:5});
+      assert.equal(await page.locator('#drag-state-preview').count(),1);
+      await page.mouse.up();
+    }
+    await moveNode('.junction[data-junction-id="point"] .junction-body',2);
+    let moved=await document();assert.equal(moved.tasks[0].junctions[0].time,23);
+    assert.deepEqual(moved.causalLinks.map(c=>c.propagation.duration),[3,3]);
+    assert.equal(moved.states.find(s=>s.id==='killed').time,23);
+    await page.screenshot({path:path.join(output,'13-junction-drag.png')});
+    await page.evaluate(()=>window.IMEE.undo());
+    await moveNode('.state[data-id="effect"] .body',2);
+    moved=await document();assert.equal(moved.tasks[0].junctions[0].time,23);
+    assert.deepEqual(moved.causalLinks.map(c=>c.propagation.duration),[1,3]);
+    assert.equal(await page.locator('.edit-error').count(),0);
+    await page.screenshot({path:path.join(output,'14-state-connections-follow.png')});
     assert.deepEqual(errors, []);
     console.log("Browser authoring workflow passed; screenshots: " + output);
   } finally {

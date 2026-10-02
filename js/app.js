@@ -504,7 +504,7 @@
         choices("nodeTiming","時間種別",[["relative","● Relative Node：入力から時刻が決まる"],["fixed","▼ Fixed-time Node：指定時刻に成立"]],sid?M.nodeTiming(doc(),x).mode:"fixed") +
         '<p class="dialog-summary">Fixedは指定時刻までに条件が揃えば成立し、間に合わなければ未成立です。時刻はシナリオ開始からの経過時間（H+）で入力します。</p>' +
         field("time", "時刻 / H+", x.time, "number") +
-        (sid&&A.incomingRelations(doc(),sid).length>1?choices("incomingTiming","Relativeの時刻調整に使う入力",[["","成立時刻を決める入力"],...A.incomingRelations(doc(),sid).map(r=>[r.id,r.label+" / H+"+r.time])],"")+'<p class="muted">他の入力は保持します。Fixedでは入力時間を変更しません。</p>':"") +
+        (sid&&A.incomingRelations(doc(),sid).length>1?choices("incomingTiming","Relativeの時刻調整に使う入力",[["","すべての作用線を連動"],...A.incomingRelations(doc(),sid).map(r=>[r.id,r.label+" / H+"+r.time])],"")+'<p class="muted">通常はすべての作用線を同じ時間差だけ移動します。入力を選ぶと個別に調整します。Fixedでは入力Taskの所要時間を保持します。</p>':"") +
         choices("timePolicy", "時刻変更時の後続", [["follow","後続の所要時間を保って移動"],["keep","後続の基準時刻を維持"]], "follow") +
         choices(
           "activity",
@@ -902,6 +902,13 @@
       return;
     }
     if (connecting) return;
+    const junction=e.target.closest('.junction[data-junction-id]');
+    if(junction?.dataset.junctionId&&s?.type==='task'){
+      select(s);
+      drag={kind:'junction',start:p,taskId:s.id,junctionId:junction.dataset.junctionId,
+        time:M.get(doc(),'junction',junction.dataset.junctionId).time};
+      e.preventDefault();return;
+    }
     if (s) {
       if (!selection.some((x) => x.id === s.id) && !e.ctrlKey && !e.metaKey)
         select(s);
@@ -966,11 +973,22 @@
         `M${drag.start.x},${drag.start.y} L${p.x},${p.y}`,
       );
     $("#timeline").append(preview);
-    if(drag.kind==='state'){
+    if(drag.kind==='state'||drag.kind==='junction'){
       const delta=M.snap((p.x-drag.start.x)/geometry.vp.scale,doc().time.snap),next=M.clone(doc());
-      try{const states=drag.selection.filter(s=>s.type==='state');for(const s of states)A.moveState(next,s.id,M.get(doc(),'state',s.id).time+delta,e.shiftKey?'keep':'follow');const g=L.layout(next,geometry.vp.width);const group=document.createElementNS(ns,'g');group.id='drag-state-preview';$('#drag-state-preview')?.remove();
-        group.innerHTML=states.map(s=>{const q=g.states.get(s.id);return q?`<circle cx="${q.x}" cy="${q.y}" r="12" fill="#087f8030" stroke="#087f80"/><text x="${q.x+15}" y="${q.y-12}" fill="#087f80">T+${M.get(next,'state',s.id).time}</text>`:'';}).join('');$('#timeline').append(group);$('#status').textContent=`${delta>=0?'+':''}${delta} ${doc().time.unit} · ${e.shiftKey?'後続時刻を維持':'後続の所要時間を維持'}`;
-      }catch(err){preview.setAttribute('stroke','#b42318');$('#status').textContent=err.message;}}
+      $('#drag-state-preview')?.remove();
+      try{
+        const states=drag.kind==='state'?drag.selection.filter(s=>s.type==='state'):[];
+        if(drag.kind==='junction')A.moveJunction(next,drag.taskId,drag.junctionId,drag.time+delta,e.shiftKey?'keep':'follow');
+        else if(states.length===1)A.moveState(next,states[0].id,M.get(doc(),'state',states[0].id).time+delta,e.shiftKey?'keep':'follow');
+        else A.moveSelection(next,drag.selection,delta,e.shiftKey?'keep':'follow');
+        const g=L.layout(next,geometry.vp.width),group=document.createElementNS(ns,'g');group.id='drag-state-preview';
+        const nodes=drag.kind==='junction'?[...g.junctions.values()].filter(j=>j.explicit===drag.junctionId):states.map(s=>g.states.get(s.id)).filter(Boolean);
+        group.innerHTML=nodes.map(q=>`<circle cx="${q.x}" cy="${q.y}" r="12" fill="#087f8030" stroke="#087f80"/><text x="${q.x+15}" y="${q.y-12}" fill="#087f80">T+${q.time}</text>`).join('')+
+          g.edges.filter(edge=>{const old=geometry.edges.find(e=>e.type===edge.type&&e.id===edge.id&&e.part===edge.part&&e.junctionId===edge.junctionId&&e.outcomeIndex===edge.outcomeIndex);return old&&L.path(old.points)!==L.path(edge.points);})
+            .map(edge=>`<path d="${L.path(edge.points)}" fill="none" stroke="#087f80" stroke-width="2" stroke-dasharray="4 3" opacity=".65" pointer-events="none"/>`).join('');
+        $('#timeline').append(group);$('#status').textContent=`${delta>=0?'+':''}${delta} ${doc().time.unit} · ${e.shiftKey?'後続時刻を維持':'後続の所要時間を維持'}`;
+      }catch(err){preview.setAttribute('stroke','#b42318');$('#status').textContent=err.message;}
+    }
     if(drag.kind==='actor'){const row=rowAt(p.y);if(row&&row.actor.id!==drag.source.id){const ratio=(p.y-row.y)/row.height;preview.setAttribute('d',ratio<.25||ratio>.75?`M0,${ratio<.25?row.y:row.y+row.height} H${geometry.vp.width}`:`M2,${row.y+2} H${geometry.vp.left-5} V${row.y+row.height-2} H2 Z`);$('#status').textContent=ratio<.25?'この行の上へ移動':ratio>.75?'この行の下へ移動':`${row.actor.name}の子にする`;}}
   });
   window.addEventListener("pointerup", (e) => {
@@ -1007,6 +1025,10 @@
           selection.push({ type: "state", id: s.id });
       render();
       return;
+    }
+    if(d.kind==='junction'){
+      const delta=M.snap((p.x-d.start.x)/geometry.vp.scale,doc().time.snap);
+      change(next=>A.moveJunction(next,d.taskId,d.junctionId,d.time+delta,e.shiftKey?'keep':'follow'));
     }
     if (d.kind === "state") {
       const delta = M.snap(
