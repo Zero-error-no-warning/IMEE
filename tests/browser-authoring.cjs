@@ -193,6 +193,8 @@ async function main() {
     if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
     assert.equal(await page.locator('#timeline .fixed-time-node').count(),2);
     assert.equal(await page.locator('#timeline .axis-cdf').count(),2);
+    assert.equal(await page.locator('#timeline .cdf-probability-guide[data-probability="0.5"]').count(),2);
+    assert.equal(await page.locator('#timeline .cdf-probability-guide[data-probability="1"]').count(),2);
     assert(await page.evaluate(()=>[...document.querySelectorAll('#timeline .edge.task .hit')].every(p=>{
       const coords=p.getAttribute('d').match(/-?\d+(?:\.\d+)?/g).map(Number);
       return coords.length===4&&coords[1]===coords[3];
@@ -214,6 +216,26 @@ async function main() {
     await page.setViewportSize({width:640,height:800});
     await page.screenshot({path:path.join(output,'10-time-axis-narrow.png')});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.setViewportSize({width:1440,height:1000});
+    await page.evaluate(d=>window.IMEE.loadJSON(JSON.stringify(d)),require('./fixtures/quality.cjs').base());
+    await page.locator('.state[data-id="r0"] .body').dblclick();
+    await page.locator('[name="time"]').fill('5');
+    await page.locator('#editor-form button[type="submit"]').click();
+    assert.equal((await document()).states.find(s=>s.id==='r0').time,5);
+    assert.equal((await document()).causalLinks[0].propagation.duration,-5);
+    assert.equal(await page.locator('.edit-error').count(),1);
+    assert(await page.locator('#simulation-btn').isDisabled());
+    await page.screenshot({path:path.join(output,'11-edit-error-retained.png')});
+    await page.reload();
+    if(process.env.QA_FONT_DIR){await page.addStyleTag({url:'/qa-font/400.css'});await page.evaluate(()=>document.fonts.ready);}
+    assert.equal(await page.locator('.edit-error').count(),1);
+    await page.locator('.edit-error [data-edit-error]').click();
+    await page.locator('[name="causalDelay"]').fill('2');
+    await page.locator('#editor-form button[type="submit"]').click();
+    assert.equal(await page.locator('.edit-error').count(),0);
+    assert.equal((await document()).states.find(s=>s.id==='r1').time,22);
+    assert(!(await page.locator('#simulation-btn').isDisabled()));
+    await page.screenshot({path:path.join(output,'12-edit-error-repaired.png')});
     assert.deepEqual(errors, []);
     console.log("Browser authoring workflow passed; screenshots: " + output);
   } finally {

@@ -18,6 +18,7 @@
       workspace,
       loadDocument,
       getImport,
+      getDiagnostics= getImport,
       repairImport,
       toast,
     } = api;
@@ -410,18 +411,19 @@
       });
     }
     function issues() {
-      const imported = getImport(),
-        list = imported
-          ? imported.errors.map((e) => ({
+      const imported = getImport(),diagnostic=getDiagnostics(),
+        list = diagnostic
+          ? diagnostic.errors.map((e) => ({
               severity: "error",
               message: e.message,
               path: e.path,
               fragment: e.fragment,
+              target: imported?null:root.MEImportDiagnostics.target(diagnostic,e),
             }))
           : A.issues(doc());
       dialog(
-        imported ? "読み込み診断" : "実行準備・問題一覧",
-        `<p>${imported ? "元JSONを保持して診断しています。" : "構造が完成していても、実行設定が未完了の項目があります。説明用の線は意図した設定ならそのままで構いません。"}</p>${list.map((x, i) => `<article class="issue ${esc(x.severity)}"><strong>${x.severity === "error" ? "要設定" : x.severity === "warning" ? "確認" : "案内"}</strong><p>${esc(x.message)}</p>${x.target ? `<button type="button" data-issue-target="${i}">図で確認</button><button type="button" data-issue-edit="${i}">設定する</button>` : ""}${x.path ? `<details><summary>詳細</summary><pre>${esc(x.path + "\n" + JSON.stringify(x.fragment, null, 2))}</pre></details>` : ""}</article>`).join("") || "<p>実行に必要な設定は揃っています。</p>"}${imported ? '<button type="button" id="repair-times">時刻の整合を修正する案を確認</button>' : ""}`,
+        imported ? "読み込み診断" : diagnostic?"編集エラー":"実行準備・問題一覧",
+        `<p>${imported ? "元JSONを保持して診断しています。" : diagnostic?"編集内容を保持しています。問題箇所を修正するか、Undoで戻してください。":"構造が完成していても、実行設定が未完了の項目があります。説明用の線は意図した設定ならそのままで構いません。"}</p>${list.map((x, i) => `<article class="issue ${esc(x.severity)}"><strong>${x.severity === "error" ? "要設定" : x.severity === "warning" ? "確認" : "案内"}</strong><p>${esc(x.message)}</p>${x.target ? `<button type="button" data-issue-target="${i}">図で確認</button><button type="button" data-issue-edit="${i}">設定する</button>` : ""}${x.path ? `<details><summary>詳細</summary><pre>${esc(x.path + "\n" + JSON.stringify(x.fragment, null, 2))}</pre></details>` : ""}</article>`).join("") || "<p>実行に必要な設定は揃っています。</p>"}${imported ? '<button type="button" id="repair-times">時刻の整合を修正する案を確認</button>' : ""}`,
         () => {},
       );
       $("#dialog-fields").onclick = (e) => {
@@ -665,14 +667,14 @@
       };
     }
     function render(g) {
-      const imported = getImport(),
-        problems = imported ? imported.errors : A.issues(doc()),
+      const imported = getImport(),diagnostic=getDiagnostics(),
+        problems = diagnostic ? diagnostic.errors : A.issues(doc()),
         blocking = problems.filter(
-          (x) => x.severity === "error" || imported,
+          (x) => x.severity === "error" || diagnostic,
         ).length;
       $("#issues-btn").textContent = imported
         ? `読み込み診断 ${blocking}件`
-        : blocking
+        : diagnostic?`編集エラー ${blocking}件`: blocking
           ? `実行準備：要設定 ${blocking}件`
           : "実行準備 OK";
       const steps = [
@@ -715,10 +717,10 @@
       };
       for (const id of ["add-activity", "connect-btn", "branch-btn"])
         $("#" + id).disabled =
-          !!imported ||
+          !!diagnostic ||
           (id === "connect-btn" && selected()?.type !== "state") ||
           (id === "branch-btn" && selected()?.type !== "task");
-      if (!imported) {
+      if (!diagnostic) {
         quickInspector();
         const svg = $("#timeline");
         const actors = g.rows

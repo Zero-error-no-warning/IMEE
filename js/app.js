@@ -8,7 +8,8 @@
     $ = (s) => document.querySelector(s),
     esc = R.esc,
     KEY = "imee.document.v3";
-  let importPreview=null;
+  let importPreview=null,editPreview=null;
+  const editDiagnostics=new Map();
   const D=window.MEImportDiagnostics;
   let allCDFPanel=null;
   let authoringUI=null;
@@ -30,8 +31,16 @@
   try {
     const saved=localStorage.getItem(KEY);
     const inspected=saved?D.inspect(saved):null;
-    if(inspected?.errors.length)importPreview=inspected;
-    history=new M.History(inspected&&!inspected.errors.length?inspected.document:createSample());
+    const editing=localStorage.getItem(KEY+".editing");
+    if(inspected?.errors.length && !editing)importPreview=inspected;
+    history=new M.History(inspected&&!inspected.errors.length&&!editing?inspected.document:
+      localStorage.getItem(KEY+".last-valid")?JSON.parse(localStorage.getItem(KEY+".last-valid")):createSample());
+    if(inspected && editing && !importPreview){
+      history.commit(inspected.original,{draft:true});
+      const errors=inspected.errors.length?inspected.errors:JSON.parse(editing).errors;
+      editPreview={...inspected,errors,source:"edit"};
+      if(!inspected.errors.length)editDiagnostics.set(JSON.stringify(history.doc),errors);
+    }
   } catch (e) {
     history = new M.History(createSample());
     setTimeout(() => toast("保存データを読み込めません:\n" + errorText(e)), 0);
@@ -59,11 +68,42 @@
     if(importPreview||provisionalConnection)return;
     try {
       localStorage.setItem(KEY, JSON.stringify(doc()));
+      if(editPreview&&!editPreview.operationOnly)localStorage.setItem(KEY+".editing",JSON.stringify({errors:editPreview.errors}));
+      else {localStorage.removeItem(KEY+".editing");localStorage.setItem(KEY+".last-valid",JSON.stringify(doc()));}
       workspace.update(doc());
       $("#save-status").textContent = "このブラウザに保存";
     } catch (e) {
       $("#save-status").textContent = "自動保存できません";
     }
+  }
+  function refreshEditPreview(){
+    const inspected=D.inspect(JSON.stringify(history.doc));
+    const errors=inspected.errors.length?inspected.errors:editDiagnostics.get(JSON.stringify(history.doc));
+    editPreview=errors?.length?{...inspected,errors,source:"edit"}:null;
+  }
+  function retainEdit(next,error,target=selected()){
+    const changed=JSON.stringify(next)!==JSON.stringify(history.doc);
+    if(changed){
+      // An interrupted time edit must not redefine legacy Task durations from
+      // temporarily inconsistent endpoint times. Keep their previous duration.
+      for(const t of next.tasks){
+        const old=M.get(history.doc,"task",t.id);
+        if(!t.timing&&old&&old.fromStateId===t.fromStateId&&old.toStateId===t.toStateId){
+          const w=M.taskWindow(history.doc,old),duration=w.end-w.start;
+          if(Number.isFinite(duration)&&duration>=0)t.timing={duration};
+        }
+      }
+      history.commit(next,{draft:true});
+    }
+    refreshEditPreview();
+    if(!editPreview){
+      editPreview={original:M.clone(next),document:M.clone(next),source:"edit",operationOnly:!changed,
+        errors:[{message:error.message,path:error.validationPath||"$",fragment:error.validationFragment,target}]};
+    }
+    if(changed&&!D.inspect(JSON.stringify(next)).errors.length)editDiagnostics.set(JSON.stringify(history.doc),editPreview.errors);
+    connecting=null;
+    render();persist();
+    return changed;
   }
   function change(fn) {
     if(importPreview){toast("エラーのある文書は診断表示中です。元JSONを修正して再読み込みしてください。Undoで前の文書に戻れます。");return false;}
@@ -71,11 +111,13 @@
     try {
       const result = fn(next);
       history.commit(next);
+      editDiagnostics.delete(JSON.stringify(history.doc));
+      editPreview=null;
       render();
       persist();
       return result;
     } catch (e) {
-      toast(errorText(e));
+      retainEdit(next,e);
       return false;
     }
   }
@@ -99,7 +141,7 @@
     cdfHover?.hide();
     if(!provisionalConnection){simulationPanel?.invalidate();allCDFPanel?.invalidate();}
     selection = selection.filter((s) => M.get(doc(), s.type, s.id));
-    const d = doc();
+    const d = editPreview?.document || doc();
     geometry = L.layout(
       d,
       Math.max(320, $("#canvas-scroll").clientWidth || window.innerWidth - 48),
@@ -109,7 +151,7 @@
     chain = null;
     gapIds = null;
     if (
-      current?.type === "task" &&
+      !editPreview && current?.type === "task" &&
       M.get(d, "actor", M.get(d, "state", item().fromStateId).actorId).side ===
         "hostile"
     ) {
@@ -123,7 +165,7 @@
     const holder = document.createElement("div");
     holder.innerHTML = R.render(d, geometry, {
       selection,
-      connecting,
+      connecting:editPreview?null:connecting,
       chain,
       gapIds: d.views.main.mode === "gap" ? gapIds : null,
     });
@@ -135,12 +177,14 @@
     target.innerHTML = svg.innerHTML;
     const cdfAnalysis=allCDFPanel?.getState();
     if(cdfAnalysis?.result)target.insertAdjacentHTML("beforeend",window.MEAllCDFUI.markers(geometry,cdfAnalysis.result,cdfAnalysis.selected));
-    if(importPreview){
-      target.insertAdjacentHTML("beforeend",D.bubbles(importPreview,geometry,esc));
+    const diagnostic=importPreview||editPreview;
+    if(diagnostic){
+      target.insertAdjacentHTML("beforeend",D.bubbles(diagnostic,geometry,esc));
       const bubbles=[...target.querySelectorAll(".import-error foreignObject")];
       const bottom=Math.max(geometry.height,...bubbles.map(b=>+b.getAttribute("y")+110));
       target.setAttribute("viewBox",`0 0 ${geometry.vp.width} ${bottom}`);target.setAttribute("height",bottom);
-      $("#status").textContent=`読み込みエラー ${importPreview.errors.length}件：図は診断表示中。元JSONを修正して再読み込みしてください。`;
+      $("#status").textContent=importPreview?`読み込みエラー ${importPreview.errors.length}件：図は診断表示中。元JSONを修正して再読み込みしてください。`:
+        `編集エラー ${editPreview.errors.length}件：${editPreview.errors[0].message} 編集内容を保持しています。修正またはUndoで戻してください。`;
     }
     $("#document-title").textContent = d.title;
     $("#counts").textContent =
@@ -151,8 +195,8 @@
     $("#axis-cdf-q-value").textContent=Number(d.views.main.cdfQ??1).toFixed(2);
     $("#axis-cdf-q").disabled=d.views.main.cdfMode==="results";
     $("#axis-cdf-status").textContent=d.views.main.cdfMode==="results"&&!simulationPanel?.getResult()?"結果CDF：Simulationを実行してください":"横＝共通の時間 / 縦＝主体・接続";
-    $("#undo").disabled = !importPreview && !history.past.length;
-    $("#simulation-btn").disabled=!!importPreview;
+    $("#undo").disabled = !importPreview && !editPreview?.operationOnly && !history.past.length;
+    $("#simulation-btn").disabled=!!diagnostic;
     $("#redo").disabled = !history.future.length;
     $("#view-mode").value = d.views.main.mode;
     const v = d.views.main,
@@ -291,7 +335,7 @@
       }
     }
     if (
-      s.type === "task" &&
+      !editPreview && s.type === "task" &&
       M.get(doc(), "actor", M.get(doc(), "state", x.fromStateId).actorId)
         .side === "hostile"
     ) {
@@ -314,7 +358,7 @@
       panel.append(button("Technologyカタログ", catalog));
   }
   function renderSelectionScope(panel) {
-    if(!selection.length||importPreview)return;
+    if(!selection.length||importPreview||editPreview)return;
     const info=A.selectionInfo(doc(),selection),names={actors:'主体',states:'State',tasks:'活動',causalLinks:'作用',technologies:'技術',bindings:'技術の関連付け'},counts=x=>Object.entries(names).filter(([k])=>x[k]?.length||typeof x[k]==='number'&&x[k]>0).map(([k,n])=>`${n} ${typeof x[k]==='number'?x[k]:x[k].length}`).join(' / ')||'対象なし';
     panel.insertAdjacentHTML('beforeend',`<div class="selection-scope muted">複製範囲：${counts(info.copied)}<br>削除範囲：${counts(info.deleted)}<br>範囲外の開始・品質・中止条件への参照は複製時に維持します。${info.error?`<p class="danger">削除できません：${esc(info.error)}</p>`:''}</div>`);
   }
@@ -367,14 +411,27 @@
   function applyEdit(fn) {
     if(importPreview)throw new Error("診断表示中は編集できません。元JSONを修正して再読み込みしてください。");
     const next = M.clone(doc());
-    const result = fn(next);
-    if(provisionalConnection){history.doc=provisionalConnection.document;history.past=provisionalConnection.past;history.future=provisionalConnection.future;provisionalConnection=null;}
-    history.commit(next);
-    if (result?.type) selection = [result];
-    render();
-    persist();
-    return result;
+    try {
+      const result = fn(next);
+      finishProvisional();
+      history.commit(next);
+      editDiagnostics.delete(JSON.stringify(history.doc));
+      editPreview=null;
+      if (result?.type) selection = [result];
+      render();persist();
+      return result;
+    } catch(error) {
+      finishProvisional();
+      if(!retainEdit(next,error))throw error;
+      return false;
+    }
   }
+  function finishProvisional(){
+    if(!provisionalConnection)return;
+    history.doc=provisionalConnection.document;history.past=provisionalConnection.past;history.future=provisionalConnection.future;
+    provisionalConnection=null;
+  }
+
   function editActor(aid, parentId = null, isGroup = false) {
     const x = aid
       ? M.get(doc(), "actor", aid)
@@ -718,6 +775,7 @@
       causalLink: () => editCausal(s.id),
       technology: () => editTechnology(s.id),
     })[s.type]?.();
+    if(editPreview)for(const details of $("#dialog-fields").querySelectorAll("details"))details.open=true;
   }
   function deleteSelection() {
     if (selection.length){const before=M.clone(doc());change((d) => M.remove(d, selection));const removed=Object.values(M.collections).map(k=>({k,n:before[k].length-doc()[k].length})).filter(x=>x.n>0);toast('削除：'+removed.map(x=>x.k+' '+x.n+'件').join(' / ')+'。Undoで戻せます。');}
@@ -759,6 +817,7 @@
     }
   }
   function beginConnection(s=selected()){
+    if(importPreview||editPreview){toast("問題箇所を修正してから接続してください。");return;}
     if(s?.type!=="state"){toast("作用の起点はStateです。途中出力はStateを設けてTaskを分けてください。");return;}
     connecting={type:"state",id:s.id};render();
   }
@@ -767,19 +826,21 @@
       end = asEndpoint(target, time);
     if(!source)return;
     const hint=A.connectionHints(doc(),source)(target?.type,target?.id);
-    if(!hint.allowed){toast(hint.message);return;}
+    if(!hint.allowed&&!end){retainEdit(M.clone(doc()),new Error(hint.message),target);return;}
     if(!end){connecting=null;render();if(target?.type==='task'&&authoringUI){authoringUI.branch(target.id,{time},source);return;}toast("接続先はStateまたは既存の分岐点です。Taskには先に分岐を追加してください。");return;}
     connecting = null;
     let result;
+    const draft=M.clone(doc());
     try {
       provisionalConnection={document:M.clone(doc()),past:[...history.past],future:[...history.future]};
-      const draft=M.clone(doc());result=M.createConnection(draft,source,end);
+      result=M.createConnection(draft,source,end,{retainInvalid:true});
       if(result.type==='causalLink')M.get(draft,result.type,result.id).simulation={enabled:true};
       history.doc=draft;selection=[result];render();
     } catch (e) {
-      rollbackConnection();
-      toast(e.message);
-      render();
+      finishProvisional();
+      const added=draft.causalLinks.find(c=>!doc().causalLinks.some(x=>x.id===c.id))||draft.tasks.find(t=>!doc().tasks.some(x=>x.id===t.id));
+      if(added){if(added.source)added.simulation={enabled:true};selection=[{type:added.source?"causalLink":"task",id:added.id}];}
+      retainEdit(draft,e,target);
       return;
     }
     edit(result);
@@ -999,6 +1060,9 @@
   $("#timeline").addEventListener("click", async (e) => {
     const cdfMarker=e.target.closest(".cdf-map-marker");
     if(cdfMarker){allCDFPanel.focus(cdfMarker.dataset.cdfKey);return;}
+    const editButton=e.target.closest("[data-edit-error]");
+    if(editButton){const ref=D.target(editPreview,editPreview.errors[+editButton.dataset.editError]);if(ref){select(ref);edit(ref);}return;}
+    if(e.target.closest(".undo-edit-error")){undo();return;}
     const copyButton=e.target.closest(".copy-import-error");
     if(copyButton){
       const text=copyButton.closest(".import-error").querySelector(".import-error-detail").textContent;
@@ -1165,7 +1229,8 @@
       );
   }
   function undo() {
-    if(importPreview)importPreview=null;else history.undo();
+    if(importPreview)importPreview=null;else if(!editPreview?.operationOnly)history.undo();
+    refreshEditPreview();
     selection = [];
     render();
     persist();
@@ -1173,6 +1238,7 @@
   function redo() {
     if(importPreview)return;
     history.redo();
+    refreshEditPreview();
     selection = [];
     render();
     persist();
@@ -1385,6 +1451,7 @@
   }
   function loadJSON(text) {
     const inspected=D.inspect(text);
+    editPreview=null;
     if(inspected.errors.length)importPreview=inspected;
     else {history.commit(inspected.document);importPreview=null;}
     selection = [];
@@ -1583,6 +1650,7 @@
   window.IMEE = {
     getDocument: () => M.clone(importPreview?.original || doc()),
     getImportErrors: () => M.clone(importPreview?.errors || []),
+    getEditErrors: () => M.clone(editPreview?.errors || []),
     loadJSON,
     exportSource,
     exportSVG,
@@ -1603,8 +1671,8 @@
     change(d=>{if(aid)d.views.main.collapsedActors=d.views.main.collapsedActors.filter(id=>!M.descendants(d,id).has(aid));const padding=Math.max(d.time.snap,(end-start)*.2);d.views.main.visibleTimeRange={start:Math.max(0,start-padding),end:Math.min(d.time.duration,Math.max(start+padding,end+padding))};});
     select(s);inspector(true);const row=geometry.rows.find(r=>r.actor.id===aid);if(row)canvas.scrollTo({top:Math.max(0,row.y-40)});
   }
-  function loadDocument(document){const inspected=D.inspect(JSON.stringify(document));if(inspected.errors.length)importPreview=inspected;else{importPreview=null;history=new M.History(document);}selection=[];connecting=null;render();persist();}
-  authoringUI=window.MEAuthoringUI.controller({getDocument:doc,change,applyEdit,dialog,field,choices,select,selected,edit,beginConnection,addActor:()=>editActor(),navigate,workspace,loadDocument,getImport:()=>importPreview,
+  function loadDocument(document){const inspected=D.inspect(JSON.stringify(document));importPreview=null;editPreview=null;if(inspected.errors.length){history.commit(document,{draft:true});refreshEditPreview();}else{history=new M.History(document);}selection=[];connecting=null;render();persist();}
+  authoringUI=window.MEAuthoringUI.controller({getDocument:doc,change,applyEdit,dialog,field,choices,select,selected,edit,beginConnection,addActor:()=>editActor(),navigate,workspace,loadDocument,getImport:()=>importPreview,getDiagnostics:()=>importPreview||editPreview,
     repairImport:d=>{workspace.checkpoint('読み込み修正前の原文',importPreview.original);loadJSON(JSON.stringify(d));},toast,geometry:()=>geometry,render,
     pan:time=>{const span=doc().views.main.visibleTimeRange.end-doc().views.main.visibleTimeRange.start;setRange(time-span/2,time+span/2);}});
   allCDFPanel=window.MEAllCDFUI.controller({getDocument:()=>M.clone(doc()),download,onHighlight:render,
@@ -1628,7 +1696,7 @@
       setTimeout(() => simulationPanel.open(), 0);
     }),
   });
-  $("#simulation-btn").onclick = simulationPanel.open;
+  $("#simulation-btn").onclick = ()=>{if(!importPreview&&!editPreview)simulationPanel.open();};
   $("#axis-cdf-fit").onclick=()=>setRange(0,Math.max(doc().time.duration,...geometry.axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0))));
   $("#timeline").addEventListener("pointermove",e=>{
     $("#axis-cdf-cursor")?.remove();if(drag||connecting)return;

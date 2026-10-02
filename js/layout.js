@@ -488,6 +488,23 @@
         { x: b.x, y: b.y - (direction ? direction * (b.r || 0) : 0) },
       ];
     }
+    const causalVerticals=[];
+    // Offset only the visible vertical spine. Time anchors and CDF X remain exact.
+    function separateCausalVerticals(points){
+      const out=[points[0]];
+      for(const segment of routeSegments(points)){
+        const {a,b}=segment;
+        if(a.x!==b.x){out.push(b);continue;}
+        const low=Math.min(a.y,b.y),high=Math.max(a.y,b.y);
+        let x=a.x,index=0;
+        while(causalVerticals.some(v=>Math.abs(v.x-x)<5&&Math.max(low,v.low)<Math.min(high,v.high))){
+          index++;x=a.x+Math.ceil(index/2)*6*(index%2?1:-1);
+        }
+        if(x!==a.x)out.push({x,y:a.y},{x,y:b.y});
+        out.push(b);causalVerticals.push({x,low,high});
+      }
+      return out.filter((p,i)=>!i||p.x!==out[i-1].x||p.y!==out[i-1].y);
+    }
     const horizontal=[];
     function route(a, b, timeAxis = false, key) {
       const [s, e] = facing(a, b);
@@ -584,7 +601,7 @@
         if (internal(c)) continue;
         const a=anchor(c.source,c,"source"), b=anchor(c.target,c,"target");
         if (!a || !b) continue;
-        edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b,true,"causalLink:"+c.id),
+        edges.push({id:c.id,type:"causalLink",part:"causal",points:separateCausalVerticals(route(a,b,true,"causalLink:"+c.id)),
           label:c.label,actorId:displayActor(sourceActorId),
           performance:c.simulation?.enabled ? c.propagation?.performanceModel ? "cdf" : "fixed" : null});
       }

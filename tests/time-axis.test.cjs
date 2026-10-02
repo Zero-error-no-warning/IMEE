@@ -85,7 +85,7 @@ test('overlapping CDF tails reserve another chart lane while ordinary Tasks stay
   const d=chain(3);d.views.main.cdfScope='all';
   for(const t of d.tasks.slice(0,2))t.simulation={enabled:true,performanceModel:cdf([{t:0,p:0,q:1},{t:20,p:.8,q:1}])};
   const g=L.layout(d,2400),charts=g.cdfCharts;
-  assert.equal(charts.length,2);assert(Math.abs(charts[0].y-charts[1].y)>=88);
+  assert.equal(charts.length,2);assert(Math.abs(charts[0].y-charts[1].y)>=64);
   const plain=g.edges.find(e=>e.id==='t2');assert.equal(plain.points.length,2);
 });
 test('hidden interactions and hidden CDF Tasks do not allocate empty rows',()=>{
@@ -97,9 +97,9 @@ test('hidden interactions and hidden CDF Tasks do not allocate empty rows',()=>{
 test('configured CDF is unscaled, includes t=0 atoms and missing mass, and exports on the same axis',()=>{
   const d=base();d.views.main.cdfScope='all';d.tasks[0].simulation={enabled:true,performanceModel:cdf([{t:0,p:.2,q:1},{t:30,p:.7,q:1}])};
   const g=L.layout(d),c=g.cdfCharts.find(c=>c.id==='produce');
-  assert.equal(c.endX,g.vp.x(30));assert.equal(g.states.get('s1').x,g.vp.x(10));assert.equal(c.finalP,.7);
+  assert.equal(c.endX,g.vp.x(30));assert.equal(g.states.get('s1').x,g.vp.x(10));assert.equal(c.finalP,.7);assert.equal(c.height,24);
   assert.equal(c.points[0].x,c.points[1].x);assert.notEqual(c.points[0].y,c.points[1].y);
-  const svg=R.render(d,g,{export:true});assert(svg.includes('class="cdf-curve"'));assert(svg.includes('未達・未成立 30.0%'));
+  const svg=R.render(d,g,{export:true});assert(svg.includes('class="cdf-curve"'));assert(svg.includes('未達・未成立 30.0%'));assert(svg.includes('data-probability="0.5"'));assert(svg.includes('data-probability="1"'));assert(svg.includes('>50%</text>'));assert(svg.includes('>100%</text>'));
 });
 test('absolute event distributions include upstream delays and retain all trials in their denominator',()=>{
   const d=base();d.tasks[0].simulation={enabled:true,performanceModel:cdf([{t:0,p:0,q:1},{t:40,p:.5,q:1}])};
@@ -118,4 +118,16 @@ test('fixed result CDF jumps only at F, and unreachable targets still show zero'
 test('explicit relative caches cannot contradict their producers',()=>{
   const d=base();fixed(d,'s0',0);M.get(d,'state','s1').timing={mode:'relative'};M.get(d,'state','s1').time=12;
   assert.throws(()=>M.validate(d),/基準成立時刻/);
+});
+
+test('causal vertical spines separate when their time anchors coincide, including zero-duration lines',()=>{
+  const d=base();d.actors.push({id:'c',name:'C',side:'neutral'});
+  d.states.push(state('c0','c',10));d.causalLinks.push(link('another','s1','c0',0));
+  const before=M.clone(d),g=L.layout(d),edges=g.edges.filter(e=>e.type==='causalLink');
+  const verticals=edges.flatMap(e=>L.routeSegments(e.points).filter(s=>s.a.x===s.b.x));
+  assert(verticals.length>=2);
+  for(const [i,a]of verticals.entries())for(const b of verticals.slice(i+1))
+    if(Math.max(Math.min(a.a.y,a.b.y),Math.min(b.a.y,b.b.y))<Math.min(Math.max(a.a.y,a.b.y),Math.max(b.a.y,b.b.y)))assert(Math.abs(a.a.x-b.a.x)>=5);
+  for(const e of edges){assert.equal(e.points[0].x,g.vp.x(10));assert.equal(e.points.at(-1).x,g.vp.x(10));for(const s of L.routeSegments(e.points))assert(s.a.x===s.b.x||s.a.y===s.b.y);}
+  assert.deepEqual(d,before);
 });

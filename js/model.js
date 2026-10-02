@@ -464,7 +464,7 @@
     }
     return visible;
   }
-  function createConnection(d, source, target) {
+  function createConnection(d, source, target, options = {}) {
     if (
       source.type === "state" &&
       target.type === "state" &&
@@ -486,7 +486,7 @@
     const sourcePoint = endpoint(d, source), targetPoint = endpoint(d, target);
     if (!sourcePoint || !targetPoint) fail("作用線の端点が不正です。");
     const duration = targetPoint.time - sourcePoint.time;
-    if (duration < 0)
+    if (duration < 0 && !options.retainInvalid)
       fail("作用線は時間を逆行できません。到達位置は発生位置以降にしてください。");
     const c = {
       id: id("cause"),
@@ -901,8 +901,8 @@
       this.past = [];
       this.future = [];
     }
-    commit(d) {
-      d = defaults(clone(validate(d)));
+    commit(d, {draft = false} = {}) {
+      d = draft ? clone(d) : defaults(clone(validate(d)));
       if (JSON.stringify(d) === JSON.stringify(this.doc)) return false;
       this.past.push(this.doc);
       if (this.past.length > 100) this.past.shift();

@@ -72,11 +72,11 @@
       if(!spec.curve&&spec.end===spec.start)continue;
       let track=list.find(t=>t.end<=spec.start+1e-9);
       if(!track){track={end:-Infinity,height:24,specs:[]};list.push(track);}
-      track.end=spec.end;track.height=Math.max(track.height,spec.curve?88:24);track.specs.push(spec);
+      track.end=spec.end;track.height=Math.max(track.height,spec.curve?64:24);track.specs.push(spec);
     }
     // Put the first CDF above the existing Task baseline, instead of bending
     // the Task into a new lane below its two nodes.
-    const padding=inline.some(s=>s.curve)?68:0;
+    const padding=inline.some(s=>s.curve)?44:0;
     if(padding)for(const s of states.values())if(s.displayActorId===actorId)s.y+=padding;
     for(const spec of inline)spec.y+=padding;
     let y=top+padding;
@@ -85,7 +85,7 @@
     return y-top;
   }
   function chart(c,vp){
-    const y=c.spec.y,h=48,points=[{x:vp.x(c.start),y}];
+    const y=c.spec.y,h=24,points=[{x:vp.x(c.start),y}];
     for(const p of c.points){const x=vp.x(c.start+p.t);if(c.kind==="results")points.push({x,y:points.at(-1).y});points.push({x,y:y-h*p.p});}
     return {...c,y,height:h,distribution:c.points,points,startX:vp.x(c.start),endX:vp.x(c.start+(c.points.at(-1)?.t||0)),finalP:c.points.at(-1)?.p||0};
   }

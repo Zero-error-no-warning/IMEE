@@ -53,7 +53,7 @@
         if (!target || id === from.id)
           return { allowed: false, message: "別のStateを選択してください。" };
         if (target.time < from.time)
-          return { allowed: false, message: "接続先の時刻が起点より前です。" };
+          return { allowed: false, temporal: true, message: "接続先の時刻が起点より前です。" };
         if (ancestors(from.id).has(id))
           return {
             allowed: false,

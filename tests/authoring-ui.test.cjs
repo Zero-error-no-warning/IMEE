@@ -80,21 +80,26 @@ test("causal dialog updates downstream nominal times without changing its CDF", 
   assert.equal(a.savedDoc().states[2].time, 13);
   assert.equal(a.savedDoc().states[3].time, 23);
 });
-test("branch composer creates a configured probability branch and rejects invalid totals atomically", async (t) => {
+test("branch composer retains invalid totals with a callout and allows correction", async (t) => {
   const a = await app(t);
   a.w.IMEE.select({ type: "task", id: "consume" });
   a.click("#branch-btn");
   a.fill("name", "Alternative");
   a.fill("probability", 1.1);
   a.submit();
-  assert(a.$("#dialog-error").textContent);
-  assert.equal(a.savedDoc().states.length, 4);
-  a.fill("probability", 0.25);
+  assert(a.$(".edit-error"));
+  assert.equal(a.savedDoc().states.length, 5);
+  assert(a.$("#simulation-btn").disabled);
+  assert(!a.$("#editor-dialog").hasAttribute("open"));
+  a.click("[data-edit-error]");
+  a.fill("branchP-0-0", 0.25);
   a.submit();
   const j = a.savedDoc().tasks[1].junctions[0];
   assert.equal(j.simulation.mode, "probability");
   assert.equal(j.outcomes[0].probability, 0.25);
   assert.equal(j.outcomes[0].delay, 0);
+  assert.equal(a.$(".edit-error"),null);
+  assert(!a.$("#simulation-btn").disabled);
 });
 test("implicit dependencies are visible when a branch effect source is selected", async (t) => {
   const a = await app(t, gate());

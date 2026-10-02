@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM, VirtualConsole } = require("jsdom");
 const root = path.join(__dirname, "..");
-async function openApp(saved) {
+async function openApp(saved, storage = {}) {
   const errors = [],
     downloads = [];
   const vc = new VirtualConsole();
@@ -53,6 +53,7 @@ async function openApp(saved) {
     downloads.push({ name: this.download, blob });
   };
   if (saved) w.localStorage.setItem("imee.document.v3", JSON.stringify(saved));
+  for(const [key,value] of Object.entries(storage))w.localStorage.setItem(key,value);
   for (const file of [
     "performance.js",
     "model.js",
