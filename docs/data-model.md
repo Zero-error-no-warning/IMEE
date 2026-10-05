@@ -1,157 +1,189 @@
-# Mission JSON version 2
+# IMEE version 3 データモデル
 
-`js/model.js` の `validate` / `parse` がインポートとCLIで共通の検証を行います。ES moduleではなく、ブラウザのclassic scriptとNodeのCommonJSで共有しています。
+Stateは成立した条件・事実、Taskは同Actor内の時間を要する状態遷移、CausalLinkはStateからStateまたは明示的な分岐点への伝達です。Taskと作用線は同じ時間・品質の計算を使います。version 1/2は非互換です。
 
 ## 文書
 
-```js
-{
-  version: 2,
-  title: "ミッション名",
-  time: { unit: "minutes", duration: 60, snap: 1 },
-  actors: [], states: [], tasks: [], causalLinks: [],
-  technologies: [], bindings: [],
-  views: { main: { /* 表示情報 */ } }
-}
-```
+必須: `version:3`, `title`, `time:{unit,duration,snap}`, `actors`, `states`, `tasks`, `causalLinks`。`technologies`, `bindings`, `views`は省略可能です。IDはjunctionを含め全体で一意。時間単位はseconds/minutes/hoursです。
 
-必須はversion、title、time、actors、states、tasks、causalLinks。technologies / bindingsは省略時に空配列、viewsは省略時に標準Viewを補います。時間単位はseconds / minutes / hours。0 < duration ≤ 1,000,000、0.01 ≤ snap ≤ duration。時刻は有限数で0〜duration。スナップは操作時の丸め単位で、JSON時刻を強制的に丸めません。
-
-トップレベルの各コレクションは10,000件以下。すべてのオブジェクトIDとTask内junction IDは文書全体で一意。IDは文字列、名前・ラベルは空白だけでない文字列。notesは任意文字列です。インポートは8MiB以下を受け付けます。
-
-version 1、`transitions` / `interactions`、Stateの`start` / `end`は拒否します。曖昧な自動移行は行いません。
-
-## Actor
-
-```js
-{ id, name, side: "friendly" | "hostile" | "neutral", parentId: null, isGroup: false, color: "#236d78", notes: "" }
-```
-
-parentIdとisGroupは任意。colorも任意で、指定する場合は#RRGGBB形式。省略時はパレットから補完します。Actor編集で変更でき、State・Task・結果線は所属Actor、因果線は起点端点のActorの色を使います。任意Actorを親にできます。不存在参照・自己参照・階層循環は拒否。Groupも通常Actorで、必要ならStateを持てます。並び順・折りたたみはActor自身に保存しません。
+全期間は1e-9〜1,000,000、スナップは1e-9〜全期間です。単位換算時には全State・Junction・結果遅延・伝搬・CDF点・期限・表示範囲を同じ係数で換算できます。操作上の仕様は [authoring-workflow.md](authoring-workflow.md) を参照してください。
 
 ## State
 
-```js
-{ id, actorId, name, time, activity: "active", phase: "other", notes: "" }
-```
+`{id,actorId,name,time,timing?,simulation?:{q,join}}`。`time`は図の基準成立時刻。初期Stateはその時刻に外生的に成立します。生成元のあるStateは実到達時刻で成立し、図の時刻に固定しません。
 
-id / actorId / name / timeが必須。activityはactive / quiet（省略時は通常）、phaseはother / decision。判断の役割はphaseで明示し、名称から推測しません。
+- `q`は初期Stateの品質（既定1）。到達した品質を固定値で上書きしません。
+- `join:"all"`（既定）: すべての生成元Task/作用線の到達を待ち、最小q。
+- `join:"any"`: 最初の到達時点で成立し、同時刻までに到達済みの最大q。後着入力は成立済みの品質を変更しません。
+- Stateの固定q=0と不達は異なります。
 
-StateはActorがその時刻に到達した一点です。円形ノードのX座標はtime、半径は時間と無関係。状態の継続は暗黙的で、行為として示したい待機はTaskにします。重なるStateはActor内のサブレーンへ上下に分離し、X座標は維持します。
+### 時間種別（任意拡張）
+
+`timing:{mode:"relative"}`は入力到達と開始依存から基準`time`を導く。実到達時刻は試行ごとに分布し得る。入力のない明示Relativeは作成途中として保存できるが、Simulation実行前にFixed開始点か生成元が必要。
+
+`timing:{mode:"fixed",at:30}`はH+30の厳密な予定イベント。`time`は`at`と一致する。条件が先に揃ったら待機し、指定時刻までに揃わなければ未成立。入力のないFixedはその時刻の外生イベント。待機中の品質は条件が揃った時点の値を保持する。
+
+`timing`未指定の既存文書は従来動作。入力のない・開始依存のない外生Stateは意味に合わせて▼、生成元・開始依存があるStateは●で描くが、読み込みで厳密予定イベントへ変換しない。
 
 ## Task
 
-通常形：
+`{id,fromStateId,toStateId?,label,kind?,timing?:{duration},junctions?,simulation?}`。接続先は同Actorの別State。Taskは各試行1回実行し、実行中の入力qは変更しません。途中出力には結果Stateを設けてTaskを分けます。`toStateId`がない場合は結果分岐が必要です。
 
-```js
-{ id, fromStateId, toStateId, label, kind: "detection", notes: "" }
-```
+`simulation`:
 
-分岐形：
+- `enabled`: trueならCDF、false/省略なら固定所要時間。`timing.duration`があればその値を使用し、なければ従来どおり図のState間の差から取得。
+- `qualityRetention`: 固定時間処理の品質保持率、既定1。
+- `performanceModel`: 下記のCDF。
+- `qInput:{stateIds,mode:"all"|"any"}`: 指定Stateを品質入力とする。ANDはすべてを待ち最小q、ORは到達済みの最大q。省略/空配列なら接続元Stateのq。
+- `waitForStateIds`: 品質計算には加えない追加の必須開始条件。
+- `cancelOnStateIds`: いずれかが成立するとTaskを中止。
 
-```js
+通常は開始条件を受領Stateに合流し、そのStateからTaskを開始します。基準図で追加依存がTask開始より遅い構造は避けます。
+
+## 分岐点
+
+`junctions:[{id,time,outcomes:[{label,toStateId,delay?,probability?}],simulation:{mode}}]`。
+
+- `mode:"effect"`: State起点の作用線で指定された結果へ分岐。
+- `mode:"probability"`: Taskの抽選時間に応じた相対進捗で確率分岐。累積分岐確率の残りは通常継続。
+- `delay`を省略すると結果State.time−junction.timeが分岐後の固定時間。
+- 作用分岐の結果品質は、作用線が届けたq_out。
+- 確率分岐の結果品質は、分岐時点までのTask所要時間に対応する保持率×入力q。
+
+## 作用線
+
+```json
 {
-  id: "identify", fromStateId: "unidentified", label: "識別",
-  junctions: [{
-    id: "identify-result", time: 29,
-    outcomes: [
-      { toStateId: "identified", label: "OK" },
-      { toStateId: "still-unidentified", label: "NG" }
-    ]
-  }]
+  "id":"report", "label":"追尾情報",
+  "source":{"type":"state","id":"track-established"},
+  "target":{"type":"state","id":"track-received"},
+  "propagation":{"duration":3,"qualityRetention":0.95},
+  "simulation":{"enabled":true}
 }
 ```
 
-開始はfromStateIdのState.time。通常の終了はtoStateIdのState.time。toStateIdがないTaskの終了はjunctionsの最大time。Taskにstart / endを重複保存しません。結果Stateは接続元とは別の、同一ActorのStateでなければなりません。終了・結果は開始以降、各結果はそのjunction.time以降です。瞬間Taskも許容します。
+分岐点へのtarget:
 
-TaskはtoStateIdまたは1つ以上のjunctionsを持ちます。両方を持つ場合は、通常の到達先へ向かうTask途中から結果が分岐します。toStateIdがある場合、junctionはその終了時刻以内。junctionsの順序は意味を持たず、同一Taskの同一時刻は1つにまとめます。junctionは1,000件以下、各outcomesも1〜1,000件です。
+```json
+{"type":"junction","taskId":"flight","id":"intercept-point","outcomeStateId":"destroyed"}
+```
 
-outcomesはTask内の短い結果ラベルとState参照であり、独立したMissionオブジェクトではありません。各結果に専用ノードは作りません。複数結果Stateはそれぞれ固有の時刻を持ちます。成功・失敗・継続などの語彙は自由で、色・線種に結果の意味を持たせません。
+`source`はStateのみ。`target`はState/junctionのみ。`source.time`, `target.time`, `polarity`, `simulation.type`, `simulation.w`, `holdUntilStart`は廃止。到達先からState成立/分岐の処理を決めます。`kind`は説明・分析用です。
 
-通常Taskにjunctionsは不要。外部因果がTask途中に付く場合もjunctionsへの追記は不要です。描画が同じTask ID＋timeの小さい白丸を導出します。分岐情報のあるjunctionと同時刻の外部端点も同じ丸を共有します。Task自身と分岐結果のlineは直線で、因果線とは区別します。
+`propagation.duration`は必須の非負の基準所要時間。図の到達時刻は発生元State.time＋duration。Stateへの各入力の基準到達時刻は異なってよい。State.timeは全生成元Task/作用線の基準到達のうち、ANDなら最大、ORなら最小と一致させます（暗黙の開始依存があれば、その開始条件との最大）。分岐点への基準到達はjunction.timeと一致させます。異なる入力到達は図の小丸で示し、成立Stateとの間は待機／後着を示す灰色破線で結びます。CDFは`propagation.performanceModel`へ指定。実行時の所要時間そのものを抽選し、durationへ加算しません。`simulation.enabled`がfalse/省略なら表示専用です。junction作用には`simulation.stopTargetActor`で同Actorの他Taskを中止できます。
 
-UIの「分岐を追加」は通常toStateIdを保持し、junctionsへ別の結果だけを追加します。追加可能な分岐時刻は既存のTask実行期間内で、結果Stateはそれ以降ならTask終了後でも指定できます。分岐を追加するだけではTaskの終了時刻・介入時間窓を変更しません。
+## 共通CDFと品質q
 
-Task・白丸・Taskを到達先とする因果線の操作は「分岐を追加」に統一します。因果線からはtarget.idとtarget.time、白丸からはTask IDと正確な時刻を引き継ぎ、分岐時刻を固定します。通常Taskの右クリックからはクリック時刻を初期値として編集できます。受け手ActorはTaskのfromStateIdから決まります。同じTaskの分岐時刻へ到達する作用は、入口にかかわらずダイアログにすべて参考表示し、時刻の編集に追従します。複数作用があってもメニューは1件です。新規Stateの初期時刻は分岐時刻で、結果の出現が遅れる場合は変更できます。結果ラベルの初期値は「別の結果」です。期間外の因果からは追加を拒否し、期間や作用時刻の編集を案内します。分岐は従来と同じTask内junctionとして保存し、作用との紐付けや、因果の成否を自動判定する分岐条件は設定しません。
+q=1−旧w。0〜1で、大きいほど高品質です。点のqは品質保持率です。
 
-Task編集で分岐時刻を変えた場合、同じ旧時刻へ接続していた因果端点も追従します。複数junctionの既存情報も編集できます。
-
-## CausalLink
-
-```js
+```json
 {
-  id, source: {type: "state", id: "sensor-detected"},
-  target: {type: "task", id: "transmit", time: 49},
-  polarity: "positive" | "negative",
-  label: "作用の説明", kind: "interference", notes: ""
+  "type":"cdf", "qualityInput":"q",
+  "curves":[{"q":1,"points":[
+    {"t":5,"p":0.3,"q":1},
+    {"t":10,"p":0.8,"q":0.2},
+    {"t":15,"p":0.8,"q":0}
+  ]}]
 }
 ```
 
-source / targetの形式：
+- 曲線のqは入力品質の軸。点のqは所要時間に対応する品質保持率。
+- 単一曲線は全入力品質に共通。複数曲線はq昇順で0〜1を覆う。
+- tは非負・厳密昇順、pは0〜1・単調非減少、点のqは0〜1。
+- CDFと保持率は時間方向・入力qの曲線間とも線形補間。
+- CDFは原点(0,0)から補間。ただしt=0の点は即時到達の確率質量。保持率は最初の点まで最初のqを使う。
+- 最終時刻より先はCDFを一定にし、残余1−最終pは不達。別の`pInfinity`は保存しない。
+- 到達した試行の所要時間Tに対して **q_out=q_in×保持率(T,q_in)**。
+- 不達ではq_outを作らず、到達先も成立しない。上記例では20%不達。10〜15秒のpは増えないため、その区間の到達はない。
 
-| type  | フィールド     | 時刻・レーン                             |
-| ----- | -------------- | ---------------------------------------- |
-| state | type, id       | State.time / StateのActor                |
-| task  | type, id, time | 指定time / 接続元StateのActor            |
-| actor | type, id, time | 指定time / Actorレーン（環境等に利用可） |
+## 分岐作用の暗黙依存
 
-State端点にはtimeを書きません。Task / Actor端点には必ずtimeを書きます。到達時刻は発生時刻以降。同一ActorでもTaskへの因果作用を表現できます。Task端点はTask実行期間外でも全期間内の指定時刻に保存できます。期間外端点はTaskの実線上にはなく、時間窓外の接続点です。Inspectorで「開始前」「遅すぎる」を確認できます。
+junctionを対象とする作用線ごとに、起点Stateが対象Taskの**実際の開始**を必須条件として待ちます。S本来の成立条件に加え、対象Task開始が揃った時点でSを成立させます。
 
-polarityが唯一の因果線種です。positiveは矩形波、negativeは滑らかな波線で、いずれも経路に沿って振幅2.8px・周期15pxで描きます。端点付近では基準経路に戻し、矢印headは波形ではなく基準経路末尾の方向に固定します。Task・分岐結果の線は直線です。kindは任意文字列の分析分類。detection / observation / information / command / support / attack / interference等を線種・太さ・色に反映しません。
+- `t_S=max(S本来の成立可能時刻,対象Taskの実開始時刻)`。
+- 時間0・確率1の開始許可。品質計算には参加しない。
+- SのjoinがORでも暗黙依存は必須。
+- 対象Taskが開始しなければSは成立せず、作用も発生しない。
+- Sが複数の対象Taskへ分岐作用を出す場合、全対象Taskの開始を待つ。独立した発生が必要ならSを対象ごとに分ける。
+- Sから出る他の作用線もSの成立を待つ。汎用情報Stateを共有する際はこの意味を確認する。
+- 追加開始条件・品質入力待ちも対象Taskの実開始に含める。
+- 開始前到達は内部不整合の詳細エラー。終了後は作用不成立。開始/終了と同時刻は実行中のTaskへの作用を先に処理する。
+- Task開始を別ノードとして扱い、完了待ちと混同しない。潜在依存も含め循環は禁止し、依存経路と該当JSONを出す。
+- `views.main.filters.implicitDependencies:true`で開始依存を破線表示。通常の作用線と分離する。
 
-State / Taskの旧status（actual / planned / proposed）とCausalLink.proposedは読込・保存の互換性のため受け付けますが、表示・フィルタ・分析には使いません。新規作成では付けません。シナリオの仮定はnotesで説明します。ラベル補助線も細いニュートラルな実線です。
+## Technology（技術）
 
-## Technology Binding
+トップレベルの`technologies`配列に技術オブジェクトを保存します。配列は省略可能で、省略時は空配列です。各技術は次の形式です。
 
-```js
-{ id, name, status: "research", trl: 4, notes: "" } // technologies[]
-{ id, technologyId, targetType: "task", targetId, notes: "" } // bindings[]
+```json
+{
+  "id": "tech-identification",
+  "name": "接触識別技術",
+  "status": "research",
+  "trl": 4,
+  "notes": "説明用の架空の技術評価"
+}
 ```
 
-statusはexisting / research / planned / gap / unknown。TRLは1〜9の整数、nullまたは省略で未評価。Binding対象はactor / state / task / causalLinkのみです。UIでの新規紐付けはActor・Task・作用に限ります。Stateへの旧Bindingはデータ・分析ともに保持し、詳細パネルからTask・作用・Actorへの付け先変更ができます。同じ技術が変更先にある場合は重複をまとめます。Actor全体の技術・装備と旧StateのBindingは詳細パネルで表示します。StateとTaskの分析には直接Bindingに加え、その直接のActorのBindingを適用します。祖先Groupの技術は自動継承しません。Technologyカタログは複製間で共有し、Binding自身のIDは複製時に再発行します。
+| フィールド | 必須 | 型・制約 | 意味 |
+| --- | --- | --- | --- |
+| `id` | 必須 | 空でない文字列。文書全体で一意 | 技術の参照ID |
+| `name` | 必須 | 空でない文字列 | 表示する技術名 |
+| `status` | 必須 | 下表の5値のいずれか | 技術の成熟・確保状況の区分 |
+| `trl` | 任意 | 1〜9の整数、`null`、または省略 | 技術成熟度。未評価・不明は`null`または省略 |
+| `notes` | 任意 | 文字列。空文字可 | 根拠、仮定、制約などの説明 |
 
-Task・作用の技術名は対象ラベルの直下にまとめ、ラベルと技術名を一体として配置します。ノード・文字・他の技術名・経路との衝突を避け、必要に応じて表示上のActor行間隔を増やします。views.main.laneHeightや時刻・所属データは変更しません。短いTaskなどで線上に見出しを置けない場合は、対象の近くに短い補助線付き見出しを置きます。4件を超える技術や、短縮しても収まらない技術は対象付近の「技N」に集約し、ホバーで一覧、選択で対象の詳細パネルを開きます。技術全文・成熟度・TRL・対象名はTooltipで確認できます。Gap Viewの技術名にはTRLも添えます。技術フィルタをオフにすると追加の間隔も外します。
+| `status` | 意味 |
+| --- | --- |
+| `existing` | 既存・利用可能な技術 |
+| `research` | 研究開発中の技術 |
+| `planned` | 導入・開発を計画している技術 |
+| `gap` | 必要だが未確保の技術 |
+| `unknown` | 状況が不明な技術 |
 
-## Views
+`status`と`trl`は別の項目です。区分からTRLを自動決定せず、不明なTRLは推測で埋めません。技術オブジェクト自体には関連付け先を保存しません。TaskのCDFや品質値もTechnologyへ移さず、各Task・作用線の実行設定へ保存します。Technologyはそれらの性能を自動的に変更しません。
 
-```js
-views: { main: {
-  collapsedActors: [], actorOrder: ["actor-1", "actor-2"],
-  zoom: 1, visibleTimeRange: {start: 0, end: 60},
-  filters: {technology: true, causalLink: true, quiet: true},
-  laneHeight: 64, collapsedLayout: "compact", mode: "mission"
-}}
+## Binding（技術の関連付け）
+
+トップレベルの`bindings`配列でTechnologyと対象を関連付けます。配列は省略可能で、省略時は空配列です。
+
+```json
+{
+  "id": "binding-identification",
+  "technologyId": "tech-identification",
+  "targetType": "task",
+  "targetId": "identify"
+}
 ```
 
-modeはmission / technology / gap / causality。laneHeightは通常表示の間隔（52〜160px）。collapsedLayoutはcompact / single / spacedで、省略時compact。compactは28px間隔、singleは一本の水平線、spacedはlaneHeightの間隔を使います。技術表示時は必要に応じて間隔を広げます。zoomは1〜1,000倍で、描画の実際の範囲はvisibleTimeRangeが決めます。UIでは両者を同期。actorOrder / collapsedActorsに重複・不存在IDは不可。省略したactorOrderは文書内Actor順を使用します。
+| フィールド | 必須 | 型・制約 | 意味 |
+| --- | --- | --- | --- |
+| `id` | 必須 | 空でない文字列。文書全体で一意 | 関連付けのID |
+| `technologyId` | 必須 | 存在するTechnologyのID | 関連付ける技術 |
+| `targetType` | 必須 | `actor` / `task` / `causalLink` / `state` | 対象の種類 |
+| `targetId` | 必須 | 指定した種類の既存オブジェクトのID | 関連付け先 |
+| `notes` | 任意 | 文字列。空文字可 | 関連付けの説明 |
 
-折りたたみ時は子Actorの行を隠し、親と子孫のState・Taskを親Actorのタイムラインへ投影します。表示色は親Actorの色です。子Actor別のサブレーンは設けません。compact / spacedでは重なるState・分岐を上下に分け、singleでは同時刻のStateを同じ円へまとめ、Task・結果線の重なる区間を一つの水平線へまとめます。活動のない時間の空白は保ちます。compactはState名を、singleはState・Task名をTooltipへ移し、singleの集約要素はダブルクリックで展開して編集します。実データの時刻・所属・色は保持し、その場で時刻をドラッグ編集しても所属を変えません。因果線は両端が同じ折りたたみグループ内にある場合だけ非表示にします。外部との因果は投影後のState・Taskまたは親Actorへ元の時刻のまま接続し、表示上の起点Actorの色を使います。展開時に元へ戻り、JSONの接続は削除しません。SVG / PNG出力は従来どおり全階層を展開します。旧filters.plannedは受け付けますが無視します。
+上の例は`id:"identify"`のTaskが文書内に存在することを前提とします。技術を定義するだけではTask・作用線へ関連付きません。複数の対象へ同じ技術を関連付ける場合は、対象ごとにBindingを作ります。1つの対象へ複数技術を関連付けることもできます。
 
-## コピー・削除・履歴
+通常はTask・作用線へ関連付けます。ActorへのBindingは、そのActorに所属するState・Taskの技術分析でも参照されます。既存のState Bindingは読み込み・保持できますが、エディタではStateへの新規関連付けを作成しません。分岐点・分岐結果は独立したBinding対象ではありません。
 
-Actor / Group複製は子孫Actor、State、内部Task、内部因果、Bindingをコピー。全ID（junctionを含む）を再発行して内部参照を再マップします。外部Actorとの因果はコピーしません。Stateだけのコピーは選択内で完結するTask・因果を含みます。Task単体をクリップボード複製する仕様はありません。文書内クリップボードです。
+## Mission・表示・技術
 
-削除は従属参照とBindingを整理します。結果State削除でTaskが短くなっても、存続するTaskへの時刻付き因果は残し、期間外なら時間窓Gapとして扱います。技術カタログはActor削除で消しません。
+`simulation:{successStateIds,successMode:"all"|"any",deadline?,iterations?,seed?}`。成功は指定Stateの到達と任意の期限で判定し、q=0を自動的に不達へ変換しません。CDFなどで品質依存の性能を指定します。
 
-変更は文書単位で検証し、失敗した編集は適用しません。Undo / Redoは100履歴まで文書全体を保持。JSON読込・サンプル置換もUndo可能です。Viewのボタン操作も履歴に入ります。連続パンはViewの範囲を更新して保存します。
+Actorは`{id,name,side,parentId?,isGroup?,color?}`。技術の定義と関連付けは上記のTechnology・Bindingを参照してください。
 
-## 介入時間窓と経路評価
+折りたたみ・Actor順・ズーム・フィルタは`views.main`に保存。固定時間は二重線、CDFは実線。正負での線種分けはしません。実行結果の割合と線幅は表示として適用し、文書の基準時刻・設定は変更しません。
 
-敵Taskへのnegative causal linkを候補とし、Taskの開始〜終了を時間窓にします。分岐後の結果Stateまでの線は結果経路であり、介入時間窓はTask本体の終了までです。
+文書一覧・保存時点はシナリオJSONと別のブラウザ内保存です。計算結果の有効性は、時刻・接続・品質・CDF・分岐・成功条件などの計算設定で判定します。名前・備考・色・技術・表示の変更では既存結果を保持します。旧結果は当時の入力スナップショットへ紐付けます。
 
-作用元から、Stateへ至るTaskと正の因果を逆向きにたどります。Task上の作用時点より後に入る因果はさかのぼり対象から除きます。同じ経路内で以下の順序がそろうことを構造完結とします。
+Relative / Fixed-time Node・直交線・図上CDFは [検討中の設計案](time-axis-design.md) です。現行version 3にノード種別は追加していません。
 
-1. friendly ActorのTask / 因果元によるkind: detectionまたはobservation。
-2. friendly ActorのState.phase: decision。
-3. friendly ActorのTask / 因果元によるkind: command。
-4. friendly ActorのTask / 因果元によるkind: attackまたはinterference。
+## 共通時間軸の表示設定
 
-構造完結に加え、到達が時間窓内、全経路要素に技術Bindingがあり、全依存技術がexistingであるとき条件充足。TRLの数値からexistingを推測しません。旧status / proposedは条件判定に使わず、条件充足を実施証明とは扱いません。
+`views.main.cdfMode`: `off` / `config` / `results`（既定config）。`cdfScope`: `selected` / `all`（既定selected）。`cdfQ`: 0〜1（既定1、表示用）。CDFの裾を含む表示範囲は作成期間を越えて指定できる。Simulation条件やState時刻は変更しない。
 
-最大256経路・深さ256で探索を打ち切り、打ち切りを表示しALLを未確認にします。SOMEは充足が1本以上、ALLは1本以上の候補があり、打ち切りなしで全候補が充足。成功確率、AND/ORゲート、通信遅延、資源競合のシミュレーションは行いません。
+Taskに`timing.duration`を指定した場合、基準開始は開始State、追加待機、品質入力を含む条件成立時刻。FIXの実所要時間とCDFの基準所要時間を保存する。CDFの抽選時間にdurationを加算しない。Relativeのtimeは基準到達のAND最大／OR最小と必須開始依存を反映する。説明専用の作用は明示Relativeの生成元に含めない。Fixedへ早く到達するTaskの終点は受領マーカーとし、予定時刻までを破線で表示する。
 
-## 描画の制約
-
-State / junction / Task作用端点のXは時刻から求め、変更しません。共有始点・共有終点・共通区間は有限のオフセット候補で分離。上下Actor間は向かい合う円周へ接続します。負の因果は調整後の折れ線をサンプリングし、各区間の法線方向へ周期オフセットを加えます。端点・角は波幅を減衰させ、アンカーを保持します。矢じり直前は直線にし、矢じりの向きは波の接線ではなく経路の最後の基準線分に合わせます。
-
-Task・分岐結果のラベルは元経路上に中心を置き、白背景と線と同色の細い枠で囲みます。既存経路上の候補からノード・文字・技術吹き出しとの重なりを避けて選び、線を曲げません。狭い区間は文字を省略し、枠も入らない短い区間では線のTooltipで全文を確認します。作用ラベルは経路近傍に配置し、線と同色の下線を付けます。作用ラベルの候補は元経路の中央付近から横±36px、縦−40〜＋24pxで、技術名がある場合は一体の幅を考慮した横位置と経路上の近隣位置も使います。文字は最大幅で省略し全文はTooltip / Inspectorへ。遠方の空き領域へ配置しません。State名も局所改行・省略し、円の大きさや時刻を変えません。
+出力結果の`eventDistributions`は`{type,id,event,count,total,step,points:[{t,p}]}`。eventは`completed`、`arrived`、`accepted`、`established`。countは実件数、totalは全試行、stepは時間格子幅（Fixedは0）。未達の残余確率を保持する。acceptedは入力受領であり、対象State成立とは区別する。

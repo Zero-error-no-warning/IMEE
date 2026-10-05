@@ -5,6 +5,10 @@
     typeof module !== "undefined" && module.exports
       ? require("./model.js")
       : root.ME;
+  const O = typeof module !== "undefined" && module.exports
+    ? require("./simulation-overlay.js") : root.MESimulationOverlay;
+  const T = typeof module !== "undefined" && module.exports
+    ? require("./time-axis.js") : root.METimeAxis;
   function routeSegments(points) {
     return points
       .slice(1)
@@ -361,6 +365,7 @@
     if(attachment && attachment.items.length>4) return false;
     return attachedBoxes(caption,attachment).every(box =>
       box.x >= attachment.left && box.x+box.width <= attachment.right &&
+      box.y >= attachment.top && box.y+box.height <= attachment.bottom &&
       !occupied.some(o=>overlaps({x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6},o)) &&
       !lines.some(line=>segmentInsideBox(line,{x:box.x-3,y:box.y-3,width:box.width+6,height:box.height+6})>0));
   }
@@ -380,9 +385,12 @@
     };
   }
   function layout(doc, widthValue = 1050, options = {}) {
+    const resultOverlay = O.create(doc, options.simulationResult);
+    const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
+    const axis=T.prepare(doc,options,displayActor);
     const v = doc.views.main,
       range = options.full
-        ? { start: 0, end: doc.time.duration }
+        ? { start: 0, end: Math.max(doc.time.duration,...axis.curves.map(c=>c.start+(c.points.at(-1)?.t||0))) }
         : v.visibleTimeRange,
       vp = viewport(doc.time.duration, widthValue, range.start, range.end),
       filters = options.full
@@ -397,7 +405,6 @@
       occupied = [],
       nodeBodies = [];
     let y = 54;
-    const displayActor = (id) => options.full ? id : M.visibleActor(doc, id);
     const folded = new Set(options.full ? [] : v.collapsedActors);
     const internal = c => {
       const source = displayActor(M.endpoint(doc, c.source).actorId);
@@ -449,7 +456,6 @@
         const cy = top + 24 + lane * spacing;
         states.set(s.id, { ...s, displayActorId:actor.id, x, labelX:x, y:cy, r:radius,
           lane, collapseMode, lines:textLines(s.name,112) });
-        nodeBodies.push({x:x-radius-2,y:cy-radius-2,width:radius*2+4,height:radius*2+4});
       }
       if (collapseMode === "single") {
         const atTime = new Map();
@@ -467,15 +473,14 @@
         collapseMode === "single" ? 48 : collapseMode === "compact"
           ? 42 + Math.max(0,lanes.length-1)*spacing
           : Math.max(1,lanes.length)*spacing+6;
-      const rowHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
-      rows.push({actor,depth,y:top,height:rowHeight,center:top+24,aggregated,collapseMode});
+      const nodeHeight = rowBindings.length ? Math.max(baseHeight, Math.max(1,lanes.length)*spacing+6) : baseHeight;
+      const rowHeight=nodeHeight+T.position(axis,actor.id,top+nodeHeight,states);
+      const center=ss.length?states.get(ss[0].id).y:top+24;
+      rows.push({actor,depth,y:top,height:rowHeight,center,aggregated,collapseMode});
       y += rowHeight;
     }
     let height = y + 24;
-    const router = createEdgeRouter(
-        nodeBodies,
-        { left: vp.left, right: vp.right, top: 36, bottom: height - 12 },
-      );
+    for(const s of states.values())nodeBodies.push({x:s.x-s.r-2,y:s.y-s.r-2,width:s.r*2+4,height:s.r*2+4});
     function facing(a, b) {
       const direction = Math.sign(b.y - a.y);
       return [
@@ -483,12 +488,32 @@
         { x: b.x, y: b.y - (direction ? direction * (b.r || 0) : 0) },
       ];
     }
-    function route(a, b, timeAxis = false) {
+    const causalVerticals=[];
+    // Offset only the visible vertical spine. Time anchors and CDF X remain exact.
+    function separateCausalVerticals(points){
+      const out=[points[0]];
+      for(const segment of routeSegments(points)){
+        const {a,b}=segment;
+        if(a.x!==b.x){out.push(b);continue;}
+        const low=Math.min(a.y,b.y),high=Math.max(a.y,b.y);
+        let x=a.x,index=0;
+        while(causalVerticals.some(v=>Math.abs(v.x-x)<5&&Math.max(low,v.low)<Math.min(high,v.high))){
+          index++;x=a.x+Math.ceil(index/2)*6*(index%2?1:-1);
+        }
+        if(x!==a.x)out.push({x,y:a.y},{x,y:b.y});
+        out.push(b);causalVerticals.push({x,low,high});
+      }
+      return out.filter((p,i)=>!i||p.x!==out[i-1].x||p.y!==out[i-1].y);
+    }
+    const horizontal=[];
+    function route(a, b, timeAxis = false, key) {
       const [s, e] = facing(a, b);
-      return router([s, e], {
-        axis: Math.abs(a.y - b.y) < 1 ? "horizontal" : "vertical",
-        timeAxis,
-      });
+      if(Math.abs(s.x-e.x)<1e-9)return [s,e];
+      let cy=axis.specs.get(key)?.y??(s.y===e.y?s.y:Math.max(s.y,e.y)+18);
+      while(horizontal.some(h=>Math.abs(h.y-cy)<8&&Math.max(h.start,Math.min(s.x,e.x))<Math.min(h.end,Math.max(s.x,e.x))))cy+=12;
+      horizontal.push({y:cy,start:Math.min(s.x,e.x),end:Math.max(s.x,e.x)});
+      height=Math.max(height,cy+28);
+      return [s,...(s.y===cy?[]:[{x:s.x,y:cy}]),...(e.y===cy?[]:[{x:e.x,y:cy}]),e];
     }
     for (const t of doc.tasks) {
       if (!visible(t) || !states.has(t.fromStateId)) continue;
@@ -496,9 +521,9 @@
         w = M.taskWindow(doc, t),
         to = t.toStateId ? states.get(t.toStateId) : null;
       if (t.toStateId && !to) continue;
-      const end = to || { x: vp.x(w.end), y: from.y, r: 4 };
-      const points = from.collapseMode === "single"
-        ? [{x:from.x,y:from.y},{x:end.x,y:end.y}] : route(from,end,true);
+      const start=w.start===from.time?from:{...from,x:vp.x(w.start),r:3};
+      const end = to&&Math.abs(to.time-w.end)<1e-9?to:{ x: vp.x(w.end), y: to?.y??from.y, r: 3 };
+      const points = route(start,end,true,"task:"+t.id);
       const e = {
         id: t.id,
         type: "task",
@@ -507,6 +532,7 @@
         label: t.label,
         actorId: from.displayActorId,
         task: t,
+        performance: t.simulation?.enabled ? "cdf" : "fixed",
       };
       edges.push(e);
       tasks.set(t.id, { task: t, points, from, end, window: w, edge: e });
@@ -522,12 +548,14 @@
       occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
       return j;
     };
+    const stateReceipts=[];
     for (const t of doc.tasks)
       if (tasks.has(t.id))
         for (const j of t.junctions || []) {
           const p = ensure(t.id, j.time, j.id);
           for (const [i, o] of j.outcomes.entries()) {
-            const to = states.get(o.toStateId);
+            const to = states.get(o.toStateId),at=j.time+(o.delay??to?.time-j.time),receipt=to&&Math.abs(at-to.time)>1e-9?{...to,x:vp.x(at),r:3}:to;
+            if(to&&receipt!==to)stateReceipts.push({stateId:to.id,time:at,x:receipt.x,y:receipt.y,stateX:to.x,late:at>to.time,points:at<to.time?route(receipt,to,true,"receipt:"+j.id+":"+i):null});
             if (to)
               edges.push({
                 id: t.id,
@@ -535,41 +563,63 @@
                 part: "outcome",
                 junctionId: j.id,
                 outcomeIndex: i,
-                points: to.collapseMode === "single" ? [{x:p.x,y:p.y},{x:to.x,y:to.y}] : route(p,to,true),
+                performance: "fixed",
+                points: route(p,receipt,true,"outcome:"+j.id+":"+i),
                 label: o.label,
                 actorId: states.get(t.fromStateId).displayActorId,
               });
           }
         }
-    function anchor(p) {
-      const ep = M.endpoint(doc, p);
+    for(const t of doc.tasks){
+      const task=tasks.get(t.id);if(!task)continue;
+      const to=states.get(t.toStateId),w=task.window;
+      if(w.start>task.from.time)stateReceipts.push({stateId:t.fromStateId,time:task.from.time,x:task.from.x,y:task.from.y,stateX:vp.x(w.start),kind:"start-wait",points:route(task.from,{...task.from,x:vp.x(w.start)},true,"wait:"+t.id)});
+      if(to&&Math.abs(to.time-w.end)>1e-9)stateReceipts.push({stateId:to.id,time:w.end,x:task.end.x,y:task.end.y,stateX:to.x,late:w.end>to.time,points:w.end<to.time?route(task.end,to,true,"receipt:"+t.id):null});
+    }
+    function anchor(p, c = null, side = "source") {
+      const ep = side === "target" && c ? M.causalEndpoint(doc, c, "target") : M.endpoint(doc, p);
+      if (!ep) return null;
       if (p.type === "actor") {
         const row = rows.find(r => r.actor.id === displayActor(ep.actorId));
         return row && {x:vp.x(ep.time),y:row.center,r:0};
       }
-      if (p.type === "state") return states.get(p.id);
-      if (p.type === "task") return ensure(p.id,p.time);
+      if (p.type === "state") {
+        const st=states.get(p.id);
+        if(st && side==="target" && Math.abs(ep.time-M.get(doc,"state",p.id).time)>1e-9){
+          const receipt={...st,x:vp.x(ep.time),r:3};
+          stateReceipts.push({linkId:c.id,stateId:p.id,time:ep.time,x:receipt.x,y:st.y,stateX:st.x,late:ep.time>M.get(doc,"state",p.id).time,points:ep.time<st.time?route(receipt,st,true,"receipt:"+c.id):null});
+          return receipt;
+        }
+        return st;
+      }
+      if(p.type==="junction")return ensure(p.taskId,ep.time,p.id);
     }
     if (filters.causalLink)
       for (const c of doc.causalLinks) {
         const sourceActorId = M.endpoint(doc,c.source).actorId;
         // Only causal links wholly inside the same collapsed subtree disappear.
         if (internal(c)) continue;
-        const a=anchor(c.source), b=anchor(c.target);
+        const a=anchor(c.source,c,"source"), b=anchor(c.target,c,"target");
         if (!a || !b) continue;
-        edges.push({id:c.id,type:"causalLink",part:"causal",points:route(a,b),
-          label:c.label,polarity:c.polarity,actorId:displayActor(sourceActorId)});
+        edges.push({id:c.id,type:"causalLink",part:"causal",points:separateCausalVerticals(route(a,b,true,"causalLink:"+c.id)),
+          label:c.label,actorId:displayActor(sourceActorId),
+          performance:c.simulation?.enabled ? c.propagation?.performanceModel ? "cdf" : "fixed" : null});
       }
+    if(filters.implicitDependencies)for(const dep of M.implicitDependencies(doc))for(const sid of dep.startStateIds){
+      const source=states.get(sid),target=states.get(dep.sourceStateId);
+      if(source && target)edges.push({id:"implicit:"+dep.linkId,type:"implicitDependency",part:"implicit",points:route(source,target),label:"開始条件",actorId:source.displayActorId});
+    }
     for (const row of rows.filter(r => r.collapseMode === "single")) {
       const sourceEdges = edges.filter(e => e.type === "task" && e.actorId === row.actor.id);
       const intervals = sourceEdges.map(e => ({start:e.points[0].x,end:e.points.at(-1).x,
-        labels:[e.label],members:[e.id]})).sort((a,b) => a.start-b.start || a.end-b.end);
+        labels:[e.label],members:[e.id],performances:[e.performance]})).sort((a,b) => a.start-b.start || a.end-b.end);
       const merged=[];
       for (const interval of intervals) {
         const last=merged.at(-1);
         if (last && interval.start<=last.end) {
           last.end=Math.max(last.end,interval.end);
           last.labels.push(...interval.labels); last.members.push(...interval.members);
+          last.performances.push(...interval.performances);
         } else merged.push(interval);
       }
       for (let i=edges.length-1;i>=0;i--)
@@ -577,14 +627,17 @@
       for (const [i,interval] of merged.entries()) edges.push({
         id:`summary-${row.actor.id}-${i}`,type:"task",part:"task",actorId:row.actor.id,
         summaryActorId:row.actor.id,memberIds:[...new Set(interval.members)],
+        performance: new Set(interval.performances).size === 1 ? interval.performances[0] : "mixed",
         points:[{x:interval.start,y:row.center},{x:interval.end,y:row.center}],
         label:[...new Set(interval.labels)].filter(Boolean).join(" / "),hideLabel:true,
       });
     }
+    const cdfCharts=axis.curves.filter(c=>c.type==="state"?states.has(c.id):edges.some(e=>e.type===c.type&&e.id===c.id&&!e.summaryActorId)).map(c=>T.chart(c,vp));
     const lineSegments = edges.flatMap(e => routeSegments(e.points));
     // Reflow State text after routing. Text collisions never feed back into geometry.
     occupied.length = 0;
     occupied.push(...nodeBodies);
+    for(const c of cdfCharts)occupied.push({x:c.startX,y:c.y-c.height-12,width:Math.max(32,c.endX-c.startX),height:c.height+26});
     for (const j of junctions.values()) occupied.push({ x: j.x - 6, y: j.y - 6, width: 12, height: 12 });
     const technologyTags = [], technologyGroups = [], attachments = new Map();
     for (const {binding,actorId} of technologyBindings) {
@@ -594,7 +647,7 @@
       let text=v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name;
       while(width(text,10)>128 && text.length>1) text=text.slice(0,-1);
       if(width(text,10)<width(v.mode==='gap' ? `${tech.name} · TRL ${tech.trl ?? "?"}` : tech.name,10)) text=text.slice(0,-1)+"…";
-      if(!attachments.has(key)) attachments.set(key,{items:[],left:vp.left+4,right:vp.width-8,actorId});
+      if(!attachments.has(key)) attachments.set(key,{items:[],left:vp.left+4,right:vp.width-8,top:34,bottom:height-8,actorId});
       attachments.get(key).items.push({binding,actorId,tech,text,fullText,width:width(text,10)+12});
     }
     for (const s of states.values()) {
@@ -648,9 +701,14 @@
         if(!e.labelInfo) pending.push({e,attachment});
         else addTechnologyGroup(e,e.labelInfo,attachment);
       }
-      e.path = e.type === "causalLink"
-        ? wave(e.points,2.8,15,{left:vp.left-24,right:vp.width+12},e.polarity === "negative" ? "sine" : "square")
-        : path(e.points);
+      e.path = path(e.points);
+      const inline=cdfCharts.find(c=>c.type===e.type&&c.id===e.id&&e.part!=="outcome");
+      if(inline&&!attachment){
+        const horizontal=routeSegments(e.points).find(s=>s.a.y===s.b.y),anchor=horizontal?{x:(horizontal.a.x+horizontal.b.x)/2,y:horizontal.a.y}:null;
+        if(anchor){const text=textLines(e.label,150,11,1)[0],w=width(text)+10;
+          e.labelInfo={x:anchor.x-w/2,y:anchor.y+5,width:w,height:18,anchor,text,fullText:e.label,leader:true};occupied.push(e.labelInfo);
+        }
+      }
     }
     function addTechnologyGroup(e,caption,attachment,detached=false) {
       const boxes=attachedBoxes(caption,attachment),tags=[];
@@ -684,18 +742,55 @@
       const marker=e.labelInfo ? {x:e.labelInfo.x+e.labelInfo.width+12,y:e.labelInfo.y-4} : anchor;
       technologyGroups.push({edge:e,anchor:marker,items:attachment.items,compact:true});
     }
+    if (resultOverlay) {
+      for (const e of edges) {
+        e.resultSegments = resultOverlay.segments(e,vp);
+        for (const part of e.resultSegments) {
+          part.path = e.type === "causalLink" ? e.path : path(part.points);
+          const a=part.points[0], b=part.points.at(-1), lo=Math.max(vp.left-14,Math.min(a.x,b.x)), hi=Math.min(vp.right,Math.max(a.x,b.x));
+          if (hi < lo) continue;
+          const text=part.metric.text,w=width(text)+12,h=18,choices=[];
+          for (const t of [.5,.25,.75,.1,.9]) {
+            const anchor=pointOnRoute(part.points,lo+(hi-lo)*t,(a.y+b.y)/2);
+            for (const dy of [-26,8,-44,26]) for (const dx of [0,-w/2-10,w/2+10]) {
+              const box={x:Math.max(vp.left+2,Math.min(vp.width-w-6,anchor.x-w/2+dx)),y:anchor.y+dy,width:w,height:h};
+              if(box.y<34 || box.y+h>height-8) continue;
+              const score=occupied.reduce((n,o)=>n+(overlaps(box,o)?1000:0),0)+
+                lineSegments.reduce((n,l)=>n+segmentInsideBox(l,box),0)*12+Math.abs(dx)+Math.abs(dy+26)+Math.abs(t-.5)*12;
+              choices.push({...box,anchor,score,text});
+            }
+          }
+          choices.sort((a,b)=>a.score-b.score);
+          if (choices[0]) {part.labelInfo=choices[0];occupied.push(choices[0]);}
+        }
+      }
+      resultOverlay.legend = [
+        `結果：全${resultOverlay.total.toLocaleString()}試行 / Seed ${resultOverlay.seed ?? "—"}${Number.isFinite(resultOverlay.successProbability)?" / Mission成功 "+O.percent(resultOverlay.successProbability):""}`,
+        "太さ・%：Task経路通過/正常完了、分岐選択、作用適用（分母：全試行）",
+        "横位置：基準時刻。集約線は展開して割合を確認。"
+      ].flatMap(text=>textLines(text,vp.width-24,11,3));
+      resultOverlay.legendY = height+8;
+      height += resultOverlay.legend.length*15+20;
+    }
+    const timeLegendY=height;
+    if(options.full)height+=42;
     return {
       vp,
       rows,
       states,
       tasks,
       junctions,
+      stateReceipts,
       edges,
       height,
       filters,
       technologyTags,
       technologyGroups,
       occupied,
+      resultOverlay,
+      cdfCharts,
+      axis,
+      timeLegendY,
     };
   }
   const api = {

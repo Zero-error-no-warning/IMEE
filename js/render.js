@@ -29,11 +29,14 @@
     unknown: "#687680",
   };
   function render(doc, layout, options = {}) {
-    const { vp, rows, states, edges, junctions, height } = layout,
+    const { vp, rows, states, edges, junctions, height, resultOverlay } = layout,
       v = doc.views.main,
       selection = options.selection || [],
       selected = (id) => selection.some((s) => s.id === id),
       chain = options.chain;
+    const connectionHint=options.connecting?.id&&root.MEAuthoring?.connectionHints(doc,options.connecting);
+    const connectionClass=(type,id)=>!options.connecting?'':!connectionHint?' connect-target':connectionHint(type,id).allowed?' connect-target':' connect-unavailable';
+    const connectionMessage=(type,id)=>connectionHint?connectionHint(type,id).message:'';
     const emphasis = (id) =>
       chain?.size && !chain.has(id) ? ' opacity="0.24"' : "";
     const data = (type, id) =>
@@ -42,7 +45,7 @@
         : ` data-type="${type}" data-id="${esc(id)}" tabindex="0"`;
     const summaryData = (actorId) => data("actor",actorId) +
       (options.export ? "" : ` data-expand-group="${esc(actorId)}"`);
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vp.width}" height="${height}" viewBox="0 0 ${vp.width} ${height}" role="img" aria-label="${esc(doc.title)}" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="11" fill="#243d44" data-view="${v.mode}"><title>${esc(doc.title)}</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><marker id="state-arrow" viewBox="0 0 10 10" refX="19" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><clipPath id="time-clip"><rect x="${vp.left - 14}" y="32" width="${vp.width - vp.left + 14}" height="${height}"/></clipPath></defs><rect width="100%" height="100%" fill="white"/>`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vp.width}" height="${height}" preserveAspectRatio="xMinYMin meet" viewBox="0 0 ${vp.width} ${height}" role="img" aria-label="${esc(doc.title)}" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="11" fill="#243d44" data-view="${v.mode}"${resultOverlay ? ` data-result-iterations="${resultOverlay.total}"` : ""}><title>${esc(doc.title)}</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><marker id="state-arrow" viewBox="0 0 10 10" refX="19" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="context-stroke"/></marker><clipPath id="time-clip"><rect x="${vp.left - 14}" y="32" width="${vp.width - vp.left + 14}" height="${height}"/></clipPath></defs><rect width="100%" height="100%" fill="white"/>`;
     for (const row of rows)
       svg += `<rect x="0" y="${row.y}" width="${vp.width}" height="${row.height}" fill="${rows.indexOf(row) % 2 ? "#fafcfc" : "#ffffff"}"/><path d="M0,${row.y + row.height} H${vp.width}" stroke="#e7edef"/>`;
     const span = vp.end - vp.start,
@@ -58,28 +61,64 @@
       svg += `<path d="M${x},32 V${height - 10}" stroke="#eef2f3"/><text x="${x}" y="21" text-anchor="middle" font-size="10" fill="#77868c">${esc(+t.toFixed(4))}</text>`;
     }
     svg += `<text x="12" y="21" font-size="10" fill="#77868c">ACTOR / T+ (${esc(doc.time.unit)})</text><g clip-path="url(#time-clip)">`;
+    for(const r of layout.stateReceipts || []) {
+      svg+=`<g class="state-receipt" pointer-events="none"><title>${esc(r.stateId)} 基準時刻 ${r.time}：${r.late?"成立後・固定時刻後の入力":"成立条件・指定時刻まで待機"}</title>${r.points?`<path d="${L.path(r.points)}" fill="none" stroke="#84979e" stroke-dasharray="3 3" stroke-width="1"/>`:""}<circle cx="${r.x}" cy="${r.y}" r="3" fill="white" stroke="#84979e"/></g>`;
+    }
     for (const e of edges) {
+      if(e.type==="implicitDependency"){svg+=`<g class="implicit-dependency"><title>品質に影響しない必須の開始依存</title><path d="${e.path}" fill="none" stroke="#84979e" stroke-dasharray="4 4" stroke-width="1.2" marker-end="url(#arrow)" pointer-events="none"/></g>`;continue;}
       const chosen = selected(e.summaryActorId || e.id),
         actor = M.get(doc,"actor",e.actorId),
         color = M.actorColor(doc,actor),
+        performance = e.type === "task" ? e.performance || "fixed" : e.performance,
+        fixed = performance === "fixed",
         gap = options.gapIds?.has(e.id) || e.memberIds?.some(id => options.gapIds?.has(id)),
         muted = v.mode === "causality" && e.type === "task" && !chosen ? 0.4 : 1;
       const centeredEnd = [...states.values()].some(s =>
         Math.abs(s.x-e.points.at(-1).x)<0.01 && Math.abs(s.y-e.points.at(-1).y)<0.01);
       let marker = centeredEnd ? "state-arrow" : "arrow";
-      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${options.connecting && e.part === "task" ? " connect-target" : ""}"${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}</title>`;
+      const performanceTitle = e.type === "causalLink" ? performance === "cdf" ? "CDF：発生から到着までの伝搬時間・未達を抽選" : fixed ? "FIX：伝搬時間は固定、到着時刻は発生時刻で変動" : "表示のみ：シミュレーション実行なし" : performance === "cdf" ? "CDF：所要時間・未達を抽選" : performance === "mixed" ? "CDF / FIXを含む集約線（展開して確認）" : fixed ? e.part === "outcome" ? "FIX：分岐後の遅延は固定" : "FIX：所要時間は固定、開始時刻は依存条件で変動" : "";
+      const resultTitle = e.resultSegments?.map(p=>`${p.metric.label} ${p.metric.text} (${p.metric.count}/${p.metric.total})`).join(" / ");
+      svg += `<g class="edge ${e.part}${chosen ? " selected" : ""}${e.part === "task"&&!e.summaryActorId ? connectionClass('task',e.id) : ""}"${performance ? ` data-performance="${performance}"` : ""}${e.summaryActorId ? summaryData(e.summaryActorId) : data(e.type,e.id)}${emphasis(e.id)}><title>${esc(actor?.name)} · ${esc(e.label)}${options.connecting&&e.part==='task'?' · '+esc(connectionMessage('task',e.id)):''}${performanceTitle ? " · " + esc(performanceTitle) : ""}${resultTitle ? " · " + esc(resultTitle) : resultOverlay && e.summaryActorId ? " · 集約線の割合は展開して確認" : ""}</title>`;
       if (e.type === "causalLink") {
         const segment = L.routeSegments(e.points).at(-1);
         const angle = segment ? Math.atan2(segment.b.y-segment.a.y,segment.b.x-segment.a.x)*180/Math.PI : 0;
         marker = "causal-arrow-" + edges.indexOf(e);
         // Orient by the routed centerline, never by the final wave sample.
-        svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${color}"/></marker></defs>`;
+        const markerColor=e.resultSegments?.[0]?.metric.ratio === 0 ? "#aebbc0" : color;
+        svg += `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="${centeredEnd ? 19 : 10}" refY="5" markerWidth="7" markerHeight="7" orient="${angle}" markerUnits="userSpaceOnUse"><path d="M0,1 L10,5 L0,9 Z" fill="${markerColor}"/></marker></defs>`;
       }
       if (!options.export)
         svg += `<path class="hit" d="${L.path(e.points)}" fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke"/>`;
+      // Gaps at unconnected crossings; vertical segments convey connectivity only.
+      for(const s of L.routeSegments(e.points).filter(s=>s.a.x===s.b.x))svg+=`<path d="${L.path([s.a,s.b])}" fill="none" stroke="white" stroke-width="5" pointer-events="none"/>`;
       if (chosen || gap)
-        svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="7" opacity=".25" pointer-events="none"/>`;
-      svg += `<path class="line" data-polarity="${e.polarity || "positive"}" d="${e.path}" fill="none" stroke="${color}" stroke-width="${chosen ? 2.5 : 1.6}" opacity="${muted}" stroke-linejoin="${e.type === "causalLink" && e.polarity === "positive" ? "miter" : "round"}" marker-end="url(#${marker})"/></g>`;
+        svg += `<path class="edge-highlight" d="${e.path}" fill="none" stroke="${chosen ? "#087f80" : "#d17a30"}" stroke-width="${e.resultSegments?.length ? 12 : 7}" opacity=".25" pointer-events="none"/>`;
+      const pieces = e.resultSegments?.length ? e.resultSegments : [{path:e.path}];
+      for (const [i,piece] of pieces.entries()) {
+        const m=piece.metric,stroke=m?.ratio===0?"#aebbc0":color,
+          strokeWidth=m?m.width:fixed?(chosen?6.6:4.8):(chosen?2.5:1.6),
+          endMarker=i===pieces.length-1?` marker-end="url(#${marker})"`:"";
+        if(m) svg+=`<g class="simulation-result-segment" data-result-rate="${m.ratio}" data-result-count="${m.count}" data-result-kind="${esc(m.label)}"${piece.start!==undefined?` data-start="${piece.start}" data-end="${piece.end}"`:""}>`;
+        if (fixed) {
+          const rowIndex = rows.findIndex(row => row.actor.id === e.actorId), background = rowIndex % 2 ? "#fafcfc" : "#ffffff";
+          // Hollow stroke gives parallel rails without moving the routed time anchors.
+          // Draw the arrow last so the central gap never cuts through its head.
+          const join="round";
+          svg += `<g class="fixed-task-strokes" opacity="${muted}"><path class="line line-fixed" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} stroke-linejoin="${join}"/>
+          <path class="line-gap" d="${piece.path}" fill="none" stroke="${background}" stroke-width="${m?strokeWidth*.4:1.6}" stroke-linejoin="${join}" pointer-events="none"/>
+          <path class="line-arrow" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="0"${endMarker} pointer-events="none"/></g>`;
+        } else {
+          svg += `<path class="line${performance ? " line-cdf" : ""}" d="${piece.path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${m?` style="stroke-width:${strokeWidth}px"`:""} opacity="${muted}" stroke-linejoin="round"${endMarker}/>`;
+        }
+        if(m)svg+="</g>";
+      }
+      svg+="</g>";
+    }
+    for(const c of layout.cdfCharts||[]){
+      const color=M.actorColor(doc,M.get(doc,"actor",c.spec.actorId));
+      const caption=c.kind==="config"?`設定CDF · q=${c.q.toFixed(2)}`:`${c.event==="completed"?"通常完了":c.event==="arrived"?"実到着":"成立"}CDF · ${c.count}/${c.total}試行${c.step?" · 時間格子 ≈"+Number(c.step.toPrecision(3)):""}`;
+      const title=`${caption} / 横軸は共通の絶対時刻 (${doc.time.unit}) / 未達・未成立 ${(100*(1-c.finalP)).toFixed(1)}%${c.kind==="config"?" / 開始条件成立時刻を基準とする所要時間CDF。分岐・中止を含む成立確率は結果CDFで確認":" / 全試行を分母に集計"}`;
+      svg+=`<g class="axis-cdf" data-cdf-kind="${c.kind}"${data(c.type,c.id)}><title>${esc(title)}</title><path class="cdf-axis" d="M${c.startX},${c.y} H${c.endX}" fill="none" stroke="${color}" stroke-width=".8" stroke-dasharray="3 3"/><path d="M${c.startX},${c.y} V${c.y-c.height}" fill="none" stroke="${color}" stroke-width=".7" opacity=".5"/>${[.5,1].map(p=>`<path class="cdf-probability-guide" data-probability="${p}" d="M${c.startX},${c.y-c.height*p} H${c.endX}" fill="none" stroke="${color}" stroke-width=".7" stroke-dasharray="2 3" opacity=".4"/><text x="${c.startX+18}" y="${c.y-c.height*p+3}" text-anchor="start" font-size="9">${p*100}%</text>`).join('')}<path class="cdf-curve" d="${L.path(c.points)}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/><text class="cdf-caption" x="${c.startX+4}" y="${c.y-c.height-9}" font-size="9" fill="${color}">${esc(caption)}</text><text x="${c.endX+4}" y="${c.y-c.height*c.finalP}" font-size="9" fill="${color}">${(c.finalP*100).toFixed(0)}%</text></g>`;
     }
     const summaryJunctions = new Set();
     for (const j of junctions.values()) {
@@ -88,15 +127,20 @@
       if (single && summaryJunctions.has(key)) continue;
       if (single) summaryJunctions.add(key);
       const color=M.actorColor(doc,M.get(doc,"actor",j.actorId));
-      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}"><title>Task上の時刻 ${j.time}</title><circle cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
+      svg += `<g class="junction"${single ? summaryData(j.actorId) : data("task",j.taskId)} data-time="${j.time}" data-junction-id="${esc(j.explicit || "")}"><title>Task上の分岐点 T+${j.time} · ドラッグで時刻移動 · Shiftで結果時刻を維持</title>${options.export?'':`<circle class="junction-hit" cx="${j.x}" cy="${j.y}" r="10" fill="transparent"/>`}<circle class="junction-body" cx="${j.x}" cy="${j.y}" r="4" fill="white" stroke="${color}" stroke-width="1.6"/></g>`;
     }
     for (const s of states.values()) {
       if (s.summaryHidden) continue;
       const a = M.get(doc, "actor", s.displayActorId), color = M.actorColor(doc,a);
-      svg += `<g class="state${selected(s.id) ? " selected" : ""}${options.connecting ? " connect-target" : ""}"${s.summaryActorId ? summaryData(s.summaryActorId) : data("state",s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc((s.summaryNames && [...new Set(s.summaryNames)].join(" / ")) || s.name)} · T+${s.time}</title><circle class="body" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${color}" stroke="${color}" stroke-width="${selected(s.id) ? 3 : 1.6}"/>`;
+      const fixedTime=M.nodeTiming(doc,s).mode==="fixed";
+      const body=fixedTime?`<path class="body fixed-time-node" d="M${s.x-s.r},${s.y-s.r} H${s.x+s.r} L${s.x},${s.y+s.r} Z" fill="${color}" stroke="${color}" stroke-width="${selected(s.id)?3:1.6}"/>`:`<circle class="body relative-node" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${color}" stroke="${color}" stroke-width="${selected(s.id)?3:1.6}"/>`;
+      svg += `<g class="state${selected(s.id) ? " selected" : ""}${!s.summaryActorId?connectionClass('state',s.id):''}" data-timing="${fixedTime?'fixed':'relative'}"${s.summaryActorId ? summaryData(s.summaryActorId) : data("state",s.id)}${emphasis(s.id)} opacity="${s.activity === "quiet" ? 0.55 : 1}"><title>${esc(a.name)} · ${esc((s.summaryNames && [...new Set(s.summaryNames)].join(" / ")) || s.name)} · ${fixedTime?'Fixed-time':'Relative'} Node · H+${s.time}${options.connecting?' · '+esc(connectionMessage('state',s.id)):''}</title>${body}`;
+      if(fixedTime&&s.collapseMode!=="single")svg+=`<text class="fixed-time-label" x="${s.x}" y="${s.y-12}" text-anchor="middle" font-size="9">H+${s.time}</text>`;
       if (options.gapIds?.has(s.id)) svg += `<circle cx="${s.x}" cy="${s.y}" r="12" fill="none" stroke="#d17a30" opacity=".6"/>`;
       if (selected(s.id))
         svg += `<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" stroke="#76b8b5"/>`;
+      if(!s.summaryActorId&&doc.simulation?.successStateIds?.includes(s.id))svg+=`<g class="goal-marker"><title>達成目標</title><path d="M${s.x-13},${s.y-16} V${s.y-32} L${s.x+1},${s.y-28} L${s.x-13},${s.y-24}" fill="#087f80" stroke="#087f80"/><text x="${s.x+6}" y="${s.y-23}" font-size="9" fill="#087f80">目標</text></g>`;
+      if(!s.summaryActorId&&doc.causalLinks.filter(c=>c.target.type==='state'&&c.target.id===s.id).length+doc.tasks.filter(t=>t.toStateId===s.id).length>1)svg+=`<text class="join-marker" x="${s.x-16}" y="${s.y-9}" font-size="9" fill="#8061a8">${s.simulation?.join==='any'?'OR':'AND'}</text>`;
       s.lines.forEach(
         (line, i) =>
           (svg += `<text x="${s.labelX}" y="${s.y + 22 + i * 13}" text-anchor="middle" font-size="11">${esc(line)}</text>`),
@@ -104,6 +148,7 @@
       svg += "</g>";
     }
     for (const e of edges) {
+      if(e.type==="implicitDependency"){svg+=`<g class="implicit-dependency"><title>品質に影響しない必須の開始依存</title><path d="${e.path}" fill="none" stroke="#84979e" stroke-dasharray="4 4" stroke-width="1.2" marker-end="url(#arrow)" pointer-events="none"/></g>`;continue;}
       const b = e.labelInfo,
         color = M.actorColor(doc,M.get(doc,"actor",e.actorId)),
         isTask = e.type === "task";
@@ -115,6 +160,13 @@
       if (!isTask)
         svg += `<path class="label-underline" d="M${b.x+4},${b.y+b.height-1} H${b.x+b.width-4}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
       svg += `<text x="${b.x + b.width / 2}" y="${b.y + 12}" text-anchor="middle">${esc(b.text)}</text></g>`;
+      if(e.type==='causalLink'&&!M.get(doc,'causalLink',e.id)?.simulation?.enabled&&!e.summaryActorId)svg+=`<g class="display-only-badge"><title>説明用：シミュレーションでは実行しません</title><text x="${b.x+b.width/2}" y="${b.y-4}" font-size="9" text-anchor="middle" fill="#84979e">説明用</text></g>`;
+    }
+    for (const e of edges) for (const part of e.resultSegments || []) {
+      const b=part.labelInfo,m=part.metric;
+      if(!b)continue;
+      const color=m.ratio===0?"#62777d":M.actorColor(doc,M.get(doc,"actor",e.actorId));
+      svg+=`<g class="edge-label simulation-rate-label"${data(e.type,e.id)}${emphasis(e.id)} data-result-rate="${m.ratio}"><title>${esc(e.label)} · ${esc(m.label)} ${esc(m.text)} (${m.count}/${m.total}試行、分母は全試行)</title><path d="M${b.anchor.x},${b.anchor.y} L${b.x+b.width/2},${b.y+b.height/2}" fill="none" stroke="${color}" stroke-width=".6" pointer-events="none"/><rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="white" stroke="${color}" stroke-width=".8"/><text x="${b.x+b.width/2}" y="${b.y+12}" text-anchor="middle" fill="${color}">${esc(m.text)}</text></g>`;
     }
     for (const group of layout.technologyGroups || []) {
       const e=group.edge,color=M.actorColor(doc,M.get(doc,"actor",e.actorId));
@@ -146,6 +198,8 @@
       svg += `<text x="${x + 16}" y="${row.center + 4}" font-weight="600" font-size="11">${esc(name)}</text><title>${esc(a.name)}</title>`;
       svg += "</g>";
     }
+    if(resultOverlay) svg+=`<g class="simulation-result-legend">${resultOverlay.legend.map((text,i)=>`<text x="12" y="${resultOverlay.legendY+i*15}" font-size="11" fill="#536e75">${esc(text)}</text>`).join("")}</g>`;
+    if(options.full)svg+=`<g class="time-axis-legend"><text x="12" y="${layout.timeLegendY+12}" font-size="10">● Relative Node / ▼ Fixed-time Node · 横＝共通時間 / 縦＝Actor・接続</text><text x="12" y="${layout.timeLegendY+28}" font-size="10">${layout.axis.mode==='results'?`結果CDF：全${layout.axis.result?.iterations||0}試行を分母にした絶対時刻分布`:`${layout.axis.mode==='off'?'CDF非表示':'設定CDF：所要時間を基準開始時刻に重ねる / 表示入力q='+layout.axis.q}`}</text></g>`;
     return svg + "</svg>";
   }
   const api = { render, esc, techColors };

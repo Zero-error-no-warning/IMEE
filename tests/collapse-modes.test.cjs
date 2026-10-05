@@ -29,13 +29,13 @@ test('single mode draws one parent line and one circle per timestamp, with exact
   for(const e of g.edges.filter(e=>e.type==='causalLink')){
     const c=M.get(d,'causalLink',e.id);
     assert.equal(e.points[0].x,g.vp.x(M.endpoint(d,c.source).time));
-    assert.equal(e.points.at(-1).x,g.vp.x(M.endpoint(d,c.target).time));
+    assert.equal(e.points.at(-1).x,g.vp.x(M.causalArrivalTime(d,c)));
   }
   assert.equal(JSON.stringify(d),before);
 });
 
 test('single mode preserves actual gaps between activity intervals',()=>{
-  const d=M.defaults({version:2,title:'空白期間',time:{unit:'minutes',duration:20,snap:1},actors:[
+  const d=M.defaults({version:3,title:'空白期間',time:{unit:'minutes',duration:20,snap:1},actors:[
     {id:'g',name:'親',side:'friendly'},{id:'a',name:'子A',side:'friendly',parentId:'g'},{id:'b',name:'子B',side:'friendly',parentId:'g'}],
     states:[{id:'s1',actorId:'a',name:'1',time:0},{id:'s2',actorId:'a',name:'2',time:4},{id:'s3',actorId:'b',name:'3',time:10},{id:'s4',actorId:'b',name:'4',time:14}],
     tasks:[{id:'t1',fromStateId:'s1',toStateId:'s2',label:'前半'},{id:'t2',fromStateId:'s3',toStateId:'s4',label:'後半'}],causalLinks:[]});

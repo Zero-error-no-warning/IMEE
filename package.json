@@ -1,11 +1,12 @@
 {
   "name": "imee",
-  "version": "0.2.0",
+  "version": "0.5.3",
   "private": true,
   "description": "Static Mission State Timeline Editor",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:model": "node --test tests/model.test.cjs"
+    "test:model": "node --test tests/model.test.cjs",
+    "test:browser": "node tests/browser-authoring.cjs"
   },
   "engines": {
     "node": ">=24"
