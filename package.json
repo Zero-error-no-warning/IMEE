@@ -1,6 +1,6 @@
 {
   "name": "imee",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "private": true,
   "description": "Static Mission State Timeline Editor",
   "scripts": {

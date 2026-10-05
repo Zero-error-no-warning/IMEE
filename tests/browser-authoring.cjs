@@ -260,6 +260,23 @@ async function main() {
     assert.deepEqual(moved.causalLinks.map(c=>c.propagation.duration),[1,3]);
     assert.equal(await page.locator('.edit-error').count(),0);
     await page.screenshot({path:path.join(output,'14-state-connections-follow.png')});
+    const motionSample=require('../js/tutorial-sample')();
+    for(const [id,delta] of [['s1',-2],['i0',2]]){
+      await page.evaluate(d=>window.IMEE.loadJSON(JSON.stringify(d)),motionSample);
+      if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
+      await moveNode(`.state[data-id="${id}"] .body`,delta);
+      moved=await document();
+      assert.equal(moved.states.find(s=>s.id===id).time,motionSample.states.find(s=>s.id===id).time+delta);
+      const effect=moved.causalLinks.find(c=>c.id==='negative'),effectSource=moved.states.find(s=>s.id===effect.source.id);
+      assert.equal(moved.tasks.find(t=>t.id===effect.target.taskId).junctions[0].time,effectSource.time+effect.propagation.duration);
+      assert(effect.propagation.duration>=0);
+      assert.equal(await page.locator('.edit-error').count(),0);
+      assert(!(await page.locator('#simulation-btn').isDisabled()));
+      const after=moved;await page.evaluate(()=>window.IMEE.undo());
+      assert.deepEqual((await document()).states,motionSample.states);
+      await page.evaluate(()=>window.IMEE.redo());assert.deepEqual((await document()).states,after.states);
+      await page.screenshot({path:path.join(output,`15-state-${id}-direction.png`)});
+    }
     assert.deepEqual(errors, []);
     console.log("Browser authoring workflow passed; screenshots: " + output);
   } finally {

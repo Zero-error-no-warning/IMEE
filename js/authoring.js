@@ -172,6 +172,16 @@
       ...overrides.offsets,
     };
     const delays = { ...current.delays, ...base.delays, ...overrides.delays };
+    // Freeze the requested propagation durations before synchronizing shared
+    // junctions. Sources can change later in dependency order (including through
+    // several State/Task/link hops), so a junction must follow those arrivals too.
+    const effectDurations = overrides.effectDurations || Object.fromEntries(
+      d.causalLinks.filter(c => c.target.type === "junction")
+        .map(c => [c.id, c.propagation.duration]),
+    );
+    const editedEffectOffsets = overrides.editedEffectOffsets || Object.fromEntries(
+      Object.entries(overrides.offsets || {}).map(([id, value]) => [id, Math.abs(value - base.offsets[id]) > 1e-8]),
+    );
     const graph = M.dependencyGraph(d);
     for (const node of graph.order) {
       if (node.type === "task") {
@@ -211,26 +221,39 @@
           );
       s.time = round(time);
     }
-    for (const c of d.causalLinks)
-      if (c.target.type === "junction") {
-        const t=M.get(d,"task",c.target.taskId),j=M.get(d,"junction",c.target.id);
-        if(t.timing){
-          const expected=M.causalArrivalTime(d,c);
-          if(Math.abs(j.time-expected)>1e-8){
-            if((overrides.effectPass||0)>d.states.length+d.tasks.length)throw new Error("作用分岐の基準時刻を整合できません。");
-            return reconcile(d,before,{durations,delays,offsets:{...offsets,[j.id]:expected-M.taskWindow(d,t).start},effectPass:(overrides.effectPass||0)+1});
-          }
-          continue;
-        }
-        c.propagation.duration = round(
-          M.get(d, "junction", c.target.id).time -
-            M.get(d, "state", c.source.id).time,
-        );
-        if (c.propagation.duration < 0)
-          throw new Error(
-            `「${c.label}」の発生が分岐点より遅くなります。分岐時刻または発生条件を変更してください。`,
-          );
+    const effectGroups = new Map();
+    for (const c of d.causalLinks) if (c.target.type === "junction") {
+      if (!effectGroups.has(c.target.id)) effectGroups.set(c.target.id, []);
+      effectGroups.get(c.target.id).push(c);
+    }
+    let effectsChanged = false;
+    for (const [id, links] of effectGroups) {
+      const t = M.get(d, "task", links[0].target.taskId),
+        j = M.get(d, "junction", id);
+      const changed = links.filter(c => {
+        const old = M.get(before, "causalLink", c.id);
+        return !old || Math.abs(M.get(d, "state", c.source.id).time - M.get(before, "state", old.source.id).time) > 1e-8 ||
+          Math.abs(effectDurations[c.id] - old.propagation.duration) > 1e-8;
+      });
+      const arrivals = changed.length ? changed : links;
+      // Moving the containing activity earlier must not pull a stationary
+      // effect before its source. Only an explicit junction offset edit changes
+      // that timing when none of the incoming effects changed.
+      const expected = !changed.length && editedEffectOffsets[id]
+        ? j.time
+        : round(Math.max(...arrivals.map(c => M.get(d, "state", c.source.id).time + effectDurations[c.id])));
+      if (Math.abs(j.time - expected) > 1e-8) {
+        offsets[id] = round(expected - M.taskWindow(d, t).start);
+        j.time = expected;
+        effectsChanged = true;
       }
+      for (const c of links) c.propagation.duration = round(expected - M.get(d, "state", c.source.id).time);
+    }
+    if (effectsChanged) {
+      if ((overrides.effectPass || 0) > d.states.length + d.tasks.length)
+        throw new Error("作用分岐の基準時刻を整合できません。");
+      return reconcile(d, before, { durations, delays, offsets, effectDurations, editedEffectOffsets, effectPass: (overrides.effectPass || 0) + 1 });
+    }
     const max = Math.max(
       d.time.duration,
       ...d.states.map((s) => s.time),
