@@ -249,10 +249,24 @@
       }
       for (const c of links) c.propagation.duration = round(expected - M.get(d, "state", c.source.id).time);
     }
-    if (effectsChanged) {
+    let attachmentsChanged = false;
+    for (const id of overrides.stateAttachments || []) {
+      const c = M.get(d, "causalLink", id), old = M.get(before, "causalLink", id);
+      if (!c || c.target.type !== "state") continue;
+      const source = M.get(d, "state", c.source.id), target = M.get(d, "state", c.target.id);
+      // An earlier source may leave the receiver held by another input/Task or
+      // a fixed schedule. Keep the formerly attached arrow on that receiver;
+      // the drag stretches this link instead of silently creating a receipt gap.
+      if (Math.abs(source.time - M.get(before, "state", old.source.id).time) > 1e-8 &&
+          M.causalArrivalTime(d, c) < target.time - 1e-8) {
+        c.propagation.duration = round(target.time - source.time);
+        attachmentsChanged = true;
+      }
+    }
+    if (effectsChanged || attachmentsChanged) {
       if ((overrides.effectPass || 0) > d.states.length + d.tasks.length)
         throw new Error("作用分岐の基準時刻を整合できません。");
-      return reconcile(d, before, { durations, delays, offsets, effectDurations, editedEffectOffsets, effectPass: (overrides.effectPass || 0) + 1 });
+      return reconcile(d, before, { durations, delays, offsets, effectDurations, editedEffectOffsets, stateAttachments: overrides.stateAttachments, effectPass: (overrides.effectPass || 0) + 1 });
     }
     const max = Math.max(
       d.time.duration,
@@ -280,6 +294,8 @@
       old = s.time,
       b = timing(before),
       delta = time - old;
+    b.stateAttachments = before.causalLinks.filter(c => c.target.type === "state" &&
+      Math.abs(M.causalArrivalTime(before, c) - M.get(before, "state", c.target.id).time) < 1e-8).map(c => c.id);
     s.time = time;
     const fixed=s.timing?.mode === "fixed";
     if(fixed)s.timing.at=time;

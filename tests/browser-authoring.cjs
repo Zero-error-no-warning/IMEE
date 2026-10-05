@@ -277,6 +277,27 @@ async function main() {
       await page.evaluate(()=>window.IMEE.redo());assert.deepEqual((await document()).states,after.states);
       await page.screenshot({path:path.join(output,`15-state-${id}-direction.png`)});
     }
+    for(const [sampleName,id] of [['sample','e2'],['simulation-sample','control-orders']]){
+      const original=require('../js/'+sampleName)();
+      await page.evaluate(d=>window.IMEE.loadJSON(JSON.stringify(d)),original);
+      if(await page.locator('#inspector').isVisible())await page.locator('#close-inspector').click();
+      await moveNode(`.state[data-id="${id}"] .body`,-2);
+      moved=await document();
+      for(const c of moved.causalLinks.filter(c=>c.source.id===id&&c.target.type==='state')){
+        const target=moved.states.find(s=>s.id===c.target.id),source=moved.states.find(s=>s.id===id);
+        assert.equal(source.time+c.propagation.duration,target.time);
+        const attached=await page.evaluate(c=>{
+          const svg=document.querySelector('#timeline'),g=window.MELayout.layout(window.IMEE.getDocument(),+svg.getAttribute('width'));
+          const line=svg.querySelector(`.edge.causal[data-id="${c.id}"] .hit`),coordinates=line.getAttribute('d').match(/-?\d+(?:\.\d+)?/g).map(Number);
+          return {endX:coordinates.at(-2),stateX:g.states.get(c.target.id).x,receipt:g.stateReceipts.some(r=>r.linkId===c.id)};
+        },c);
+        assert(Math.abs(attached.endX-attached.stateX)<.01,'the rendered arrow ends on its State (SVG paths round to .01px)');assert.equal(attached.receipt,false);
+      }
+      assert.equal(await page.locator('.edit-error').count(),0);
+      const after=moved;await page.evaluate(()=>window.IMEE.undo());assert.deepEqual((await document()).states,original.states);
+      await page.evaluate(()=>window.IMEE.redo());assert.deepEqual((await document()).causalLinks,after.causalLinks);
+      await page.screenshot({path:path.join(output,`16-attached-${id}.png`)});
+    }
     assert.deepEqual(errors, []);
     console.log("Browser authoring workflow passed; screenshots: " + output);
   } finally {
